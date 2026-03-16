@@ -1,0 +1,13 @@
+sources:
+  ai_tools_rss:
+    type: rss
+    url: https://example.com/ai-tools/feed.xml
+  ai_tools_sitemap:
+    type: sitemap
+    url: https://example.com/ai-tools/sitemap.xml
+
+source_sets:
+  ai_tools_primary:
+    sources:
+      - ai_tools_rss
+      - ai_tools_sitemap
