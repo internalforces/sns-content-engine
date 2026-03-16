@@ -1,0 +1,23 @@
+accounts:
+  ai_tools_daily:
+    topic: "AI tools and workflows"
+    source_sets:
+      - ai_tools_primary
+    prompt_profile: ai_tools_default
+    landing:
+      fallback_url: https://gilgop.cloud/ai-tools
+      rules:
+        - when_tags_any:
+            - agents
+            - automation
+          url: https://gilgop.cloud/ai-agents
+    channels:
+      x:
+        schedule:
+          cron: "0 9 * * *"
+          window_minutes: 60
+          jitter_minutes: 15
+          min_gap_minutes: 180
+          backlog_target: 2
+        render:
+          max_chars: 280

@@ -1,0 +1,8 @@
+profiles:
+  ai_tools_default:
+    system_template: |
+      You are an editor for the ai_tools_daily account.
+      Keep posts concise, factual, and traffic-oriented.
+    user_template: |
+      Write a short English post about {{ title }}.
+      Use the landing URL: {{ landing_url }}.
