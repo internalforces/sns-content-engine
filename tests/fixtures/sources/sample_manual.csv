@@ -1,0 +1,3 @@
+external_id,url,title,summary,published_at
+csv-1,https://example.com/manual/first-entry,Manual Discovery,Picked by editor,2026-03-16T09:30:00+00:00
+,https://example.com/manual/second-entry,,,

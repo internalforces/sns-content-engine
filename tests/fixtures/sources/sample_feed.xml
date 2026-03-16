@@ -1,0 +1,16 @@
+<rss version="2.0">
+  <channel>
+    <title>AI Tools</title>
+    <item>
+      <guid>entry-1</guid>
+      <link>https://example.com/posts/1</link>
+      <title>First AI Tool</title>
+      <description>Short summary</description>
+      <pubDate>Mon, 16 Mar 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <link>https://example.com/posts/2</link>
+      <title>Second Tool</title>
+    </item>
+  </channel>
+</rss>

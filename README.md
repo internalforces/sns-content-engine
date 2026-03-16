@@ -55,6 +55,7 @@ Run the CLI through the console script:
 ```bash
 sns-engine version
 sns-engine healthcheck
+sns-engine discover
 sns-engine db init
 ```
 
@@ -63,8 +64,11 @@ Run the same commands through the module entrypoint:
 ```bash
 python -m app.cli version
 python -m app.cli healthcheck
+python -m app.cli discover
 python -m app.cli db init
 ```
+
+The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV connectors, and reports normalized source item candidates plus captured failures.
 
 Initialize the schema through the thin script wrapper:
 
