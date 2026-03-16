@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Literal
+from types import MappingProxyType
+from typing import Annotated, Literal, Mapping
 
 from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
@@ -22,39 +23,44 @@ def _normalize_non_empty_string(value: str, *, label: str) -> str:
     return normalized
 
 
-def _normalize_non_empty_string_list(values: list[str], *, label: str) -> list[str]:
-    normalized = [_normalize_non_empty_string(value, label=label) for value in values]
+def _normalize_non_empty_string_sequence(
+    values: tuple[str, ...] | list[str], *, label: str
+) -> tuple[str, ...]:
+    normalized = tuple(_normalize_non_empty_string(value, label=label) for value in values)
     if not normalized:
         raise ValueError(f"{label} must contain at least one value")
     return normalized
 
 
-def _validate_mapping_keys(mapping: dict[str, object], *, label: str) -> dict[str, object]:
-    for key in mapping:
+def _validate_mapping_keys(
+    mapping: Mapping[str, object], *, label: str
+) -> Mapping[str, object]:
+    normalized_mapping = dict(mapping)
+    for key in normalized_mapping:
         if key != key.strip():
             raise ValueError(f"{label} keys must not include leading or trailing whitespace")
         if not key:
             raise ValueError(f"{label} keys must not be empty")
-    return mapping
+    return MappingProxyType(normalized_mapping)
 
 
 class LandingRuleConfig(FrozenConfigModel):
     """Tag-based landing rule."""
 
-    when_tags_any: list[str] = Field(min_length=1)
+    when_tags_any: tuple[str, ...] = Field(min_length=1)
     url: HttpUrl
 
     @field_validator("when_tags_any")
     @classmethod
-    def validate_tags(cls, values: list[str]) -> list[str]:
-        return _normalize_non_empty_string_list(values, label="landing rule tags")
+    def validate_tags(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_non_empty_string_sequence(values, label="landing rule tags")
 
 
 class LandingConfig(FrozenConfigModel):
     """Landing resolution settings for an account."""
 
     fallback_url: HttpUrl
-    rules: list[LandingRuleConfig] = Field(default_factory=list)
+    rules: tuple[LandingRuleConfig, ...] = Field(default_factory=tuple)
 
 
 class ScheduleConfig(FrozenConfigModel):
@@ -94,10 +100,10 @@ class AccountConfig(FrozenConfigModel):
     """Account-level content engine settings."""
 
     topic: str
-    source_sets: list[str] = Field(min_length=1)
+    source_sets: tuple[str, ...] = Field(min_length=1)
     prompt_profile: str
     landing: LandingConfig
-    channels: dict[str, ChannelConfig] = Field(min_length=1)
+    channels: Mapping[str, ChannelConfig] = Field(min_length=1)
 
     @field_validator("topic", "prompt_profile")
     @classmethod
@@ -106,12 +112,14 @@ class AccountConfig(FrozenConfigModel):
 
     @field_validator("source_sets")
     @classmethod
-    def validate_source_sets(cls, values: list[str]) -> list[str]:
-        return _normalize_non_empty_string_list(values, label="source set references")
+    def validate_source_sets(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_non_empty_string_sequence(values, label="source set references")
 
     @field_validator("channels")
     @classmethod
-    def validate_channel_keys(cls, value: dict[str, ChannelConfig]) -> dict[str, ChannelConfig]:
+    def validate_channel_keys(
+        cls, value: Mapping[str, ChannelConfig]
+    ) -> Mapping[str, ChannelConfig]:
         return _validate_mapping_keys(value, label="channel")
 
 
@@ -130,12 +138,12 @@ class PromptProfileConfig(FrozenConfigModel):
 class SourceSetConfig(FrozenConfigModel):
     """Reusable grouping of source identifiers."""
 
-    sources: list[str] = Field(min_length=1)
+    sources: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("sources")
     @classmethod
-    def validate_sources(cls, values: list[str]) -> list[str]:
-        return _normalize_non_empty_string_list(values, label="source references")
+    def validate_sources(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_non_empty_string_sequence(values, label="source references")
 
 
 class RssSourceConfig(FrozenConfigModel):
@@ -168,41 +176,45 @@ SourceConfig = Annotated[
 class AccountsFileConfig(FrozenConfigModel):
     """Top-level schema for accounts.yaml."""
 
-    accounts: dict[str, AccountConfig]
+    accounts: Mapping[str, AccountConfig]
 
     @field_validator("accounts")
     @classmethod
-    def validate_account_keys(cls, value: dict[str, AccountConfig]) -> dict[str, AccountConfig]:
+    def validate_account_keys(
+        cls, value: Mapping[str, AccountConfig]
+    ) -> Mapping[str, AccountConfig]:
         return _validate_mapping_keys(value, label="account")
 
 
 class PromptsFileConfig(FrozenConfigModel):
     """Top-level schema for prompts.yaml."""
 
-    profiles: dict[str, PromptProfileConfig]
+    profiles: Mapping[str, PromptProfileConfig]
 
     @field_validator("profiles")
     @classmethod
     def validate_profile_keys(
-        cls, value: dict[str, PromptProfileConfig]
-    ) -> dict[str, PromptProfileConfig]:
+        cls, value: Mapping[str, PromptProfileConfig]
+    ) -> Mapping[str, PromptProfileConfig]:
         return _validate_mapping_keys(value, label="prompt profile")
 
 
 class SourcesFileConfig(FrozenConfigModel):
     """Top-level schema for sources.yaml."""
 
-    sources: dict[str, SourceConfig]
-    source_sets: dict[str, SourceSetConfig]
+    sources: Mapping[str, SourceConfig]
+    source_sets: Mapping[str, SourceSetConfig]
 
     @field_validator("sources")
     @classmethod
-    def validate_source_keys(cls, value: dict[str, SourceConfig]) -> dict[str, SourceConfig]:
+    def validate_source_keys(
+        cls, value: Mapping[str, SourceConfig]
+    ) -> Mapping[str, SourceConfig]:
         return _validate_mapping_keys(value, label="source")
 
     @field_validator("source_sets")
     @classmethod
     def validate_source_set_keys(
-        cls, value: dict[str, SourceSetConfig]
-    ) -> dict[str, SourceSetConfig]:
+        cls, value: Mapping[str, SourceSetConfig]
+    ) -> Mapping[str, SourceSetConfig]:
         return _validate_mapping_keys(value, label="source set")

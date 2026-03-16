@@ -8,6 +8,7 @@ from textwrap import dedent
 import pytest
 
 from app.config import (
+    ConfigLoadError,
     ConfigReferenceError,
     ConfigRegistry,
     ConfigValidationError,
@@ -31,10 +32,24 @@ def test_registry_loads_sample_config_directory() -> None:
     assert channel.schedule.cron == "0 9 * * *"
     assert channel.render.max_chars == 280
     assert registry.get_prompt_profile("ai_tools_default").system_template.startswith("You are an editor")
-    assert registry.get_source_set("ai_tools_primary").sources == [
+    assert registry.get_source_set("ai_tools_primary").sources == (
         "ai_tools_rss",
         "ai_tools_sitemap",
-    ]
+    )
+
+
+def test_registry_is_deeply_immutable() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
+    account = registry.get_account("ai_tools_daily")
+
+    assert isinstance(account.source_sets, tuple)
+    assert isinstance(account.landing.rules, tuple)
+
+    with pytest.raises(AttributeError):
+        account.source_sets.append("another_source_set")
+
+    with pytest.raises(TypeError):
+        account.channels["threads"] = account.channels["x"]
 
 
 def test_validation_errors_include_file_name_and_field_path(tmp_path: Path) -> None:
@@ -190,7 +205,40 @@ def test_manual_csv_source_variant_loads_successfully(tmp_path: Path) -> None:
     source = registry.get_source("ai_tools_seed")
 
     assert isinstance(source, ManualCsvSourceConfig)
-    assert source.path == Path("data/manual/ai_tools.csv")
+    assert source.path == (tmp_path / "data/manual/ai_tools.csv").resolve()
+
+
+def test_duplicate_yaml_keys_raise_load_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            topic: "Duplicate topic should fail"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+
+    with pytest.raises(ConfigLoadError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.yaml" in message
+    assert "duplicate key 'topic'" in message
 
 
 def test_invalid_cron_expression_raises_validation_error(tmp_path: Path) -> None:

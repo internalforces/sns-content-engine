@@ -9,7 +9,13 @@ from typing import Mapping
 
 from app.config.errors import ConfigReferenceError
 from app.config.loaders import load_accounts_config, load_prompts_config, load_sources_config
-from app.config.schemas import AccountConfig, PromptProfileConfig, SourceConfig, SourceSetConfig
+from app.config.schemas import (
+    AccountConfig,
+    ManualCsvSourceConfig,
+    PromptProfileConfig,
+    SourceConfig,
+    SourceSetConfig,
+)
 
 
 @dataclass(frozen=True)
@@ -25,22 +31,23 @@ class ConfigRegistry:
     def from_directory(cls, config_dir: Path) -> "ConfigRegistry":
         """Load the project registry from a configuration directory."""
 
-        config_dir = Path(config_dir)
+        config_dir = Path(config_dir).resolve()
         accounts_config = load_accounts_config(config_dir / "accounts.yaml")
         prompts_config = load_prompts_config(config_dir / "prompts.yaml")
         sources_config = load_sources_config(config_dir / "sources.yaml")
+        normalized_sources = _normalize_sources(sources_config.sources, config_dir)
 
         _validate_references(
             accounts=accounts_config.accounts,
             profiles=prompts_config.profiles,
-            sources=sources_config.sources,
+            sources=normalized_sources,
             source_sets=sources_config.source_sets,
         )
 
         return cls(
             accounts=MappingProxyType(dict(accounts_config.accounts)),
             profiles=MappingProxyType(dict(prompts_config.profiles)),
-            sources=MappingProxyType(dict(sources_config.sources)),
+            sources=MappingProxyType(dict(normalized_sources)),
             source_sets=MappingProxyType(dict(sources_config.source_sets)),
         )
 
@@ -101,3 +108,20 @@ def _validate_references(
 
     if errors:
         raise ConfigReferenceError(errors)
+
+
+def _normalize_sources(
+    sources: Mapping[str, SourceConfig], config_dir: Path
+) -> dict[str, SourceConfig]:
+    normalized_sources: dict[str, SourceConfig] = {}
+
+    for source_key, source in sources.items():
+        if isinstance(source, ManualCsvSourceConfig) and not source.path.is_absolute():
+            normalized_sources[source_key] = source.model_copy(
+                update={"path": (config_dir / source.path).resolve()}
+            )
+            continue
+
+        normalized_sources[source_key] = source
+
+    return normalized_sources
