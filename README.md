@@ -13,7 +13,7 @@ The initial MVP is intentionally limited to:
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-This milestone only establishes the project structure and local developer entrypoints. It does not include real integrations, business workflows, or database models yet.
+The current milestone includes configuration loading, local developer entrypoints, and the MVP database layer. It does not include real publisher integrations, scheduler workflows, or review UI yet.
 
 ## Repository Structure
 
@@ -55,6 +55,7 @@ Run the CLI through the console script:
 ```bash
 sns-engine version
 sns-engine healthcheck
+sns-engine db init
 ```
 
 Run the same commands through the module entrypoint:
@@ -62,6 +63,13 @@ Run the same commands through the module entrypoint:
 ```bash
 python -m app.cli version
 python -m app.cli healthcheck
+python -m app.cli db init
+```
+
+Initialize the schema through the thin script wrapper:
+
+```bash
+python scripts/create_db.py
 ```
 
 ## Testing
@@ -69,7 +77,7 @@ python -m app.cli healthcheck
 Run the test suite with:
 
 ```bash
-pytest
+./.venv/bin/pytest
 ```
 
 ## Next Steps
