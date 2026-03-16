@@ -1,0 +1,2 @@
+[console_scripts]
+sns-engine = app.cli:main
