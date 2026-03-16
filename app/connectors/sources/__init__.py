@@ -1,12 +1,13 @@
 """Source connectors for ingestion workflows."""
 
 from app.connectors.sources.base import (
+    BytesFetcher,
     SourceConnector,
     SourceConnectorError,
     SourceFetchError,
     SourceParseError,
     SourceReadError,
-    fetch_url_text,
+    fetch_url_bytes,
 )
 from app.connectors.sources.manual_csv import ManualCsvSourceConnector
 from app.connectors.sources.normalizer import normalize_raw_source_item
@@ -18,12 +19,13 @@ __all__ = [
     "ManualCsvSourceConnector",
     "RssSourceConnector",
     "SitemapSourceConnector",
+    "BytesFetcher",
     "SourceConnector",
     "SourceConnectorError",
     "SourceConnectorRegistry",
     "SourceFetchError",
     "SourceParseError",
     "SourceReadError",
-    "fetch_url_text",
+    "fetch_url_bytes",
     "normalize_raw_source_item",
 ]

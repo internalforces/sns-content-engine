@@ -17,7 +17,7 @@ SourceConfigT = TypeVar(
     SitemapSourceConfig,
     ManualCsvSourceConfig,
 )
-TextFetcher = Callable[[str], str]
+BytesFetcher = Callable[[str], bytes]
 
 
 class SourceConnectorError(RuntimeError):
@@ -52,13 +52,12 @@ class SourceConnector(ABC):
         """Discover normalized source item candidates for one source."""
 
 
-def fetch_url_text(url: str, *, timeout_seconds: float = 10.0) -> str:
-    """Fetch remote text content with a conservative timeout."""
+def fetch_url_bytes(url: str, *, timeout_seconds: float = 10.0) -> bytes:
+    """Fetch remote bytes content with a conservative timeout."""
 
     try:
         with urlopen(url, timeout=timeout_seconds) as response:
-            payload = response.read()
-            charset = response.headers.get_content_charset() or "utf-8"
+            return response.read()
     except HTTPError as exc:
         raise SourceFetchError(f"HTTP {exc.code} while fetching {url}") from exc
     except URLError as exc:
@@ -66,8 +65,3 @@ def fetch_url_text(url: str, *, timeout_seconds: float = 10.0) -> str:
         raise SourceFetchError(f"could not fetch {url}: {reason}") from exc
     except OSError as exc:
         raise SourceFetchError(f"could not fetch {url}: {exc}") from exc
-
-    try:
-        return payload.decode(charset, errors="strict")
-    except UnicodeDecodeError as exc:
-        raise SourceFetchError(f"could not decode response from {url}: {exc}") from exc

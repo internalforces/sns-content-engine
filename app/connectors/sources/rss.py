@@ -7,12 +7,12 @@ from xml.etree import ElementTree
 
 from app.config.schemas import RssSourceConfig
 from app.connectors.sources.base import (
+    BytesFetcher,
     SourceConnector,
     SourceConnectorError,
     SourceFetchError,
     SourceParseError,
-    TextFetcher,
-    fetch_url_text,
+    fetch_url_bytes,
 )
 from app.connectors.sources.normalizer import normalize_raw_source_item
 from app.domain.source_ingestion import (
@@ -26,13 +26,13 @@ from app.domain.source_ingestion import (
 class RssSourceConnector(SourceConnector):
     """Discover items from an RSS or Atom feed."""
 
-    def __init__(self, *, fetch_text: TextFetcher | None = None) -> None:
-        self._fetch_text = fetch_text or fetch_url_text
+    def __init__(self, *, fetch_bytes: BytesFetcher | None = None) -> None:
+        self._fetch_bytes = fetch_bytes or fetch_url_bytes
 
     def discover(self, source_id: str, config: RssSourceConfig) -> SourceConnectorResult:
         try:
-            xml_text = self._fetch(source_id, str(config.url))
-            root = ElementTree.fromstring(xml_text)
+            xml_bytes = self._fetch(str(config.url))
+            root = ElementTree.fromstring(xml_bytes)
         except SourceConnectorError as exc:
             return _failure_result(source_id, exc.stage, str(exc))
         except ElementTree.ParseError as exc:
@@ -52,22 +52,22 @@ class RssSourceConnector(SourceConnector):
             f"unsupported feed root element '{_local_name(root.tag)}'",
         )
 
-    def _fetch(self, source_id: str, url: str) -> str:
+    def _fetch(self, url: str) -> bytes:
         try:
-            return self._fetch_text(url)
+            return self._fetch_bytes(url)
         except SourceConnectorError:
             raise
         except OSError as exc:
             raise SourceFetchError(f"could not fetch {url}: {exc}") from exc
 
     def _discover_rss_items(self, source_id: str, root: ElementTree.Element) -> SourceConnectorResult:
-        channel = root.find("./channel")
+        channel = _find_child_named(root, "channel")
         if channel is None:
             raise SourceParseError("RSS feed is missing channel")
 
         items = []
         failures = []
-        for index, item in enumerate(channel.findall("./item"), start=1):
+        for index, item in enumerate(_children_named(channel, "item"), start=1):
             raw_item = RawSourceItem(
                 source_id=source_id,
                 external_id=_child_text(item, "guid") or _child_text(item, "link"),
@@ -152,6 +152,13 @@ def _local_name(tag: str) -> str:
 
 def _children_named(element: ElementTree.Element, name: str) -> Iterable[ElementTree.Element]:
     return [child for child in element if _local_name(child.tag) == name]
+
+
+def _find_child_named(element: ElementTree.Element, name: str) -> ElementTree.Element | None:
+    for child in element:
+        if _local_name(child.tag) == name:
+            return child
+    return None
 
 
 def _child_text(element: ElementTree.Element, name: str) -> str | None:

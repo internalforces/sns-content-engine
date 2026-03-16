@@ -32,8 +32,8 @@ def test_normalizer_derives_missing_fields_from_url() -> None:
 
 
 def test_rss_connector_discovers_normalized_items_from_fixture() -> None:
-    feed_xml = (FIXTURES_DIR / "sample_feed.xml").read_text(encoding="utf-8")
-    connector = RssSourceConnector(fetch_text=lambda _: feed_xml)
+    feed_xml = (FIXTURES_DIR / "sample_feed.xml").read_bytes()
+    connector = RssSourceConnector(fetch_bytes=lambda _: feed_xml)
     config = RssSourceConfig(type="rss", url="https://example.com/feed.xml")
 
     result = connector.discover("ai_tools_rss", config)
@@ -49,8 +49,8 @@ def test_rss_connector_discovers_normalized_items_from_fixture() -> None:
 
 
 def test_sitemap_connector_discovers_normalized_items_from_fixture() -> None:
-    sitemap_xml = (FIXTURES_DIR / "sample_sitemap.xml").read_text(encoding="utf-8")
-    connector = SitemapSourceConnector(fetch_text=lambda _: sitemap_xml)
+    sitemap_xml = (FIXTURES_DIR / "sample_sitemap.xml").read_bytes()
+    connector = SitemapSourceConnector(fetch_bytes=lambda _: sitemap_xml)
     config = SitemapSourceConfig(type="sitemap", url="https://example.com/sitemap.xml")
 
     result = connector.discover("ai_tools_sitemap", config)
@@ -77,7 +77,7 @@ def test_manual_csv_connector_discovers_items_from_fixture_file() -> None:
 
 
 def test_rss_connector_captures_fetch_failures_safely() -> None:
-    connector = RssSourceConnector(fetch_text=lambda _: (_ for _ in ()).throw(OSError("offline")))
+    connector = RssSourceConnector(fetch_bytes=lambda _: (_ for _ in ()).throw(OSError("offline")))
     config = RssSourceConfig(type="rss", url="https://example.com/feed.xml")
 
     result = connector.discover("ai_tools_rss", config)
@@ -87,3 +87,106 @@ def test_rss_connector_captures_fetch_failures_safely() -> None:
     assert result.failures[0].source_id == "ai_tools_rss"
     assert result.failures[0].stage == "fetch"
     assert "offline" in result.failures[0].message
+
+
+def test_rss_connector_handles_namespaced_rss_feeds() -> None:
+    namespaced_feed = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns="https://example.com/rss">
+  <channel>
+    <title>Namespaced Feed</title>
+    <item>
+      <guid>ns-1</guid>
+      <link>https://example.com/posts/namespaced</link>
+      <title>Namespaced Entry</title>
+    </item>
+  </channel>
+</rss>
+"""
+    connector = RssSourceConnector(fetch_bytes=lambda _: namespaced_feed)
+    config = RssSourceConfig(type="rss", url="https://example.com/namespaced-feed.xml")
+
+    result = connector.discover("ai_tools_rss", config)
+
+    assert result.failures == ()
+    assert len(result.items) == 1
+    assert result.items[0].external_id == "ns-1"
+    assert result.items[0].title == "Namespaced Entry"
+
+
+def test_rss_connector_respects_xml_declared_encodings() -> None:
+    iso_feed = """<?xml version="1.0" encoding="ISO-8859-1"?>
+<rss version="2.0">
+  <channel>
+    <title>AI Tools</title>
+    <item>
+      <guid>latin-1</guid>
+      <link>https://example.com/posts/cafe</link>
+      <title>Caf\xe9 Tool</title>
+    </item>
+  </channel>
+</rss>
+""".encode("iso-8859-1")
+    connector = RssSourceConnector(fetch_bytes=lambda _: iso_feed)
+    config = RssSourceConfig(type="rss", url="https://example.com/latin-feed.xml")
+
+    result = connector.discover("ai_tools_rss", config)
+
+    assert result.failures == ()
+    assert len(result.items) == 1
+    assert result.items[0].title == "Caf\xe9 Tool"
+
+
+def test_sitemap_connector_rejects_cross_origin_nested_sitemaps() -> None:
+    root_url = "https://example.com/sitemap.xml"
+    fetched_urls: list[str] = []
+    root_index = b"""<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://evil.example.com/child.xml</loc>
+  </sitemap>
+</sitemapindex>
+"""
+
+    def fake_fetch(url: str) -> bytes:
+        fetched_urls.append(url)
+        return root_index
+
+    connector = SitemapSourceConnector(fetch_bytes=fake_fetch)
+    config = SitemapSourceConfig(type="sitemap", url=root_url)
+
+    result = connector.discover("ai_tools_sitemap", config)
+
+    assert fetched_urls == [root_url]
+    assert result.items == ()
+    assert len(result.failures) == 1
+    assert result.failures[0].stage == "parse"
+    assert "origin must match configured origin" in result.failures[0].message
+
+
+def test_sitemap_connector_limits_nested_sitemap_depth() -> None:
+    root_url = "https://example.com/sitemap.xml"
+    fetched_urls: list[str] = []
+    root_index = b"""<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://example.com/child.xml</loc>
+  </sitemap>
+</sitemapindex>
+"""
+
+    def fake_fetch(url: str) -> bytes:
+        fetched_urls.append(url)
+        if url == root_url:
+            return root_index
+        raise AssertionError(f"unexpected fetch: {url}")
+
+    connector = SitemapSourceConnector(fetch_bytes=fake_fetch, max_sitemap_depth=0)
+    config = SitemapSourceConfig(type="sitemap", url=root_url)
+
+    result = connector.discover("ai_tools_sitemap", config)
+
+    assert fetched_urls == [root_url]
+    assert result.items == ()
+    assert len(result.failures) == 1
+    assert result.failures[0].stage == "parse"
+    assert "depth exceeded limit 0" in result.failures[0].message

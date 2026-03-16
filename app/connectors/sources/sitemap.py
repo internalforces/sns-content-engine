@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
 from app.config.schemas import SitemapSourceConfig
 from app.connectors.sources.base import (
+    BytesFetcher,
     SourceConnector,
     SourceConnectorError,
     SourceFetchError,
     SourceParseError,
-    TextFetcher,
-    fetch_url_text,
+    fetch_url_bytes,
 )
 from app.connectors.sources.normalizer import normalize_raw_source_item
 from app.domain.source_ingestion import (
@@ -25,15 +26,65 @@ from app.domain.source_ingestion import (
 class SitemapSourceConnector(SourceConnector):
     """Discover items from a sitemap urlset or sitemap index."""
 
-    def __init__(self, *, fetch_text: TextFetcher | None = None) -> None:
-        self._fetch_text = fetch_text or fetch_url_text
+    def __init__(
+        self,
+        *,
+        fetch_bytes: BytesFetcher | None = None,
+        max_sitemap_depth: int = 4,
+    ) -> None:
+        if max_sitemap_depth < 0:
+            raise ValueError("max_sitemap_depth must be >= 0")
+        self._fetch_bytes = fetch_bytes or fetch_url_bytes
+        self._max_sitemap_depth = max_sitemap_depth
 
     def discover(self, source_id: str, config: SitemapSourceConfig) -> SourceConnectorResult:
-        return self._discover_url(source_id, str(config.url), visited=set())
+        root_url = str(config.url)
+        root_origin = _url_origin(root_url)
+        if root_origin is None:
+            return _failure_result(
+                source_id,
+                SourceParseError.stage,
+                f"invalid sitemap origin: {root_url}",
+            )
+
+        return self._discover_url(
+            source_id,
+            root_url,
+            root_origin=root_origin,
+            visited=set(),
+            depth=0,
+        )
 
     def _discover_url(
-        self, source_id: str, sitemap_url: str, *, visited: set[str]
+        self,
+        source_id: str,
+        sitemap_url: str,
+        *,
+        root_origin: tuple[str, str, int],
+        visited: set[str],
+        depth: int,
     ) -> SourceConnectorResult:
+        if depth > self._max_sitemap_depth:
+            return _failure_result(
+                source_id,
+                SourceParseError.stage,
+                f"nested sitemap depth exceeded limit {self._max_sitemap_depth}: {sitemap_url}",
+            )
+
+        sitemap_origin = _url_origin(sitemap_url)
+        if sitemap_origin is None:
+            return _failure_result(
+                source_id,
+                SourceParseError.stage,
+                f"nested sitemap must be an absolute HTTP(S) URL: {sitemap_url}",
+            )
+        if depth > 0 and sitemap_origin != root_origin:
+            return _failure_result(
+                source_id,
+                SourceParseError.stage,
+                f"nested sitemap origin must match configured origin: {sitemap_url}",
+            )
+
         if sitemap_url in visited:
             return _failure_result(
                 source_id,
@@ -43,8 +94,8 @@ class SitemapSourceConnector(SourceConnector):
         visited.add(sitemap_url)
 
         try:
-            xml_text = self._fetch(sitemap_url)
-            root = ElementTree.fromstring(xml_text)
+            xml_bytes = self._fetch(sitemap_url)
+            root = ElementTree.fromstring(xml_bytes)
         except SourceConnectorError as exc:
             return _failure_result(source_id, exc.stage, str(exc))
         except ElementTree.ParseError as exc:
@@ -57,7 +108,9 @@ class SitemapSourceConnector(SourceConnector):
             return self._discover_sitemap_index(
                 source_id,
                 root,
+                root_origin=root_origin,
                 visited=visited,
+                depth=depth,
             )
 
         return _failure_result(
@@ -71,7 +124,9 @@ class SitemapSourceConnector(SourceConnector):
         source_id: str,
         root: ElementTree.Element,
         *,
+        root_origin: tuple[str, str, int],
         visited: set[str],
+        depth: int,
     ) -> SourceConnectorResult:
         items = []
         failures = []
@@ -89,7 +144,13 @@ class SitemapSourceConnector(SourceConnector):
                 )
                 continue
 
-            nested_result = self._discover_url(source_id, nested_url, visited=visited)
+            nested_result = self._discover_url(
+                source_id,
+                nested_url,
+                root_origin=root_origin,
+                visited=visited,
+                depth=depth + 1,
+            )
             items.extend(nested_result.items)
             failures.extend(nested_result.failures)
 
@@ -135,9 +196,9 @@ class SitemapSourceConnector(SourceConnector):
 
         return SourceConnectorResult(items=tuple(items), failures=tuple(failures))
 
-    def _fetch(self, url: str) -> str:
+    def _fetch(self, url: str) -> bytes:
         try:
-            return self._fetch_text(url)
+            return self._fetch_bytes(url)
         except SourceConnectorError:
             raise
         except OSError as exc:
@@ -152,6 +213,21 @@ def _failure_result(source_id: str, stage: str, message: str) -> SourceConnector
 
 def _local_name(tag: str) -> str:
     return tag.rsplit("}", maxsplit=1)[-1]
+
+
+def _url_origin(url: str) -> tuple[str, str, int] | None:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or parsed.hostname is None:
+        return None
+
+    if parsed.port is not None:
+        port = parsed.port
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = 80
+
+    return parsed.scheme.lower(), parsed.hostname.lower(), port
 
 
 def _children_named(element: ElementTree.Element, name: str) -> list[ElementTree.Element]:

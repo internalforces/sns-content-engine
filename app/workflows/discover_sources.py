@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import ConfigRegistry
-from app.connectors.sources import SourceConnectorRegistry
+from app.connectors.sources import SourceConnectorError, SourceConnectorRegistry
 from app.domain import SourceDiscoveryFailure, SourceItemCandidate
 
 
@@ -59,12 +59,12 @@ def discover_sources(
 
         try:
             result = connector.discover(source_id, source_config)
-        except Exception as exc:
+        except SourceConnectorError as exc:
             failures.append(
                 SourceDiscoveryFailure(
                     source_id=source_id,
-                    stage="discover",
-                    message=f"unexpected discovery error: {exc}",
+                    stage=exc.stage,
+                    message=str(exc),
                 )
             )
             continue
