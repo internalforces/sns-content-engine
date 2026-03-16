@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from app.storage.database import Base
 
@@ -16,6 +17,34 @@ def utc_now() -> datetime:
     """Return an aware UTC timestamp."""
 
     return datetime.now(timezone.utc)
+
+
+def _normalize_utc_datetime(value: datetime) -> datetime:
+    """Normalize a datetime value to an aware UTC timestamp."""
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """Persist datetimes in UTC and reattach timezone info on SQLite reads."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        return dialect.type_descriptor(DateTime(timezone=True))
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        return _normalize_utc_datetime(value)
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        return _normalize_utc_datetime(value)
 
 
 class SourceItemState(str, Enum):
@@ -48,6 +77,13 @@ class SourceItem(Base):
     """Normalized source content awaiting downstream processing."""
 
     __tablename__ = "source_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_key",
+            "external_id",
+            name="uq_source_items_source_key_external_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -55,16 +91,16 @@ class SourceItem(Base):
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     state: Mapped[SourceItemState] = mapped_column(
         SqlEnum(SourceItemState, native_enum=False, length=32),
         default=SourceItemState.INGESTED,
         nullable=False,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=utc_now,
         onupdate=utc_now,
         nullable=False,
@@ -92,9 +128,9 @@ class ContentBrief(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     landing_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=utc_now,
         onupdate=utc_now,
         nullable=False,
@@ -127,10 +163,10 @@ class DraftVariant(Base):
         nullable=False,
     )
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=utc_now,
         onupdate=utc_now,
         nullable=False,
@@ -155,7 +191,7 @@ class PublishJob(Base):
         index=True,
     )
     channel: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_for: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     state: Mapped[PublishJobState] = mapped_column(
         SqlEnum(PublishJobState, native_enum=False, length=32),
         default=PublishJobState.SCHEDULED,
@@ -164,10 +200,10 @@ class PublishJob(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     external_post_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         default=utc_now,
         onupdate=utc_now,
         nullable=False,
@@ -194,6 +230,6 @@ class PublishLog(Base):
     event_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
 
     publish_job: Mapped[PublishJob] = relationship(back_populates="publish_logs")

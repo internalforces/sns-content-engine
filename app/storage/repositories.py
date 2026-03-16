@@ -24,6 +24,10 @@ class InvalidStateTransitionError(ValueError):
     """Raised when a state transition violates the domain workflow."""
 
 
+class ManualApprovalRequiredError(ValueError):
+    """Raised when publishing is attempted before manual approval."""
+
+
 class SourceItemRepository:
     """Persistence operations for source items."""
 
@@ -34,6 +38,22 @@ class SourceItemRepository:
         self.session.add(item)
         self.session.flush()
         return item
+
+    def get_by_source_identity(self, source_key: str, external_id: str) -> SourceItem | None:
+        statement = select(SourceItem).where(
+            SourceItem.source_key == source_key,
+            SourceItem.external_id == external_id,
+        )
+        return self.session.scalar(statement)
+
+    def get_or_create(self, item: SourceItem) -> tuple[SourceItem, bool]:
+        existing = self.get_by_source_identity(item.source_key, item.external_id)
+        if existing is not None:
+            return existing, False
+
+        self.session.add(item)
+        self.session.flush()
+        return item, True
 
     def get(self, item_id: int) -> SourceItem | None:
         return self.session.get(SourceItem, item_id)
@@ -142,6 +162,7 @@ class PublishJobRepository:
         self.session = session
 
     def add(self, job: PublishJob) -> PublishJob:
+        self._ensure_draft_is_approved(job)
         self.session.add(job)
         self.session.flush()
         return job
@@ -165,6 +186,8 @@ class PublishJobRepository:
         occurred_at: datetime | None = None,
     ) -> PublishJob:
         self._validate_transition(job.state, new_state)
+        if new_state in (PublishJobState.PUBLISHING, PublishJobState.PUBLISHED):
+            self._ensure_draft_is_approved(job)
 
         event_time = occurred_at or datetime.now(timezone.utc)
         if new_state is PublishJobState.PUBLISHING:
@@ -186,6 +209,18 @@ class PublishJobRepository:
         if new_state not in allowed:
             raise InvalidStateTransitionError(
                 f"cannot transition PublishJob from {current_state.value!r} to {new_state.value!r}"
+            )
+
+    def _ensure_draft_is_approved(self, job: PublishJob) -> None:
+        draft = job.draft_variant
+        if draft is None:
+            if job.draft_variant_id is None:
+                raise ManualApprovalRequiredError("publish jobs require a linked draft variant")
+            draft = self.session.get(DraftVariant, job.draft_variant_id)
+
+        if draft is None or draft.state is not DraftVariantState.APPROVED:
+            raise ManualApprovalRequiredError(
+                "publish jobs require an approved draft variant before scheduling or publishing"
             )
 
 

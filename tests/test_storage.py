@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from itertools import count
 
 import pytest
 from sqlalchemy import inspect
+from sqlalchemy.exc import IntegrityError
 
 from app.storage import (
     ContentBrief,
@@ -14,6 +16,7 @@ from app.storage import (
     DraftVariantRepository,
     DraftVariantState,
     InvalidStateTransitionError,
+    ManualApprovalRequiredError,
     PublishJob,
     PublishJobRepository,
     PublishJobState,
@@ -26,6 +29,8 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
+
+_DRAFT_SOURCE_COUNTER = count()
 
 
 @pytest.fixture
@@ -85,6 +90,57 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
     assert stored_item.external_id == "entry-1"
     assert stored_item.raw_payload == {"author": "team"}
     assert stored_item.state is SourceItemState.INGESTED
+    assert stored_item.published_at == datetime(2026, 3, 16, 12, 0, tzinfo=timezone.utc)
+    assert stored_item.published_at.tzinfo == timezone.utc
+
+
+def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        first_item, was_created = repository.get_or_create(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-idempotent",
+                source_url="https://example.com/posts/idempotent",
+                title="Original title",
+            )
+        )
+        second_item, was_created_again = repository.get_or_create(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-idempotent",
+                source_url="https://example.com/posts/idempotent-v2",
+                title="Changed title should not replace original row",
+            )
+        )
+
+    assert was_created is True
+    assert was_created_again is False
+    assert second_item.id == first_item.id
+    assert second_item.title == "Original title"
+
+
+def test_source_item_duplicate_identity_is_rejected(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-duplicate",
+                source_url="https://example.com/posts/duplicate",
+                title="First version",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            SourceItemRepository(session).add(
+                SourceItem(
+                    source_key="ai_tools_rss",
+                    external_id="entry-duplicate",
+                    source_url="https://example.com/posts/duplicate-v2",
+                    title="Second version",
+                )
+            )
 
 
 def test_content_brief_relationship_and_publish_logs_are_persisted(session_factory) -> None:
@@ -124,6 +180,7 @@ def test_content_brief_relationship_and_publish_logs_are_persisted(session_facto
                 body="A concise X draft",
             )
         )
+        drafts.transition_state(draft, DraftVariantState.APPROVED)
         job = jobs.add(
             PublishJob(
                 draft_variant=draft,
@@ -183,7 +240,7 @@ def test_draft_variant_state_transitions_are_enforced(session_factory) -> None:
 
 def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
     with session_scope(session_factory) as session:
-        job = _create_publish_job(session)
+        job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
         repository = PublishJobRepository(session)
         repository.transition_state(job, PublishJobState.PUBLISHING)
         repository.transition_state(
@@ -203,9 +260,47 @@ def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
     assert stored_job.published_at is not None
 
     with session_scope(session_factory) as session:
-        invalid_job = _create_publish_job(session)
+        invalid_job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
         with pytest.raises(InvalidStateTransitionError):
             PublishJobRepository(session).transition_state(invalid_job, PublishJobState.PUBLISHED)
+
+
+def test_publish_job_requires_manual_approval_before_creation(session_factory) -> None:
+    with pytest.raises(ManualApprovalRequiredError):
+        with session_scope(session_factory) as session:
+            pending_draft = _create_draft_variant(session)
+            PublishJobRepository(session).add(
+                PublishJob(
+                    draft_variant=pending_draft,
+                    channel="x",
+                    scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+                )
+            )
+
+    with pytest.raises(ManualApprovalRequiredError):
+        with session_scope(session_factory) as session:
+            rejected_draft = _create_draft_variant(session, draft_state=DraftVariantState.REJECTED)
+            PublishJobRepository(session).add(
+                PublishJob(
+                    draft_variant=rejected_draft,
+                    channel="x",
+                    scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+
+def test_publish_job_forward_transitions_recheck_manual_approval(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        job_id = job.id
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        assert stored_job is not None
+        stored_job.draft_variant.state = DraftVariantState.REJECTED
+
+        with pytest.raises(ManualApprovalRequiredError):
+            PublishJobRepository(session).transition_state(stored_job, PublishJobState.PUBLISHING)
 
 
 def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> None:
@@ -228,12 +323,17 @@ def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> N
     assert items == []
 
 
-def _create_draft_variant(session) -> DraftVariant:
+def _create_draft_variant(
+    session,
+    *,
+    draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
+) -> DraftVariant:
+    source_id = next(_DRAFT_SOURCE_COUNTER)
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
-            external_id="draft-source",
-            source_url="https://example.com/posts/draft",
+            external_id=f"draft-source-{source_id}",
+            source_url=f"https://example.com/posts/draft/{source_id}",
             title="Draft source",
             summary="Draft source summary",
         )
@@ -248,7 +348,8 @@ def _create_draft_variant(session) -> DraftVariant:
             tags=["ai"],
         )
     )
-    return DraftVariantRepository(session).add(
+    repository = DraftVariantRepository(session)
+    draft = repository.add(
         DraftVariant(
             content_brief=brief,
             channel="x",
@@ -256,10 +357,23 @@ def _create_draft_variant(session) -> DraftVariant:
             body="Draft text",
         )
     )
+    if draft_state is DraftVariantState.APPROVED:
+        repository.transition_state(draft, DraftVariantState.APPROVED)
+    elif draft_state is DraftVariantState.REJECTED:
+        repository.transition_state(
+            draft,
+            DraftVariantState.REJECTED,
+            rejection_reason="Rejected during fixture setup",
+        )
+    return draft
 
 
-def _create_publish_job(session) -> PublishJob:
-    draft = _create_draft_variant(session)
+def _create_publish_job(
+    session,
+    *,
+    draft_state: DraftVariantState = DraftVariantState.APPROVED,
+) -> PublishJob:
+    draft = _create_draft_variant(session, draft_state=draft_state)
     return PublishJobRepository(session).add(
         PublishJob(
             draft_variant=draft,
