@@ -57,6 +57,7 @@ sns-engine version
 sns-engine healthcheck
 sns-engine discover
 sns-engine ingest
+sns-engine build-briefs
 sns-engine db init
 ```
 
@@ -67,12 +68,15 @@ python -m app.cli version
 python -m app.cli healthcheck
 python -m app.cli discover
 python -m app.cli ingest
+python -m app.cli build-briefs
 python -m app.cli db init
 ```
 
 The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV connectors, and reports normalized source item candidates plus captured failures.
 
 The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
+
+The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
 If you already have an older SQLite file from a previous milestone, recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
 

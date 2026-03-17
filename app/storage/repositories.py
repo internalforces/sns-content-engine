@@ -18,6 +18,7 @@ from app.storage.models import (
     PublishLog,
     SourceItem,
     SourceItemRecentFingerprintClaim,
+    SourceItemState,
 )
 
 
@@ -85,6 +86,10 @@ class SourceItemRepository:
     def get(self, item_id: int) -> SourceItem | None:
         return self.session.get(SourceItem, item_id)
 
+    def list_by_state(self, state: SourceItemState) -> list[SourceItem]:
+        statement = select(SourceItem).where(SourceItem.state == state).order_by(SourceItem.id)
+        return list(self.session.scalars(statement))
+
     def list(self) -> list[SourceItem]:
         return list(self.session.scalars(select(SourceItem).order_by(SourceItem.id)))
 
@@ -140,6 +145,33 @@ class ContentBriefRepository:
         self.session.add(brief)
         self.session.flush()
         return brief
+
+    def get_by_source_item_and_account(
+        self,
+        source_item_id: int,
+        account_key: str,
+    ) -> ContentBrief | None:
+        statement = select(ContentBrief).where(
+            ContentBrief.source_item_id == source_item_id,
+            ContentBrief.account_key == account_key,
+        )
+        return self.session.scalar(statement)
+
+    def get_or_create(self, brief: ContentBrief) -> tuple[ContentBrief, bool]:
+        source_item_id = brief.source_item_id
+        if source_item_id is None and brief.source_item is not None:
+            source_item_id = brief.source_item.id
+        if source_item_id is None:
+            raise ValueError("content brief must reference a persisted source item")
+
+        existing = self.get_by_source_item_and_account(source_item_id, brief.account_key)
+        if existing is not None:
+            return existing, False
+
+        brief.source_item_id = source_item_id
+        self.session.add(brief)
+        self.session.flush()
+        return brief, True
 
     def get(self, brief_id: int) -> ContentBrief | None:
         return self.session.get(ContentBrief, brief_id)

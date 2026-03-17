@@ -189,6 +189,13 @@ class ContentBrief(Base):
     """Platform-neutral content brief derived from a source item."""
 
     __tablename__ = "content_briefs"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_item_id",
+            "account_key",
+            name="uq_content_briefs_source_item_id_account_key",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source_item_id: Mapped[int] = mapped_column(
@@ -199,8 +206,11 @@ class ContentBrief(Base):
     account_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_points: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     landing_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    angle: Mapped[str] = mapped_column(String(64), default="topic_takeaway", nullable=False)
+    language: Mapped[str] = mapped_column(String(8), default="en", nullable=False)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(),

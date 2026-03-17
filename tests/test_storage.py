@@ -281,8 +281,11 @@ def test_content_brief_relationship_and_publish_logs_are_persisted(session_facto
                 account_key="ai_tools_daily",
                 title="AI workflow brief",
                 summary="Summarized brief",
+                key_points=["AI workflow brief", "Key supporting point"],
                 landing_url="https://gilgop.cloud/ai-tools",
                 tags=["ai", "workflow"],
+                angle="topic_takeaway",
+                language="en",
             )
         )
         draft = drafts.add(
@@ -318,11 +321,97 @@ def test_content_brief_relationship_and_publish_logs_are_persisted(session_facto
         assert brief is not None
         assert brief.source_item is not None
         assert brief.source_item.external_id == "entry-2"
+        assert brief.key_points == ["AI workflow brief", "Key supporting point"]
         assert brief.tags == ["ai", "workflow"]
+        assert brief.angle == "topic_takeaway"
+        assert brief.language == "en"
         assert len(stored_logs) == 1
         assert stored_logs[0].event_type == "scheduled"
         assert stored_log is not None
         assert stored_log.payload == {"source": "manual"}
+
+
+def test_content_brief_get_or_create_is_idempotent(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="brief-idempotent",
+                source_url="https://example.com/posts/brief-idempotent",
+                title="Idempotent brief source",
+            )
+        )
+        repository = ContentBriefRepository(session)
+        first_brief, was_created = repository.get_or_create(
+            ContentBrief(
+                source_item_id=source_item.id,
+                account_key="ai_tools_daily",
+                title="Stored title",
+                summary="Stored summary",
+                key_points=["Stored title"],
+                landing_url="https://gilgop.cloud/ai-tools",
+                tags=["ai"],
+                angle="topic_takeaway",
+                language="en",
+            )
+        )
+        second_brief, was_created_again = repository.get_or_create(
+            ContentBrief(
+                source_item_id=source_item.id,
+                account_key="ai_tools_daily",
+                title="Changed title should not replace the original row",
+                summary="Changed summary",
+                key_points=["Changed title"],
+                landing_url="https://gilgop.cloud/other",
+                tags=["automation"],
+                angle="product_update",
+                language="en",
+            )
+        )
+
+    assert was_created is True
+    assert was_created_again is False
+    assert second_brief.id == first_brief.id
+    assert second_brief.title == "Stored title"
+
+
+def test_content_brief_duplicate_source_account_is_rejected(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="brief-duplicate",
+                source_url="https://example.com/posts/brief-duplicate",
+                title="Duplicate brief source",
+            )
+        )
+        ContentBriefRepository(session).add(
+            ContentBrief(
+                source_item_id=source_item.id,
+                account_key="ai_tools_daily",
+                title="First brief",
+                key_points=["First brief"],
+                landing_url="https://gilgop.cloud/ai-tools",
+                tags=["ai"],
+                angle="topic_takeaway",
+                language="en",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            ContentBriefRepository(session).add(
+                ContentBrief(
+                    source_item_id=source_item.id,
+                    account_key="ai_tools_daily",
+                    title="Second brief",
+                    key_points=["Second brief"],
+                    landing_url="https://gilgop.cloud/ai-tools",
+                    tags=["ai"],
+                    angle="topic_takeaway",
+                    language="en",
+                )
+            )
 
 
 def test_draft_variant_state_transitions_are_enforced(session_factory) -> None:
@@ -465,8 +554,11 @@ def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
                     account_key VARCHAR(100) NOT NULL,
                     title VARCHAR(500) NOT NULL,
                     summary TEXT,
+                    key_points JSON NOT NULL,
                     landing_url VARCHAR(2048) NOT NULL,
                     tags JSON NOT NULL,
+                    angle VARCHAR(64) NOT NULL,
+                    language VARCHAR(8) NOT NULL,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL
                 )
@@ -524,6 +616,34 @@ def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
         bootstrap_database(database_url)
 
 
+def test_bootstrap_database_detects_missing_new_content_brief_columns(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE content_briefs")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE content_briefs (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    account_key VARCHAR(100) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    summary TEXT,
+                    landing_url VARCHAR(2048) NOT NULL,
+                    tags JSON NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(DatabaseSchemaError, match="content_briefs: missing columns angle, key_points, language"):
+        bootstrap_database(database_url)
+
+
 def _create_draft_variant(
     session,
     *,
@@ -545,8 +665,11 @@ def _create_draft_variant(
             account_key="ai_tools_daily",
             title="Brief for draft",
             summary="Brief summary",
+            key_points=["Brief for draft"],
             landing_url="https://gilgop.cloud/ai-tools",
             tags=["ai"],
+            angle="topic_takeaway",
+            language="en",
         )
     )
     repository = DraftVariantRepository(session)
