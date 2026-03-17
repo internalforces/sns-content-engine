@@ -9,7 +9,7 @@ import typer
 
 from app import __version__
 from app.storage import DatabaseSchemaError, bootstrap_database
-from app.workflows import discover_sources, ingest_sources
+from app.workflows import build_content_briefs, discover_sources, ingest_sources
 
 app = typer.Typer(
     help="Config-driven multi-account SNS content engine.",
@@ -117,6 +117,42 @@ def ingest_command(
         typer.echo(f"- {failure.format_for_cli()}", err=True)
 
     raise typer.Exit(code=1)
+
+
+@app.command("build-briefs")
+def build_briefs_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Build platform-neutral content briefs for ingested source items."""
+
+    try:
+        result = build_content_briefs(config_dir, database_url=database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"processed {result.processed_count} ingested source items")
+    typer.echo(f"briefs created: {result.created_count}")
+    typer.echo(f"briefs existing: {result.existing_count}")
+    typer.echo(f"no match: {result.no_match_count}")
 
 
 @db_app.command("init")

@@ -11,7 +11,13 @@ from app import __version__
 from app.cli import app
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.storage import DatabaseSchemaError
-from app.workflows import DiscoverSourcesResult, IngestSourcesResult, SourceIngestOutcome
+from app.workflows import (
+    BuildContentBriefOutcome,
+    BuildContentBriefsResult,
+    DiscoverSourcesResult,
+    IngestSourcesResult,
+    SourceIngestOutcome,
+)
 
 runner = CliRunner()
 
@@ -166,6 +172,57 @@ def test_ingest_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     assert "database schema is outdated" in result.output
 
 
+def test_build_briefs_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "build_content_briefs",
+        lambda _config_dir, database_url=None: BuildContentBriefsResult(
+            processed_source_item_ids=(1, 2, 3),
+            outcomes=(
+                BuildContentBriefOutcome(
+                    source_item_id=1,
+                    status="created",
+                    account_key="ai_tools_daily",
+                    content_brief_id=10,
+                ),
+                BuildContentBriefOutcome(
+                    source_item_id=2,
+                    status="existing",
+                    account_key="ai_tools_daily",
+                    content_brief_id=11,
+                ),
+                BuildContentBriefOutcome(
+                    source_item_id=3,
+                    status="no_match",
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["build-briefs"])
+
+    assert result.exit_code == 0
+    assert "processed 3 ingested source items" in result.stdout
+    assert "briefs created: 1" in result.stdout
+    assert "briefs existing: 1" in result.stdout
+    assert "no match: 1" in result.stdout
+
+
+def test_build_briefs_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "build_content_briefs",
+        lambda _config_dir, database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["build-briefs"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
 def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
@@ -187,6 +244,7 @@ def test_help_command_is_available() -> None:
     assert result.exit_code == 0
     assert "Usage" in result.stdout
     assert "db" in result.stdout
+    assert "build-briefs" in result.stdout
     assert "discover" in result.stdout
     assert "ingest" in result.stdout
 

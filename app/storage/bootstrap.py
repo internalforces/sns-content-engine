@@ -11,8 +11,11 @@ import app.storage.models  # noqa: F401
 _REQUIRED_TABLE_COLUMNS = {
     "content_briefs": {
         "account_key",
+        "angle",
         "created_at",
         "id",
+        "key_points",
+        "language",
         "landing_url",
         "source_item_id",
         "summary",

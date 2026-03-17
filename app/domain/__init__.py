@@ -1,6 +1,7 @@
 """Shared domain models for the sns-content-engine."""
 
 from app.domain.account_matching import AccountMatchCandidate, select_top_account_candidates
+from app.domain.content_brief import ContentBriefAngle, ContentBriefData
 from app.domain.landing_resolution import LandingDecision
 from app.domain.source_deduplication import (
     DuplicateCheckResult,
@@ -16,10 +17,13 @@ from app.domain.source_ingestion import (
     SourceDiscoveryFailure,
     SourceItemCandidate,
     SourceNormalizationError,
+    extract_source_tags,
 )
 
 __all__ = [
     "AccountMatchCandidate",
+    "ContentBriefAngle",
+    "ContentBriefData",
     "DuplicateCheckResult",
     "DuplicateReason",
     "LandingDecision",
@@ -31,6 +35,7 @@ __all__ = [
     "build_dedupe_fingerprint",
     "build_normalized_title_hash",
     "canonicalize_url",
+    "extract_source_tags",
     "normalize_title_text",
     "select_top_account_candidates",
 ]

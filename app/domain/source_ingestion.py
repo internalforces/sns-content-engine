@@ -73,7 +73,7 @@ class SourceItemCandidate:
         object.__setattr__(
             self,
             "source_tags",
-            _extract_source_tags(self.raw_payload),
+            extract_source_tags(self.raw_payload),
         )
 
 
@@ -114,7 +114,7 @@ _SOURCE_TAG_KEYS = (
 _TAG_SPLIT_RE = re.compile(r"[,;|]")
 
 
-def _extract_source_tags(raw_payload: Mapping[str, Any]) -> tuple[str, ...]:
+def extract_source_tags(raw_payload: Mapping[str, Any]) -> tuple[str, ...]:
     collected_tags: list[str] = []
     seen: set[str] = set()
 
