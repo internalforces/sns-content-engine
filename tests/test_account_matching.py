@@ -103,6 +103,27 @@ def test_matcher_uses_exclude_keywords_to_zero_out_a_candidate() -> None:
     assert candidate.blocked_by_exclude_keywords is True
 
 
+def test_matcher_normalizes_configured_source_tags_before_matching() -> None:
+    matcher = AccountMatcher(
+        {
+            "ai_tools_daily": _build_account(
+                topic="AI tools and workflows",
+                source_tags=("ai-tools", "openai_api"),
+            )
+        }
+    )
+    item = _build_candidate(
+        title="Platform update",
+        summary="Release notes for builders",
+        source_tags=("AI Tools", "OpenAI API"),
+    )
+
+    candidate = matcher.match_source_item(item)[0]
+
+    assert candidate.eligible is True
+    assert candidate.source_tag_hits == ("ai tools", "openai api")
+
+
 def test_top_candidate_selector_returns_all_tied_eligible_candidates() -> None:
     candidates = (
         AccountMatchCandidate(account_key="ai_tools_daily", score=20, eligible=True),
