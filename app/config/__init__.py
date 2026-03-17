@@ -6,9 +6,11 @@ from app.config.registry import ConfigRegistry
 from app.config.schemas import (
     AccountConfig,
     AccountMatchingConfig,
+    AccountValidationConfig,
     AccountsFileConfig,
     BaseSourceConfig,
     ChannelConfig,
+    ChannelValidationConfig,
     LandingConfig,
     LandingRuleConfig,
     ManualCsvSourceConfig,
@@ -25,9 +27,11 @@ from app.config.schemas import (
 __all__ = [
     "AccountConfig",
     "AccountMatchingConfig",
+    "AccountValidationConfig",
     "AccountsFileConfig",
     "BaseSourceConfig",
     "ChannelConfig",
+    "ChannelValidationConfig",
     "ConfigError",
     "ConfigLoadError",
     "ConfigReferenceError",

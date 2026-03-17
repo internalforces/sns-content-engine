@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import count
 
 import pytest
@@ -553,6 +553,55 @@ def test_draft_variant_duplicate_identity_is_rejected(session_factory) -> None:
             )
 
 
+def test_draft_variant_list_recent_by_account_and_channel_filters_scope(session_factory) -> None:
+    now = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+
+    with session_scope(session_factory) as session:
+        repository = DraftVariantRepository(session)
+        included = _create_draft_variant(
+            session,
+            body="Included recent draft",
+            created_at=now - timedelta(days=2),
+        )
+        excluded_self = _create_draft_variant(
+            session,
+            body="Excluded self draft",
+            created_at=now - timedelta(days=1),
+        )
+        _create_draft_variant(
+            session,
+            channel="threads",
+            body="Different channel draft",
+            created_at=now - timedelta(days=1),
+        )
+        _create_draft_variant(
+            session,
+            account_key="finance_news_daily",
+            body="Different account draft",
+            created_at=now - timedelta(days=1),
+        )
+        _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.REJECTED,
+            body="Rejected draft",
+            created_at=now - timedelta(days=1),
+        )
+        _create_draft_variant(
+            session,
+            body="Stale draft",
+            created_at=now - timedelta(days=10),
+        )
+
+        recent_drafts = repository.list_recent_by_account_and_channel(
+            "ai_tools_daily",
+            "x",
+            created_since=now - timedelta(days=7),
+            exclude_draft_id=excluded_self.id,
+        )
+
+    assert [draft.id for draft in recent_drafts] == [included.id]
+
+
 def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
     with session_scope(session_factory) as session:
         job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
@@ -793,16 +842,25 @@ def _create_draft_variant(
     session,
     *,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
+    account_key: str = "ai_tools_daily",
+    channel: str = "x",
+    body: str = "Draft text",
+    created_at: datetime | None = None,
 ) -> DraftVariant:
     source_id = next(_DRAFT_SOURCE_COUNTER)
-    brief = _create_content_brief_for_draft(session, source_id=source_id)
+    brief = _create_content_brief_for_draft(
+        session,
+        source_id=source_id,
+        account_key=account_key,
+    )
     repository = DraftVariantRepository(session)
     draft = repository.add(
         DraftVariant(
             content_brief=brief,
-            channel="x",
+            channel=channel,
             variant_index=0,
-            body="Draft text",
+            body=body,
+            created_at=created_at or datetime.now(timezone.utc),
         )
     )
     if draft_state is DraftVariantState.APPROVED:
@@ -816,7 +874,12 @@ def _create_draft_variant(
     return draft
 
 
-def _create_content_brief_for_draft(session, *, source_id: int | None = None) -> ContentBrief:
+def _create_content_brief_for_draft(
+    session,
+    *,
+    source_id: int | None = None,
+    account_key: str = "ai_tools_daily",
+) -> ContentBrief:
     resolved_source_id = next(_DRAFT_SOURCE_COUNTER) if source_id is None else source_id
     source_item = SourceItemRepository(session).add(
         SourceItem(
@@ -830,7 +893,7 @@ def _create_content_brief_for_draft(session, *, source_id: int | None = None) ->
     return ContentBriefRepository(session).add(
         ContentBrief(
             source_item=source_item,
-            account_key="ai_tools_daily",
+            account_key=account_key,
             title="Brief for draft",
             summary="Brief summary",
             key_points=["Brief for draft"],

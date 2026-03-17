@@ -245,6 +245,29 @@ class DraftVariantRepository:
         )
         return list(self.session.scalars(statement))
 
+    def list_recent_by_account_and_channel(
+        self,
+        account_key: str,
+        channel: str,
+        *,
+        created_since: datetime,
+        exclude_draft_id: int | None = None,
+    ) -> list[DraftVariant]:
+        statement = (
+            select(DraftVariant)
+            .join(DraftVariant.content_brief)
+            .where(
+                ContentBrief.account_key == account_key,
+                DraftVariant.channel == channel,
+                DraftVariant.state != DraftVariantState.REJECTED,
+                DraftVariant.created_at >= created_since,
+            )
+            .order_by(DraftVariant.created_at.desc(), DraftVariant.id.desc())
+        )
+        if exclude_draft_id is not None:
+            statement = statement.where(DraftVariant.id != exclude_draft_id)
+        return list(self.session.scalars(statement))
+
     def get_or_create(self, draft: DraftVariant) -> tuple[DraftVariant, bool]:
         content_brief_id = draft.content_brief_id
         if content_brief_id is None and draft.content_brief is not None:
