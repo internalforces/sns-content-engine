@@ -217,6 +217,21 @@ class DraftVariantRepository:
     def list(self) -> list[DraftVariant]:
         return list(self.session.scalars(select(DraftVariant).order_by(DraftVariant.id)))
 
+    def list_by_content_brief_and_channel(
+        self,
+        content_brief_id: int,
+        channel: str,
+    ) -> list[DraftVariant]:
+        statement = (
+            select(DraftVariant)
+            .where(
+                DraftVariant.content_brief_id == content_brief_id,
+                DraftVariant.channel == channel,
+            )
+            .order_by(DraftVariant.variant_index, DraftVariant.id)
+        )
+        return list(self.session.scalars(statement))
+
     def delete(self, draft: DraftVariant) -> None:
         self.session.delete(draft)
 
