@@ -4,18 +4,23 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from sqlalchemy.exc import IntegrityError
 
 from app.config import ConfigRegistry
 from app.connectors.sources import SourceConnectorRegistry
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.services import SourceItemDeduper
 from app.storage import (
+    SourceItemRecentFingerprintClaim,
+    SourceItemRecentFingerprintClaimRepository,
     SourceItem,
     SourceItemRepository,
     create_database_engine,
     create_session_factory,
+    ensure_database_schema_is_current,
     session_scope,
 )
 from app.workflows.discover_sources import _discover_sources_from_registry
@@ -92,23 +97,70 @@ def ingest_sources(
     owned_engine = None
     if session_factory is None:
         owned_engine = create_database_engine(database_url)
+        ensure_database_schema_is_current(owned_engine)
         session_factory = create_session_factory(owned_engine)
+    else:
+        bound_engine = _resolve_bound_engine(session_factory)
+        if bound_engine is not None:
+            ensure_database_schema_is_current(bound_engine)
 
     try:
         with session_scope(session_factory) as session:
             repository = SourceItemRepository(session)
-            deduper = SourceItemDeduper(repository)
+            fingerprint_claims = SourceItemRecentFingerprintClaimRepository(session)
+            deduper = SourceItemDeduper(
+                repository,
+                fingerprint_claims=fingerprint_claims,
+            )
             outcomes = []
+            current_time = _normalize_now(now)
 
             for candidate in discovery_result.items:
                 source_config = registry.get_source(candidate.source_id)
-                duplicate_check = deduper.check_duplicate(
-                    candidate,
-                    duplicate_window_days=source_config.duplicate_window_days,
-                    now=now,
-                )
+                try:
+                    with session.begin_nested():
+                        duplicate_check = deduper.check_duplicate(
+                            candidate,
+                            duplicate_window_days=source_config.duplicate_window_days,
+                            now=current_time,
+                        )
+                        if duplicate_check.is_duplicate:
+                            outcomes.append(
+                                SourceIngestOutcome(
+                                    candidate=candidate,
+                                    status="duplicate",
+                                    duplicate_reason=duplicate_check.reason,
+                                    matched_item_id=duplicate_check.matched_item_id,
+                                )
+                            )
+                            continue
 
-                if duplicate_check.is_duplicate:
+                        claim = _reserve_recent_fingerprint_claim(
+                            fingerprint_claims,
+                            candidate,
+                            duplicate_window_days=source_config.duplicate_window_days,
+                            now=current_time,
+                        )
+                        source_item = repository.add(_candidate_to_source_item(candidate))
+                        if claim is not None:
+                            claim.source_item = source_item
+                            session.flush()
+
+                        outcomes.append(
+                            SourceIngestOutcome(
+                                candidate=candidate,
+                                status="saved",
+                                source_item_id=source_item.id,
+                            )
+                        )
+                except IntegrityError:
+                    duplicate_check = deduper.check_duplicate(
+                        candidate,
+                        duplicate_window_days=source_config.duplicate_window_days,
+                        now=current_time,
+                    )
+                    if not duplicate_check.is_duplicate:
+                        raise
                     outcomes.append(
                         SourceIngestOutcome(
                             candidate=candidate,
@@ -117,16 +169,6 @@ def ingest_sources(
                             matched_item_id=duplicate_check.matched_item_id,
                         )
                     )
-                    continue
-
-                source_item = repository.add(_candidate_to_source_item(candidate))
-                outcomes.append(
-                    SourceIngestOutcome(
-                        candidate=candidate,
-                        status="saved",
-                        source_item_id=source_item.id,
-                    )
-                )
     finally:
         if owned_engine is not None:
             owned_engine.dispose()
@@ -148,3 +190,33 @@ def _candidate_to_source_item(candidate: SourceItemCandidate) -> SourceItem:
         published_at=candidate.published_at,
         raw_payload=candidate.raw_payload,
     )
+
+
+def _reserve_recent_fingerprint_claim(
+    repository: SourceItemRecentFingerprintClaimRepository,
+    candidate: SourceItemCandidate,
+    *,
+    duplicate_window_days: int,
+    now: datetime,
+) -> SourceItemRecentFingerprintClaim | None:
+    if duplicate_window_days == 0:
+        return None
+
+    return repository.add(
+        SourceItemRecentFingerprintClaim(
+            dedupe_fingerprint=candidate.dedupe_fingerprint,
+            expires_at=now + timedelta(days=duplicate_window_days),
+        )
+    )
+
+
+def _normalize_now(now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(UTC)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=UTC)
+    return now.astimezone(UTC)
+
+
+def _resolve_bound_engine(session_factory):
+    return getattr(session_factory, "kw", {}).get("bind")

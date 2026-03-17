@@ -6,14 +6,20 @@ from datetime import datetime, timezone
 
 from app.domain import DuplicateCheckResult, DuplicateReason, SourceItemCandidate
 from app.domain.source_deduplication import window_start
-from app.storage import SourceItemRepository
+from app.storage import SourceItemRecentFingerprintClaimRepository, SourceItemRepository
 
 
 class SourceItemDeduper:
     """Check whether a normalized candidate should be blocked as a duplicate."""
 
-    def __init__(self, repository: SourceItemRepository) -> None:
+    def __init__(
+        self,
+        repository: SourceItemRepository,
+        *,
+        fingerprint_claims: SourceItemRecentFingerprintClaimRepository | None = None,
+    ) -> None:
         self.repository = repository
+        self.fingerprint_claims = fingerprint_claims
 
     def check_duplicate(
         self,
@@ -52,6 +58,18 @@ class SourceItemDeduper:
             return DuplicateCheckResult.unique()
 
         current_time = _normalize_now(now)
+        if self.fingerprint_claims is not None:
+            self.fingerprint_claims.delete_expired(as_of=current_time)
+            existing_claim = self.fingerprint_claims.get_active(
+                candidate.dedupe_fingerprint,
+                as_of=current_time,
+            )
+            if existing_claim is not None:
+                return DuplicateCheckResult.duplicate(
+                    DuplicateReason.RECENT_FINGERPRINT,
+                    matched_item_id=existing_claim.source_item_id,
+                )
+
         existing = self.repository.get_recent_by_dedupe_fingerprint(
             candidate.dedupe_fingerprint,
             created_since=window_start(

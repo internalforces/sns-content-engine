@@ -38,7 +38,7 @@ def test_normalizer_canonicalizes_urls_and_builds_dedupe_metadata() -> None:
         RawSourceItem(
             source_id="ai_tools_rss",
             external_id="entry-1",
-            source_url="HTTPS://Example.com/posts/1/?utm_source=x&b=2&a=1#section",
+            source_url="HTTPS://user:secret@Example.com/posts/1/?utm_source=x&b=2&a=1#section",
             title="AI   Tool: Launch!",
             summary="Fast, simple workflow tips.",
         )

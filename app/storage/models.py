@@ -89,6 +89,14 @@ class SourceItem(Base):
             "external_id",
             name="uq_source_items_source_key_external_id",
         ),
+        UniqueConstraint(
+            "canonical_url",
+            name="uq_source_items_canonical_url",
+        ),
+        UniqueConstraint(
+            "normalized_title_hash",
+            name="uq_source_items_normalized_title_hash",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -120,6 +128,11 @@ class SourceItem(Base):
         back_populates="source_item",
         cascade="all, delete-orphan",
     )
+    recent_fingerprint_claim: Mapped["SourceItemRecentFingerprintClaim | None"] = relationship(
+        back_populates="source_item",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     @validates("source_url", "title", "summary")
     def _populate_dedupe_fields(self, key: str, value: str | None) -> str | None:
@@ -142,6 +155,34 @@ class SourceItem(Base):
             self.dedupe_fingerprint = build_dedupe_fingerprint(title=title, summary=summary)
 
         return value
+
+
+class SourceItemRecentFingerprintClaim(Base):
+    """Active recent-window fingerprint claim used to serialize dedupe decisions."""
+
+    __tablename__ = "source_item_recent_fingerprint_claims"
+    __table_args__ = (
+        UniqueConstraint(
+            "dedupe_fingerprint",
+            name="uq_source_item_recent_fingerprint_claims_dedupe_fingerprint",
+        ),
+        UniqueConstraint(
+            "source_item_id",
+            name="uq_source_item_recent_fingerprint_claims_source_item_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dedupe_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_items.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime(), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+
+    source_item: Mapped[SourceItem | None] = relationship(back_populates="recent_fingerprint_claim")
 
 
 class ContentBrief(Base):

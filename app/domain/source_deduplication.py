@@ -11,6 +11,8 @@ import unicodedata
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _TRACKING_QUERY_PARAM_NAMES = {
+    "auth",
+    "authorization",
     "fbclid",
     "gclid",
     "igshid",
@@ -18,6 +20,9 @@ _TRACKING_QUERY_PARAM_NAMES = {
     "mc_eid",
     "ref",
     "ref_src",
+    "sig",
+    "signature",
+    "token",
 }
 _TRACKING_QUERY_PARAM_PREFIXES = ("utm_",)
 _MULTISPACE_RE = re.compile(r"\s+")
@@ -76,16 +81,9 @@ def canonicalize_url(url: str) -> str:
     if ":" in hostname and not hostname.startswith("["):
         hostname = f"[{hostname}]"
 
-    userinfo = ""
-    if parsed.username:
-        userinfo = parsed.username
-        if parsed.password:
-            userinfo = f"{userinfo}:{parsed.password}"
-        userinfo = f"{userinfo}@"
-
     default_port = 443 if scheme == "https" else 80
     port = parsed.port
-    netloc = f"{userinfo}{hostname}"
+    netloc = hostname
     if port is not None and port != default_port:
         netloc = f"{netloc}:{port}"
 
@@ -134,10 +132,12 @@ def build_normalized_title_hash(title: str) -> str:
 def build_dedupe_fingerprint(*, title: str, summary: str | None) -> str:
     """Return a lightweight fingerprint based on normalized textual content."""
 
-    normalized_title = normalize_title_text(title)
-    normalized_summary = _normalize_fingerprint_text(summary)
-    fingerprint_basis = normalized_summary or normalized_title
-    return hash_normalized_text(fingerprint_basis)
+    title_tokens = _normalize_fingerprint_tokens(title)
+    summary_tokens = _normalize_fingerprint_tokens(summary)
+    fingerprint_tokens = sorted(set(title_tokens + summary_tokens))
+    if not fingerprint_tokens:
+        raise ValueError("fingerprint source text must not be empty")
+    return hash_normalized_text(" ".join(fingerprint_tokens))
 
 
 def window_start(*, now: datetime, duplicate_window_days: int) -> datetime:
@@ -155,3 +155,10 @@ def _normalize_fingerprint_text(value: str | None) -> str:
     normalized = _TITLE_TOKEN_RE.sub(" ", normalized)
     normalized = _MULTISPACE_RE.sub(" ", normalized).strip()
     return normalized
+
+
+def _normalize_fingerprint_tokens(value: str | None) -> list[str]:
+    normalized = _normalize_fingerprint_text(value)
+    if not normalized:
+        return []
+    return normalized.split(" ")

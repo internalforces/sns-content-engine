@@ -137,8 +137,8 @@ def test_ingest_sources_uses_duplicate_window_for_recent_fingerprint_checks(tmp_
                 source_key="ai_tools_rss",
                 external_id="seed-old",
                 source_url="https://example.com/posts/old",
-                title="Old wording",
-                summary="Shared body text",
+                title="Aged GPT Five Launch",
+                summary="Shared launch summary",
                 created_at=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
             )
         )
@@ -147,8 +147,8 @@ def test_ingest_sources_uses_duplicate_window_for_recent_fingerprint_checks(tmp_
                 source_key="ai_tools_rss",
                 external_id="seed-recent",
                 source_url="https://example.com/posts/recent",
-                title="Recent wording",
-                summary="Shared body text",
+                title="Fast GPT Five Launch",
+                summary="Shared launch summary",
                 created_at=datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc),
             )
         )
@@ -162,8 +162,8 @@ def test_ingest_sources_uses_duplicate_window_for_recent_fingerprint_checks(tmp_
                         source_id="ai_tools_rss",
                         external_id="dup-fingerprint",
                         source_url="https://example.com/posts/brand-new-url",
-                        title="Completely different title",
-                        summary="Shared body text",
+                        title="Launch GPT Five Fast",
+                        summary="Shared launch summary",
                     ),
                 )
             }
@@ -187,8 +187,8 @@ def test_ingest_sources_allows_old_fingerprint_matches_outside_window(tmp_path: 
                 source_key="ai_tools_rss",
                 external_id="seed-old",
                 source_url="https://example.com/posts/old",
-                title="Old wording",
-                summary="Shared body text",
+                title="Fast GPT Five Launch",
+                summary="Shared launch summary",
                 created_at=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
             )
         )
@@ -202,8 +202,8 @@ def test_ingest_sources_allows_old_fingerprint_matches_outside_window(tmp_path: 
                         source_id="ai_tools_rss",
                         external_id="new-after-window",
                         source_url="https://example.com/posts/brand-new-url",
-                        title="Completely different title",
-                        summary="Shared body text",
+                        title="Launch GPT Five Fast",
+                        summary="Shared launch summary",
                     ),
                 )
             }

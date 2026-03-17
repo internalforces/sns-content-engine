@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from app import __version__
 from app.cli import app
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
+from app.storage import DatabaseSchemaError
 from app.workflows import DiscoverSourcesResult, IngestSourcesResult, SourceIngestOutcome
 
 runner = CliRunner()
@@ -45,6 +46,7 @@ def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
             "draft_variants",
             "publish_jobs",
             "publish_logs",
+            "source_item_recent_fingerprint_claims",
             "source_items",
         }
     finally:
@@ -147,6 +149,36 @@ def test_ingest_command_reports_saved_and_duplicate_counts(monkeypatch) -> None:
     assert "saved: 1" in result.stdout
     assert "duplicates blocked: 1" in result.stdout
     assert "duplicates[canonical_url]: 1" in result.stdout
+
+
+def test_ingest_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "ingest_sources",
+        lambda _config_dir, database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
+def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "bootstrap_database",
+        lambda database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["db", "init"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
 
 
 def test_help_command_is_available() -> None:

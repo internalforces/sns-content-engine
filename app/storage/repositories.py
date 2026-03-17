@@ -17,6 +17,7 @@ from app.storage.models import (
     PublishJobState,
     PublishLog,
     SourceItem,
+    SourceItemRecentFingerprintClaim,
 )
 
 
@@ -89,6 +90,44 @@ class SourceItemRepository:
 
     def delete(self, item: SourceItem) -> None:
         self.session.delete(item)
+
+
+class SourceItemRecentFingerprintClaimRepository:
+    """Persistence helpers for active recent fingerprint claims."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, claim: SourceItemRecentFingerprintClaim) -> SourceItemRecentFingerprintClaim:
+        self.session.add(claim)
+        self.session.flush()
+        return claim
+
+    def get_active(
+        self,
+        dedupe_fingerprint: str,
+        *,
+        as_of: datetime,
+    ) -> SourceItemRecentFingerprintClaim | None:
+        statement = (
+            select(SourceItemRecentFingerprintClaim)
+            .where(
+                SourceItemRecentFingerprintClaim.dedupe_fingerprint == dedupe_fingerprint,
+                SourceItemRecentFingerprintClaim.expires_at > as_of,
+            )
+            .order_by(SourceItemRecentFingerprintClaim.expires_at.desc())
+        )
+        return self.session.scalar(statement)
+
+    def delete_expired(self, *, as_of: datetime) -> int:
+        statement = select(SourceItemRecentFingerprintClaim).where(
+            SourceItemRecentFingerprintClaim.expires_at <= as_of
+        )
+        expired_claims = list(self.session.scalars(statement))
+        for claim in expired_claims:
+            self.session.delete(claim)
+        self.session.flush()
+        return len(expired_claims)
 
 
 class ContentBriefRepository:

@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 
 from app import __version__
-from app.storage import bootstrap_database
+from app.storage import DatabaseSchemaError, bootstrap_database
 from app.workflows import discover_sources, ingest_sources
 
 app = typer.Typer(
@@ -93,7 +93,11 @@ def ingest_command(
 ) -> None:
     """Discover sources and persist only non-duplicate items."""
 
-    result = ingest_sources(config_dir, database_url=database_url)
+    try:
+        result = ingest_sources(config_dir, database_url=database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(
         "processed "
         f"{result.discovered_count} discovered candidates "
@@ -127,7 +131,11 @@ def init_database(
 ) -> None:
     """Create the configured database schema."""
 
-    resolved_url = bootstrap_database(database_url)
+    try:
+        resolved_url = bootstrap_database(database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"database initialized: {resolved_url}")
 
 

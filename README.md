@@ -74,6 +74,8 @@ The `discover` command loads configured sources, runs the RSS / sitemap / manual
 
 The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
 
+If you already have an older SQLite file from a previous milestone, recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
+
 Initialize the schema through the thin script wrapper:
 
 ```bash
