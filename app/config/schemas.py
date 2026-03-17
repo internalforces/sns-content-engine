@@ -145,11 +145,25 @@ class RenderConfig(FrozenConfigModel):
     max_chars: int = Field(gt=0)
 
 
+class ChannelValidationConfig(FrozenConfigModel):
+    """Validation rules applied to channel drafts."""
+
+    max_links: int = Field(default=1, ge=0)
+    banned_phrases: tuple[str, ...] = Field(default_factory=tuple)
+    recent_duplicate_window_days: int = Field(default=7, ge=0)
+
+    @field_validator("banned_phrases")
+    @classmethod
+    def validate_banned_phrases(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_string_sequence(values, label="banned phrase")
+
+
 class ChannelConfig(FrozenConfigModel):
     """Channel-level settings for publishing."""
 
     schedule: ScheduleConfig
     render: RenderConfig
+    validation: ChannelValidationConfig = Field(default_factory=ChannelValidationConfig)
 
 
 class AccountMatchingConfig(FrozenConfigModel):
@@ -175,6 +189,12 @@ class AccountMatchingConfig(FrozenConfigModel):
         )
 
 
+class AccountValidationConfig(FrozenConfigModel):
+    """Account-level validation profile selection."""
+
+    profile: Literal["standard", "finance_strict"] = "standard"
+
+
 class AccountConfig(FrozenConfigModel):
     """Account-level content engine settings."""
 
@@ -183,6 +203,7 @@ class AccountConfig(FrozenConfigModel):
     prompt_profile: str
     landing: LandingConfig
     matching: AccountMatchingConfig = Field(default_factory=AccountMatchingConfig)
+    validation: AccountValidationConfig = Field(default_factory=AccountValidationConfig)
     channels: Mapping[str, ChannelConfig] = Field(min_length=1)
 
     @field_validator("topic", "prompt_profile")

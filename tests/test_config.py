@@ -34,8 +34,12 @@ def test_registry_loads_sample_config_directory() -> None:
     assert account.matching.exclude_keywords == ("earnings", "stock")
     assert account.matching.source_tags == ("ai", "automation")
     assert account.matching.strict_topic_guard is True
+    assert account.validation.profile == "standard"
     assert channel.schedule.cron == "0 9 * * *"
     assert channel.render.max_chars == 280
+    assert channel.validation.max_links == 1
+    assert channel.validation.banned_phrases == ()
+    assert channel.validation.recent_duplicate_window_days == 7
     assert registry.get_prompt_profile("ai_tools_default").system_template.startswith("You are an editor")
     assert registry.get_source_set("ai_tools_primary").sources == (
         "ai_tools_rss",
@@ -213,6 +217,48 @@ def test_manual_csv_source_variant_loads_successfully(tmp_path: Path) -> None:
     assert source.path == (tmp_path / "data/manual/ai_tools.csv").resolve()
 
 
+def test_validation_config_loads_successfully(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          finance_news_daily:
+            topic: "Finance markets and investing"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/finance
+              rules: []
+            validation:
+              profile: finance_strict
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                validation:
+                  max_links: 2
+                  banned_phrases:
+                    - "risk free"
+                    - "guaranteed returns"
+                  recent_duplicate_window_days: 14
+        """,
+    )
+
+    registry = ConfigRegistry.from_directory(tmp_path)
+    account = registry.get_account("finance_news_daily")
+    channel = account.channels["x"]
+
+    assert account.validation.profile == "finance_strict"
+    assert channel.validation.max_links == 2
+    assert channel.validation.banned_phrases == ("risk free", "guaranteed returns")
+    assert channel.validation.recent_duplicate_window_days == 14
+
+
 def test_sources_default_duplicate_window_days_to_thirty() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
     source = registry.get_source("ai_tools_rss")
@@ -264,6 +310,74 @@ def test_negative_duplicate_window_days_raise_validation_error(tmp_path: Path) -
 
     message = str(exc_info.value)
     assert "sources.ai_tools_rss.rss.duplicate_window_days" in message
+    assert "greater than or equal to 0" in message
+
+
+def test_invalid_validation_profile_raises_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            validation:
+              profile: unsupported
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.validation.profile" in message
+    assert "finance_strict" in message
+
+
+def test_negative_validation_duplicate_window_days_raise_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                validation:
+                  recent_duplicate_window_days: -1
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.channels.x.validation.recent_duplicate_window_days" in message
     assert "greater than or equal to 0" in message
 
 
@@ -397,6 +511,41 @@ def test_blank_matching_keyword_raises_validation_error(tmp_path: Path) -> None:
 
     message = str(exc_info.value)
     assert "accounts.ai_tools_daily.matching.include_keywords" in message
+    assert "must not be empty" in message
+
+
+def test_blank_banned_phrase_raises_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                validation:
+                  banned_phrases:
+                    - "   "
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.channels.x.validation.banned_phrases" in message
     assert "must not be empty" in message
 
 
