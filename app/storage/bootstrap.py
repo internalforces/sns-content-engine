@@ -81,6 +81,23 @@ _REQUIRED_TABLE_COLUMNS = {
         "updated_at",
     },
 }
+_REQUIRED_UNIQUE_CONSTRAINTS = {
+    "content_briefs": {
+        "uq_content_briefs_source_item_id_account_key",
+    },
+    "draft_variants": {
+        "uq_draft_variants_content_brief_id_channel_variant_index",
+    },
+    "source_item_recent_fingerprint_claims": {
+        "uq_source_item_recent_fingerprint_claims_dedupe_fingerprint",
+        "uq_source_item_recent_fingerprint_claims_source_item_id",
+    },
+    "source_items": {
+        "uq_source_items_canonical_url",
+        "uq_source_items_normalized_title_hash",
+        "uq_source_items_source_key_external_id",
+    },
+}
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -105,6 +122,18 @@ def ensure_database_schema_is_current(engine: Engine) -> None:
         missing_columns = sorted(required_columns - actual_columns)
         if missing_columns:
             mismatches.append(f"{table_name}: missing columns {', '.join(missing_columns)}")
+
+    for table_name, required_constraints in sorted(_REQUIRED_UNIQUE_CONSTRAINTS.items()):
+        actual_constraints = {
+            constraint["name"]
+            for constraint in inspector.get_unique_constraints(table_name)
+            if constraint.get("name")
+        }
+        missing_constraints = sorted(required_constraints - actual_constraints)
+        if missing_constraints:
+            mismatches.append(
+                f"{table_name}: missing unique constraints {', '.join(missing_constraints)}"
+            )
 
     if mismatches:
         mismatch_text = "; ".join(mismatches)

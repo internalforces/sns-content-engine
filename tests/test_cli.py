@@ -15,6 +15,8 @@ from app.workflows import (
     BuildContentBriefOutcome,
     BuildContentBriefsResult,
     DiscoverSourcesResult,
+    GenerateDraftOutcome,
+    GenerateDraftsResult,
     IngestSourcesResult,
     SourceIngestOutcome,
 )
@@ -223,6 +225,61 @@ def test_build_briefs_command_surfaces_schema_errors_cleanly(monkeypatch) -> Non
     assert "database schema is outdated" in result.output
 
 
+def test_generate_drafts_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "generate_drafts",
+        lambda _config_dir, database_url=None, variant_count=3: GenerateDraftsResult(
+            processed_content_brief_ids=(10, 11),
+            outcomes=(
+                GenerateDraftOutcome(
+                    content_brief_id=10,
+                    status="created",
+                    channel="x",
+                    draft_variant_ids=(101, 102, 103),
+                ),
+                GenerateDraftOutcome(
+                    content_brief_id=11,
+                    status="existing",
+                    channel="x",
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["generate-drafts"])
+
+    assert result.exit_code == 0
+    assert "processed 2 content briefs" in result.stdout
+    assert "draft sets created: 1" in result.stdout
+    assert "draft sets existing: 1" in result.stdout
+    assert "no x channel: 0" in result.stdout
+    assert "missing account: 0" in result.stdout
+    assert "draft variants created: 3" in result.stdout
+
+
+def test_generate_drafts_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "generate_drafts",
+        lambda _config_dir, database_url=None, variant_count=3: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["generate-drafts"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
+def test_generate_drafts_command_rejects_invalid_variant_count() -> None:
+    result = runner.invoke(app, ["generate-drafts", "--variant-count", "4"])
+
+    assert result.exit_code == 2
+    assert "--variant-count" in result.output
+
+
 def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
@@ -246,6 +303,7 @@ def test_help_command_is_available() -> None:
     assert "db" in result.stdout
     assert "build-briefs" in result.stdout
     assert "discover" in result.stdout
+    assert "generate-drafts" in result.stdout
     assert "ingest" in result.stdout
 
 

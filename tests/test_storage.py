@@ -475,6 +475,84 @@ def test_draft_variant_state_transitions_are_enforced(session_factory) -> None:
             )
 
 
+def test_draft_variant_get_or_create_is_idempotent(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief_for_draft(session)
+        repository = DraftVariantRepository(session)
+        first_draft, was_created = repository.get_or_create(
+            DraftVariant(
+                content_brief_id=brief.id,
+                channel="x",
+                variant_index=0,
+                body="Stored draft text",
+            )
+        )
+        second_draft, was_created_again = repository.get_or_create(
+            DraftVariant(
+                content_brief_id=brief.id,
+                channel="x",
+                variant_index=0,
+                body="Changed draft text should not replace the original row",
+            )
+        )
+
+    assert was_created is True
+    assert was_created_again is False
+    assert second_draft.id == first_draft.id
+    assert second_draft.body == "Stored draft text"
+
+
+def test_draft_variant_get_or_create_recovers_from_integrity_error() -> None:
+    existing = DraftVariant(
+        id=99,
+        content_brief_id=42,
+        channel="x",
+        variant_index=1,
+        body="Stored draft",
+    )
+    session = _DraftIntegrityErrorRecoveringSession(existing)
+    repository = DraftVariantRepository(session)
+
+    draft, was_created = repository.get_or_create(
+        DraftVariant(
+            content_brief_id=42,
+            channel="x",
+            variant_index=1,
+            body="Racing draft",
+        )
+    )
+
+    assert was_created is False
+    assert draft is existing
+    assert session.scalar_call_count == 2
+    assert session.flush_call_count == 1
+
+
+def test_draft_variant_duplicate_identity_is_rejected(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief_for_draft(session)
+        repository = DraftVariantRepository(session)
+        repository.add(
+            DraftVariant(
+                content_brief_id=brief.id,
+                channel="x",
+                variant_index=0,
+                body="First stored draft",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            DraftVariantRepository(session).add(
+                DraftVariant(
+                    content_brief_id=brief.id,
+                    channel="x",
+                    variant_index=0,
+                    body="Duplicate stored draft",
+                )
+            )
+
+
 def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
     with session_scope(session_factory) as session:
         job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
@@ -679,34 +757,45 @@ def test_bootstrap_database_detects_missing_new_content_brief_columns(database_u
         bootstrap_database(database_url)
 
 
+def test_bootstrap_database_detects_missing_draft_variant_unique_constraint(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE draft_variants")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE draft_variants (
+                    id INTEGER PRIMARY KEY,
+                    content_brief_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    variant_index INTEGER NOT NULL,
+                    body TEXT NOT NULL,
+                    state VARCHAR(32) NOT NULL,
+                    rejection_reason TEXT,
+                    reviewed_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match="draft_variants: missing unique constraints uq_draft_variants_content_brief_id_channel_variant_index",
+    ):
+        bootstrap_database(database_url)
+
+
 def _create_draft_variant(
     session,
     *,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
 ) -> DraftVariant:
     source_id = next(_DRAFT_SOURCE_COUNTER)
-    source_item = SourceItemRepository(session).add(
-        SourceItem(
-            source_key="ai_tools_rss",
-            external_id=f"draft-source-{source_id}",
-            source_url=f"https://example.com/posts/draft/{source_id}",
-            title=f"Draft source {source_id}",
-            summary=f"Draft source summary {source_id}",
-        )
-    )
-    brief = ContentBriefRepository(session).add(
-        ContentBrief(
-            source_item=source_item,
-            account_key="ai_tools_daily",
-            title="Brief for draft",
-            summary="Brief summary",
-            key_points=["Brief for draft"],
-            landing_url="https://gilgop.cloud/ai-tools",
-            tags=["ai"],
-            angle="topic_takeaway",
-            language="en",
-        )
-    )
+    brief = _create_content_brief_for_draft(session, source_id=source_id)
     repository = DraftVariantRepository(session)
     draft = repository.add(
         DraftVariant(
@@ -725,6 +814,32 @@ def _create_draft_variant(
             rejection_reason="Rejected during fixture setup",
         )
     return draft
+
+
+def _create_content_brief_for_draft(session, *, source_id: int | None = None) -> ContentBrief:
+    resolved_source_id = next(_DRAFT_SOURCE_COUNTER) if source_id is None else source_id
+    source_item = SourceItemRepository(session).add(
+        SourceItem(
+            source_key="ai_tools_rss",
+            external_id=f"draft-source-{resolved_source_id}",
+            source_url=f"https://example.com/posts/draft/{resolved_source_id}",
+            title=f"Draft source {resolved_source_id}",
+            summary=f"Draft source summary {resolved_source_id}",
+        )
+    )
+    return ContentBriefRepository(session).add(
+        ContentBrief(
+            source_item=source_item,
+            account_key="ai_tools_daily",
+            title="Brief for draft",
+            summary="Brief summary",
+            key_points=["Brief for draft"],
+            landing_url="https://gilgop.cloud/ai-tools",
+            tags=["ai"],
+            angle="topic_takeaway",
+            language="en",
+        )
+    )
 
 
 def _create_publish_job(
@@ -763,3 +878,26 @@ class _IntegrityErrorRecoveringSession:
         if self.scalar_call_count == 1:
             return None
         return self._existing_brief
+
+
+class _DraftIntegrityErrorRecoveringSession:
+    def __init__(self, existing_draft: DraftVariant) -> None:
+        self._existing_draft = existing_draft
+        self.scalar_call_count = 0
+        self.flush_call_count = 0
+
+    def add(self, _draft: DraftVariant) -> None:
+        return None
+
+    def begin_nested(self):
+        return nullcontext()
+
+    def flush(self) -> None:
+        self.flush_call_count += 1
+        raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    def scalar(self, _statement):
+        self.scalar_call_count += 1
+        if self.scalar_call_count == 1:
+            return None
+        return self._existing_draft

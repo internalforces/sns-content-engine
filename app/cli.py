@@ -9,7 +9,7 @@ import typer
 
 from app import __version__
 from app.storage import DatabaseSchemaError, bootstrap_database
-from app.workflows import build_content_briefs, discover_sources, ingest_sources
+from app.workflows import build_content_briefs, discover_sources, generate_drafts, ingest_sources
 
 app = typer.Typer(
     help="Config-driven multi-account SNS content engine.",
@@ -153,6 +153,57 @@ def build_briefs_command(
     typer.echo(f"briefs created: {result.created_count}")
     typer.echo(f"briefs existing: {result.existing_count}")
     typer.echo(f"no match: {result.no_match_count}")
+
+
+@app.command("generate-drafts")
+def generate_drafts_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+    variant_count: Annotated[
+        int,
+        typer.Option(
+            "--variant-count",
+            min=2,
+            max=3,
+            help="Number of draft variants to generate per content brief.",
+        ),
+    ] = 3,
+) -> None:
+    """Generate X-ready draft variants for stored content briefs."""
+
+    try:
+        result = generate_drafts(
+            config_dir,
+            database_url=database_url,
+            variant_count=variant_count,
+        )
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"processed {result.processed_count} content briefs")
+    typer.echo(f"draft sets created: {result.created_count}")
+    typer.echo(f"draft sets existing: {result.existing_count}")
+    typer.echo(f"no x channel: {result.no_channel_count}")
+    typer.echo(f"missing account: {result.missing_account_count}")
+    typer.echo(f"draft variants created: {result.created_variant_count}")
 
 
 @db_app.command("init")

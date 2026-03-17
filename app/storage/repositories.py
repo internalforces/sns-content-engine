@@ -214,8 +214,59 @@ class DraftVariantRepository:
     def get(self, draft_id: int) -> DraftVariant | None:
         return self.session.get(DraftVariant, draft_id)
 
+    def get_by_identity(
+        self,
+        content_brief_id: int,
+        channel: str,
+        variant_index: int,
+    ) -> DraftVariant | None:
+        statement = select(DraftVariant).where(
+            DraftVariant.content_brief_id == content_brief_id,
+            DraftVariant.channel == channel,
+            DraftVariant.variant_index == variant_index,
+        )
+        return self.session.scalar(statement)
+
     def list(self) -> list[DraftVariant]:
         return list(self.session.scalars(select(DraftVariant).order_by(DraftVariant.id)))
+
+    def list_by_content_brief_and_channel(
+        self,
+        content_brief_id: int,
+        channel: str,
+    ) -> list[DraftVariant]:
+        statement = (
+            select(DraftVariant)
+            .where(
+                DraftVariant.content_brief_id == content_brief_id,
+                DraftVariant.channel == channel,
+            )
+            .order_by(DraftVariant.variant_index, DraftVariant.id)
+        )
+        return list(self.session.scalars(statement))
+
+    def get_or_create(self, draft: DraftVariant) -> tuple[DraftVariant, bool]:
+        content_brief_id = draft.content_brief_id
+        if content_brief_id is None and draft.content_brief is not None:
+            content_brief_id = draft.content_brief.id
+        if content_brief_id is None:
+            raise ValueError("draft variant must reference a persisted content brief")
+
+        existing = self.get_by_identity(content_brief_id, draft.channel, draft.variant_index)
+        if existing is not None:
+            return existing, False
+
+        draft.content_brief_id = content_brief_id
+        try:
+            with self.session.begin_nested():
+                self.session.add(draft)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_by_identity(content_brief_id, draft.channel, draft.variant_index)
+            if existing is None:
+                raise
+            return existing, False
+        return draft, True
 
     def delete(self, draft: DraftVariant) -> None:
         self.session.delete(draft)
