@@ -125,8 +125,8 @@ def test_draft_validator_warns_when_non_strict_topic_guard_misses() -> None:
     validator = DraftValidator()
 
     result = validator.validate(
-        "Operator update for general readers https://gilgop.cloud/post",
-        content_brief=_build_content_brief(landing_url="https://gilgop.cloud/post"),
+        "Operator update for general readers https://gilgop.cloud/ai-tools",
+        content_brief=_build_content_brief(),
         account_key="ai_tools_daily",
         account=_build_account_config(strict_topic_guard=False),
         channel="x",
@@ -141,8 +141,8 @@ def test_draft_validator_errors_when_strict_topic_guard_misses() -> None:
     validator = DraftValidator()
 
     result = validator.validate(
-        "Operator update for general readers https://gilgop.cloud/post",
-        content_brief=_build_content_brief(landing_url="https://gilgop.cloud/post"),
+        "Operator update for general readers https://gilgop.cloud/ai-tools",
+        content_brief=_build_content_brief(),
         account_key="ai_tools_daily",
         account=_build_account_config(strict_topic_guard=True),
         channel="x",
@@ -157,10 +157,10 @@ def test_draft_validator_errors_when_finance_profile_misses_topic_guard() -> Non
     validator = DraftValidator()
 
     result = validator.validate(
-        "Operator update for general readers https://gilgop.cloud/post",
+        "Operator update for general readers https://gilgop.cloud/finance",
         content_brief=_build_content_brief(
             account_key="finance_news_daily",
-            landing_url="https://gilgop.cloud/post",
+            landing_url="https://gilgop.cloud/finance",
             tags=("finance", "markets"),
         ),
         account_key="finance_news_daily",

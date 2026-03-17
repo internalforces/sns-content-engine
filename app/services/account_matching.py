@@ -3,37 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import re
 from urllib.parse import urlsplit
 
 from app.config import AccountConfig, ConfigRegistry
 from app.domain import AccountMatchCandidate, SourceItemCandidate
+from app.services.topic_matching import contains_phrase, normalize_match_text, topic_keywords
 
-_NON_WORD_RE = re.compile(r"[^\w\s]")
-_MULTISPACE_RE = re.compile(r"\s+")
-_TOPIC_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "daily",
-    "for",
-    "guide",
-    "guides",
-    "how",
-    "in",
-    "news",
-    "of",
-    "on",
-    "the",
-    "tips",
-    "to",
-    "tool",
-    "tools",
-    "update",
-    "updates",
-    "workflow",
-    "workflows",
-}
 _INCLUDE_KEYWORD_WEIGHT = 10
 _SOURCE_TAG_WEIGHT = 8
 _TOPIC_KEYWORD_WEIGHT = 3
@@ -122,7 +97,7 @@ class AccountMatcher:
 def _build_match_text(item: SourceItemCandidate) -> str:
     url = urlsplit(item.canonical_url)
     url_text = " ".join(part for part in (url.netloc, url.path, url.query) if part)
-    return _normalize_match_text(" ".join(filter(None, (item.title, item.summary, url_text))))
+    return normalize_match_text(" ".join(filter(None, (item.title, item.summary, url_text))))
 
 
 def _find_phrase_hits(
@@ -144,43 +119,20 @@ def _find_topic_keyword_hits(
     text: str,
     tags: set[str],
 ) -> tuple[str, ...]:
-    topic_keywords = _topic_keywords(topic)
+    derived_topic_keywords = topic_keywords(topic)
     hits: list[str] = []
 
-    for keyword in topic_keywords:
+    for keyword in derived_topic_keywords:
         if _matches_phrase(keyword, text, tags):
             hits.append(keyword)
 
     return tuple(hits)
 
 
-def _topic_keywords(topic: str) -> tuple[str, ...]:
-    normalized_topic = _normalize_match_text(topic)
-    topic_keywords: list[str] = []
-
-    for token in normalized_topic.split():
-        if token in _TOPIC_STOPWORDS:
-            continue
-        if len(token) == 1:
-            continue
-        if token.isdigit():
-            continue
-        topic_keywords.append(token)
-
-    return tuple(dict.fromkeys(topic_keywords))
-
-
 def _matches_phrase(phrase: str, text: str, tags: set[str]) -> bool:
-    normalized_phrase = _normalize_match_text(phrase)
+    normalized_phrase = normalize_match_text(phrase)
     if not normalized_phrase:
         return False
     if normalized_phrase in tags:
         return True
-    return f" {normalized_phrase} " in f" {text} "
-
-
-def _normalize_match_text(value: str) -> str:
-    normalized = value.casefold().replace("-", " ").replace("_", " ")
-    normalized = _NON_WORD_RE.sub(" ", normalized)
-    normalized = _MULTISPACE_RE.sub(" ", normalized).strip()
-    return normalized
+    return contains_phrase(normalized_phrase, text)

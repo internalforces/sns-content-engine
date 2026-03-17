@@ -9,36 +9,13 @@ from typing import Literal
 import re
 
 from app.config import AccountConfig
+from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls, topic_keywords
 from app.storage import ContentBrief, DraftVariant, DraftVariantState
 
 DraftValidationSeverity = Literal["error", "warning"]
 
 _WHITESPACE_RE = re.compile(r"\s+")
-_NON_WORD_RE = re.compile(r"[^\w\s]")
 _URL_RE = re.compile(r"https?://\S+")
-_TOPIC_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "daily",
-    "for",
-    "guide",
-    "guides",
-    "how",
-    "in",
-    "news",
-    "of",
-    "on",
-    "the",
-    "tips",
-    "to",
-    "tool",
-    "tools",
-    "update",
-    "updates",
-    "workflow",
-    "workflows",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,11 +151,11 @@ def _validate_banned_phrases(
     *,
     banned_phrases: tuple[str, ...],
 ) -> tuple[DraftValidationIssue, ...]:
-    normalized_body = _normalize_match_text(body)
+    normalized_body = normalize_match_text(body)
     issues: list[DraftValidationIssue] = []
 
     for phrase in banned_phrases:
-        if not _matches_phrase(phrase, normalized_body):
+        if not contains_phrase(phrase, normalized_body):
             continue
 
         issues.append(
@@ -301,9 +278,9 @@ def _validate_topic_guard(
     account: AccountConfig,
     hard_failure: bool,
 ) -> tuple[DraftValidationIssue, ...]:
-    normalized_body = _normalize_match_text(body)
+    normalized_body = normalize_match_text(strip_urls(body))
     candidates = _build_topic_candidates(account, content_brief)
-    if not candidates or any(_matches_phrase(candidate, normalized_body) for candidate in candidates):
+    if not candidates or any(contains_phrase(candidate, normalized_body) for candidate in candidates):
         return ()
 
     severity: DraftValidationSeverity = "error" if hard_failure else "warning"
@@ -325,39 +302,11 @@ def _build_topic_candidates(
         *account.matching.include_keywords,
         *account.matching.source_tags,
         *content_brief.tags,
-        *_topic_keywords(account.topic),
+        *topic_keywords(account.topic),
     ]
-    normalized = [_normalize_match_text(candidate) for candidate in candidates]
+    normalized = [normalize_match_text(candidate) for candidate in candidates]
     return tuple(dict.fromkeys(candidate for candidate in normalized if candidate))
-
-
-def _topic_keywords(topic: str) -> tuple[str, ...]:
-    keywords: list[str] = []
-
-    for token in _normalize_match_text(topic).split():
-        if token in _TOPIC_STOPWORDS:
-            continue
-        if len(token) == 1:
-            continue
-        if token.isdigit():
-            continue
-        keywords.append(token)
-
-    return tuple(dict.fromkeys(keywords))
-
-
-def _matches_phrase(phrase: str, normalized_text: str) -> bool:
-    normalized_phrase = _normalize_match_text(phrase)
-    if not normalized_phrase:
-        return False
-    return f" {normalized_phrase} " in f" {normalized_text} "
 
 
 def _normalize_body(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", value).strip()
-
-
-def _normalize_match_text(value: str) -> str:
-    normalized = _normalize_body(value).casefold().replace("-", " ").replace("_", " ")
-    normalized = _NON_WORD_RE.sub(" ", normalized)
-    return _WHITESPACE_RE.sub(" ", normalized).strip()
