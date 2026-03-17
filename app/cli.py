@@ -202,6 +202,7 @@ def generate_drafts_command(
     typer.echo(f"draft sets created: {result.created_count}")
     typer.echo(f"draft sets existing: {result.existing_count}")
     typer.echo(f"no x channel: {result.no_channel_count}")
+    typer.echo(f"missing account: {result.missing_account_count}")
     typer.echo(f"draft variants created: {result.created_variant_count}")
 
 

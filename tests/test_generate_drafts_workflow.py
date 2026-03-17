@@ -114,6 +114,34 @@ def test_generate_drafts_reports_no_channel_when_account_lacks_x(tmp_path: Path)
     assert stored_drafts == []
 
 
+def test_generate_drafts_skips_missing_account_and_continues_processing(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+
+    with session_scope(session_factory) as session:
+        missing_brief = _create_content_brief(session, account_key="deleted_daily")
+        active_brief = _create_content_brief(session, account_key="ai_tools_daily")
+        active_brief_id = active_brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.processed_content_brief_ids == (missing_brief.id, active_brief_id)
+    assert result.created_count == 1
+    assert result.existing_count == 0
+    assert result.no_channel_count == 0
+    assert result.missing_account_count == 1
+    assert result.created_variant_count == 3
+    assert result.counts_by_status() == {"created": 1, "missing_account": 1}
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            active_brief_id,
+            "x",
+        )
+
+    assert len(stored_drafts) == 3
+
+
 def test_generate_drafts_rejects_invalid_variant_count(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     _write_project_config(tmp_path)
@@ -129,23 +157,25 @@ def _build_session_factory(tmp_path: Path):
 
 
 def _create_content_brief(session, *, account_key: str) -> ContentBrief:
+    title = f"Useful AI workflow patterns for {account_key}"
+    summary = f"A concise guide for operators working on {account_key}."
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
             external_id=f"{account_key}-entry",
             source_url=f"https://example.com/{account_key}/post",
-            title="Useful AI workflow patterns",
-            summary="A concise guide for operators.",
+            title=title,
+            summary=summary,
         )
     )
     return ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,
             account_key=account_key,
-            title="Useful AI workflow patterns",
-            summary="A concise guide for operators.",
+            title=title,
+            summary=summary,
             key_points=[
-                "Useful AI workflow patterns",
+                title,
                 "Tight review loops",
                 "Better scheduling",
             ],

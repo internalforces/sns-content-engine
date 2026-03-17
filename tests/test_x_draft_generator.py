@@ -32,6 +32,32 @@ def test_fake_llm_provider_is_deterministic_and_respects_request_constraints() -
     assert all(len(variant) <= request.max_chars for variant in first)
 
 
+def test_fake_llm_provider_output_changes_when_prompts_change() -> None:
+    provider = FakeLLMProvider()
+    left = DraftGenerationRequest(
+        channel="x",
+        system_prompt="Keep posts practical for founders and operators.",
+        user_prompt="Write about useful AI workflow patterns.",
+        landing_url="https://gilgop.cloud/ai-tools",
+        max_chars=140,
+        variant_count=2,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops"),
+    )
+    right = DraftGenerationRequest(
+        channel="x",
+        system_prompt="Keep posts analytical for investors and market watchers.",
+        user_prompt="Write about useful AI workflow patterns.",
+        landing_url="https://gilgop.cloud/ai-tools",
+        max_chars=140,
+        variant_count=2,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops"),
+    )
+
+    assert provider.generate_variants(left) != provider.generate_variants(right)
+
+
 def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> None:
     provider = _CapturingProvider(
         (

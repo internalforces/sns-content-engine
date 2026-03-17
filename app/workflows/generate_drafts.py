@@ -62,6 +62,12 @@ class GenerateDraftsResult:
         return sum(outcome.status == "no_channel" for outcome in self.outcomes)
 
     @property
+    def missing_account_count(self) -> int:
+        """Return the number of briefs whose configured account is no longer present."""
+
+        return sum(outcome.status == "missing_account" for outcome in self.outcomes)
+
+    @property
     def created_variant_count(self) -> int:
         """Return the total number of new draft variants stored."""
 
@@ -109,17 +115,6 @@ def generate_drafts(
             outcomes: list[GenerateDraftOutcome] = []
 
             for brief in stored_briefs:
-                account = registry.get_account(brief.account_key)
-
-                if "x" not in account.channels:
-                    outcomes.append(
-                        GenerateDraftOutcome(
-                            content_brief_id=brief.id,
-                            status="no_channel",
-                        )
-                    )
-                    continue
-
                 existing_drafts = drafts.list_by_content_brief_and_channel(brief.id, "x")
                 if existing_drafts:
                     outcomes.append(
@@ -127,6 +122,26 @@ def generate_drafts(
                             content_brief_id=brief.id,
                             status="existing",
                             channel="x",
+                        )
+                    )
+                    continue
+
+                try:
+                    account = registry.get_account(brief.account_key)
+                except KeyError:
+                    outcomes.append(
+                        GenerateDraftOutcome(
+                            content_brief_id=brief.id,
+                            status="missing_account",
+                        )
+                    )
+                    continue
+
+                if "x" not in account.channels:
+                    outcomes.append(
+                        GenerateDraftOutcome(
+                            content_brief_id=brief.id,
+                            status="no_channel",
                         )
                     )
                     continue
@@ -139,25 +154,27 @@ def generate_drafts(
                     prompt_profile=prompt_profile,
                     variant_count=variant_count,
                 )
-                created_drafts: list[DraftVariant] = []
+                created_draft_ids: list[int] = []
+                created_any = False
                 for index, body in enumerate(generated_bodies):
-                    created_drafts.append(
-                        drafts.add(
-                            DraftVariant(
-                                content_brief_id=brief.id,
-                                channel="x",
-                                variant_index=index,
-                                body=body,
-                            )
+                    stored_draft, was_created = drafts.get_or_create(
+                        DraftVariant(
+                            content_brief_id=brief.id,
+                            channel="x",
+                            variant_index=index,
+                            body=body,
                         )
                     )
+                    if was_created:
+                        created_any = True
+                        created_draft_ids.append(stored_draft.id)
 
                 outcomes.append(
                     GenerateDraftOutcome(
                         content_brief_id=brief.id,
-                        status="created",
+                        status="created" if created_any else "existing",
                         channel="x",
-                        draft_variant_ids=tuple(draft.id for draft in created_drafts),
+                        draft_variant_ids=tuple(created_draft_ids),
                     )
                 )
     finally:

@@ -230,6 +230,14 @@ class DraftVariant(Base):
     """Channel-specific draft output awaiting review."""
 
     __tablename__ = "draft_variants"
+    __table_args__ = (
+        UniqueConstraint(
+            "content_brief_id",
+            "channel",
+            "variant_index",
+            name="uq_draft_variants_content_brief_id_channel_variant_index",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     content_brief_id: Mapped[int] = mapped_column(
