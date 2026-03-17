@@ -128,7 +128,7 @@ def build_content_briefs(
                     continue
 
                 source_tags = extract_source_tags(source_item.raw_payload or {})
-                created_any = False
+                brief_available = False
 
                 for match_candidate in top_matches:
                     account_key = match_candidate.account_key
@@ -137,7 +137,6 @@ def build_content_briefs(
                     brief_data = builder.build(
                         source_item=source_item,
                         account_id=account_key,
-                        account=account,
                         match_candidate=match_candidate,
                         landing_decision=landing_decision,
                     )
@@ -152,9 +151,9 @@ def build_content_briefs(
                             content_brief_id=stored_brief.id,
                         )
                     )
-                    created_any = created_any or was_created
+                    brief_available = True
 
-                if created_any:
+                if brief_available:
                     source_item.state = SourceItemState.BRIEF_CREATED
                     session.flush()
     finally:

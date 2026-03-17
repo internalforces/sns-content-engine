@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from app.config import AccountConfig
 from app.domain import AccountMatchCandidate, LandingDecision
 from app.services import ContentBriefBuilder
 from app.storage import SourceItem
@@ -20,7 +19,6 @@ def test_builder_extracts_key_points_in_priority_order_and_caps_at_three() -> No
             raw_payload={"tags": ["ai"]},
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=AccountMatchCandidate(
             account_key="ai_tools_daily",
             score=21,
@@ -50,7 +48,6 @@ def test_builder_prefers_source_tags_over_match_evidence() -> None:
             raw_payload={"tags": ["AI", "Automation", "AI"]},
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=AccountMatchCandidate(
             account_key="ai_tools_daily",
             score=21,
@@ -74,7 +71,6 @@ def test_builder_uses_match_evidence_tags_when_source_tags_are_missing() -> None
     brief = builder.build(
         source_item=_build_source_item(raw_payload={}),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=AccountMatchCandidate(
             account_key="ai_tools_daily",
             score=21,
@@ -107,7 +103,6 @@ def test_builder_assigns_expected_angle_labels() -> None:
             summary="A practical tutorial for review teams.",
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=_build_match_candidate(),
         landing_decision=_build_landing_decision(),
     )
@@ -117,7 +112,6 @@ def test_builder_assigns_expected_angle_labels() -> None:
             summary="The launch adds routing automation.",
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=_build_match_candidate(),
         landing_decision=_build_landing_decision(),
     )
@@ -127,7 +121,6 @@ def test_builder_assigns_expected_angle_labels() -> None:
             summary="Fresh survey data across SaaS teams.",
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=_build_match_candidate(),
         landing_decision=_build_landing_decision(),
     )
@@ -137,7 +130,6 @@ def test_builder_assigns_expected_angle_labels() -> None:
             summary="Operators share lessons from niche accounts.",
         ),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=_build_match_candidate(),
         landing_decision=_build_landing_decision(),
     )
@@ -154,7 +146,6 @@ def test_builder_returns_channel_neutral_brief_shape() -> None:
     brief = builder.build(
         source_item=_build_source_item(),
         account_id="ai_tools_daily",
-        account=_build_account(),
         match_candidate=_build_match_candidate(),
         landing_decision=_build_landing_decision(),
     )
@@ -187,28 +178,6 @@ def _build_source_item(
         summary=summary,
         raw_payload=raw_payload or {},
     )
-
-
-def _build_account() -> AccountConfig:
-    return AccountConfig.model_validate(
-        {
-            "topic": "AI tools and workflows",
-            "source_sets": ["ai_tools_primary"],
-            "prompt_profile": "ai_tools_default",
-            "landing": {
-                "fallback_url": "https://gilgop.cloud/ai-tools",
-                "rules": [],
-            },
-            "channels": {
-                "x": {
-                    "schedule": {"cron": "0 9 * * *"},
-                    "render": {"max_chars": 280},
-                }
-            },
-        }
-    )
-
-
 def _build_match_candidate() -> AccountMatchCandidate:
     return AccountMatchCandidate(
         account_key="ai_tools_daily",

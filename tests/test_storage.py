@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from itertools import count
 
@@ -375,6 +376,40 @@ def test_content_brief_get_or_create_is_idempotent(session_factory) -> None:
     assert second_brief.title == "Stored title"
 
 
+def test_content_brief_get_or_create_recovers_from_integrity_error() -> None:
+    existing = ContentBrief(
+        id=99,
+        source_item_id=42,
+        account_key="ai_tools_daily",
+        title="Stored title",
+        key_points=["Stored title"],
+        landing_url="https://gilgop.cloud/ai-tools",
+        tags=["ai"],
+        angle="topic_takeaway",
+        language="en",
+    )
+    session = _IntegrityErrorRecoveringSession(existing)
+    repository = ContentBriefRepository(session)
+
+    brief, was_created = repository.get_or_create(
+        ContentBrief(
+            source_item_id=42,
+            account_key="ai_tools_daily",
+            title="Racing insert",
+            key_points=["Racing insert"],
+            landing_url="https://gilgop.cloud/ai-tools",
+            tags=["ai"],
+            angle="topic_takeaway",
+            language="en",
+        )
+    )
+
+    assert was_created is False
+    assert brief is existing
+    assert session.scalar_call_count == 2
+    assert session.flush_call_count == 1
+
+
 def test_content_brief_duplicate_source_account_is_rejected(session_factory) -> None:
     with session_scope(session_factory) as session:
         source_item = SourceItemRepository(session).add(
@@ -705,3 +740,26 @@ def _create_publish_job(
             scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
         )
     )
+
+
+class _IntegrityErrorRecoveringSession:
+    def __init__(self, existing_brief: ContentBrief) -> None:
+        self._existing_brief = existing_brief
+        self.scalar_call_count = 0
+        self.flush_call_count = 0
+
+    def add(self, _brief: ContentBrief) -> None:
+        return None
+
+    def begin_nested(self):
+        return nullcontext()
+
+    def flush(self) -> None:
+        self.flush_call_count += 1
+        raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    def scalar(self, _statement):
+        self.scalar_call_count += 1
+        if self.scalar_call_count == 1:
+            return None
+        return self._existing_brief

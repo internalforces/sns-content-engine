@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-from app.config import AccountConfig
 from app.domain import (
     AccountMatchCandidate,
     ContentBriefData,
@@ -29,7 +28,6 @@ class ContentBriefBuilder:
         *,
         source_item: SourceItem,
         account_id: str,
-        account: AccountConfig,
         match_candidate: AccountMatchCandidate,
         landing_decision: LandingDecision,
     ) -> ContentBriefData:

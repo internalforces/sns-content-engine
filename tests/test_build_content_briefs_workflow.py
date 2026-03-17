@@ -294,7 +294,7 @@ def test_build_content_briefs_reports_existing_brief_without_duplication(tmp_pat
         stored_briefs = ContentBriefRepository(session).list()
 
     assert stored_item is not None
-    assert stored_item.state is SourceItemState.INGESTED
+    assert stored_item.state is SourceItemState.BRIEF_CREATED
     assert len(stored_briefs) == 1
 
 

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.storage.models import (
@@ -169,8 +170,15 @@ class ContentBriefRepository:
             return existing, False
 
         brief.source_item_id = source_item_id
-        self.session.add(brief)
-        self.session.flush()
+        try:
+            with self.session.begin_nested():
+                self.session.add(brief)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_by_source_item_and_account(source_item_id, brief.account_key)
+            if existing is None:
+                raise
+            return existing, False
         return brief, True
 
     def get(self, brief_id: int) -> ContentBrief | None:
