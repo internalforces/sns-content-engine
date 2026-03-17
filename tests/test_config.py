@@ -30,6 +30,10 @@ def test_registry_loads_sample_config_directory() -> None:
     assert list(registry.accounts) == ["ai_tools_daily"]
     assert str(account.landing.fallback_url) == "https://gilgop.cloud/ai-tools"
     assert str(account.landing.rules[0].url) == "https://gilgop.cloud/ai-agents"
+    assert account.matching.include_keywords == ("ai", "agent", "automation")
+    assert account.matching.exclude_keywords == ("earnings", "stock")
+    assert account.matching.source_tags == ("ai", "automation")
+    assert account.matching.strict_topic_guard is True
     assert channel.schedule.cron == "0 9 * * *"
     assert channel.render.max_chars == 280
     assert registry.get_prompt_profile("ai_tools_default").system_template.startswith("You are an editor")
@@ -359,6 +363,41 @@ def test_negative_schedule_values_raise_validation_error(tmp_path: Path) -> None
     message = str(exc_info.value)
     assert "accounts.ai_tools_daily.channels.x.schedule.jitter_minutes" in message
     assert "greater than or equal to 0" in message
+
+
+def test_blank_matching_keyword_raises_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            matching:
+              include_keywords:
+                - "   "
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.matching.include_keywords" in message
+    assert "must not be empty" in message
 
 
 def _write_valid_prompts_yaml(tmp_path: Path) -> None:

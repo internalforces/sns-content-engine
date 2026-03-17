@@ -1,5 +1,6 @@
 """Shared domain models for the sns-content-engine."""
 
+from app.domain.account_matching import AccountMatchCandidate, select_top_account_candidates
 from app.domain.source_deduplication import (
     DuplicateCheckResult,
     DuplicateReason,
@@ -17,6 +18,7 @@ from app.domain.source_ingestion import (
 )
 
 __all__ = [
+    "AccountMatchCandidate",
     "DuplicateCheckResult",
     "DuplicateReason",
     "RawSourceItem",
@@ -28,4 +30,5 @@ __all__ = [
     "build_normalized_title_hash",
     "canonicalize_url",
     "normalize_title_text",
+    "select_top_account_candidates",
 ]

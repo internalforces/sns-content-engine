@@ -68,6 +68,7 @@ class RssSourceConnector(SourceConnector):
         items = []
         failures = []
         for index, item in enumerate(_children_named(channel, "item"), start=1):
+            categories = _child_texts(item, "category")
             raw_item = RawSourceItem(
                 source_id=source_id,
                 external_id=_child_text(item, "guid") or _child_text(item, "link"),
@@ -79,6 +80,7 @@ class RssSourceConnector(SourceConnector):
                     "kind": "rss",
                     "guid": _child_text(item, "guid"),
                     "link": _child_text(item, "link"),
+                    "categories": categories,
                 },
             )
             _append_normalized_item(
@@ -97,6 +99,7 @@ class RssSourceConnector(SourceConnector):
         failures = []
         for index, entry in enumerate(_children_named(root, "entry"), start=1):
             link = _atom_entry_link(entry)
+            categories = _atom_category_terms(entry)
             raw_item = RawSourceItem(
                 source_id=source_id,
                 external_id=_child_text(entry, "id") or link,
@@ -108,6 +111,7 @@ class RssSourceConnector(SourceConnector):
                     "kind": "atom",
                     "id": _child_text(entry, "id"),
                     "link": link,
+                    "categories": categories,
                 },
             )
             _append_normalized_item(
@@ -172,6 +176,17 @@ def _child_text(element: ElementTree.Element, name: str) -> str | None:
     return None
 
 
+def _child_texts(element: ElementTree.Element, name: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for child in element:
+        if _local_name(child.tag) != name or child.text is None:
+            continue
+        normalized = child.text.strip()
+        if normalized:
+            values.append(normalized)
+    return tuple(values)
+
+
 def _atom_entry_link(entry: ElementTree.Element) -> str | None:
     alternate_href: str | None = None
     first_href: str | None = None
@@ -186,3 +201,14 @@ def _atom_entry_link(entry: ElementTree.Element) -> str | None:
             alternate_href = href
             break
     return alternate_href or first_href
+
+
+def _atom_category_terms(entry: ElementTree.Element) -> tuple[str, ...]:
+    values: list[str] = []
+    for child in entry:
+        if _local_name(child.tag) != "category":
+            continue
+        term = child.attrib.get("term", "").strip()
+        if term:
+            values.append(term)
+    return tuple(values)

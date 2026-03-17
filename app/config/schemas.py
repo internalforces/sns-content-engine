@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Literal, Mapping
 
 from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+
+from app.domain.source_deduplication import normalize_title_text
 
 
 class FrozenConfigModel(BaseModel):
@@ -30,6 +33,29 @@ def _normalize_non_empty_string_sequence(
     if not normalized:
         raise ValueError(f"{label} must contain at least one value")
     return normalized
+
+
+def _normalize_string_sequence(
+    values: tuple[str, ...] | list[str],
+    *,
+    label: str,
+    normalizer: Callable[[str], str] | None = None,
+) -> tuple[str, ...]:
+    normalized_values: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        normalized = _normalize_non_empty_string(value, label=label)
+        if normalizer is None:
+            normalized = normalized.casefold()
+        else:
+            normalized = normalizer(normalized)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_values.append(normalized)
+
+    return tuple(normalized_values)
 
 
 def _validate_mapping_keys(
@@ -96,6 +122,29 @@ class ChannelConfig(FrozenConfigModel):
     render: RenderConfig
 
 
+class AccountMatchingConfig(FrozenConfigModel):
+    """Deterministic rule-based account matching configuration."""
+
+    include_keywords: tuple[str, ...] = Field(default_factory=tuple)
+    exclude_keywords: tuple[str, ...] = Field(default_factory=tuple)
+    source_tags: tuple[str, ...] = Field(default_factory=tuple)
+    strict_topic_guard: bool = False
+
+    @field_validator("include_keywords", "exclude_keywords")
+    @classmethod
+    def validate_keyword_sequences(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_string_sequence(values, label="matching value")
+
+    @field_validator("source_tags")
+    @classmethod
+    def validate_source_tags(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_string_sequence(
+            values,
+            label="matching value",
+            normalizer=normalize_title_text,
+        )
+
+
 class AccountConfig(FrozenConfigModel):
     """Account-level content engine settings."""
 
@@ -103,6 +152,7 @@ class AccountConfig(FrozenConfigModel):
     source_sets: tuple[str, ...] = Field(min_length=1)
     prompt_profile: str
     landing: LandingConfig
+    matching: AccountMatchingConfig = Field(default_factory=AccountMatchingConfig)
     channels: Mapping[str, ChannelConfig] = Field(min_length=1)
 
     @field_validator("topic", "prompt_profile")
