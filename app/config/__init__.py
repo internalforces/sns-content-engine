@@ -6,6 +6,7 @@ from app.config.registry import ConfigRegistry
 from app.config.schemas import (
     AccountConfig,
     AccountsFileConfig,
+    BaseSourceConfig,
     ChannelConfig,
     LandingConfig,
     LandingRuleConfig,
@@ -23,6 +24,7 @@ from app.config.schemas import (
 __all__ = [
     "AccountConfig",
     "AccountsFileConfig",
+    "BaseSourceConfig",
     "ChannelConfig",
     "ConfigError",
     "ConfigLoadError",

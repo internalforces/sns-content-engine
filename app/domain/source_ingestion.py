@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Mapping
 
+from app.domain.source_deduplication import (
+    build_dedupe_fingerprint,
+    build_normalized_title_hash,
+    canonicalize_url,
+    normalize_title_text,
+)
+
 
 class SourceNormalizationError(ValueError):
     """Raised when a raw source item cannot be normalized safely."""
@@ -35,6 +42,32 @@ class SourceItemCandidate:
     summary: str | None = None
     published_at: datetime | None = None
     raw_payload: dict[str, Any] = field(default_factory=dict)
+    canonical_url: str = field(init=False)
+    normalized_title: str = field(init=False)
+    normalized_title_hash: str = field(init=False)
+    dedupe_fingerprint: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Derive deterministic duplicate-check fields from the candidate payload."""
+
+        try:
+            canonical_url = canonicalize_url(self.source_url)
+            normalized_title = normalize_title_text(self.title)
+        except ValueError as exc:
+            raise SourceNormalizationError(str(exc)) from exc
+
+        object.__setattr__(self, "canonical_url", canonical_url)
+        object.__setattr__(self, "normalized_title", normalized_title)
+        object.__setattr__(
+            self,
+            "normalized_title_hash",
+            build_normalized_title_hash(self.title),
+        )
+        object.__setattr__(
+            self,
+            "dedupe_fingerprint",
+            build_dedupe_fingerprint(title=self.title, summary=self.summary),
+        )
 
 
 @dataclass(frozen=True, slots=True)

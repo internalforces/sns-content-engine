@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app.storage import (
     ContentBrief,
     ContentBriefRepository,
+    DatabaseSchemaError,
     DraftVariant,
     DraftVariantRepository,
     DraftVariantState,
@@ -24,6 +25,7 @@ from app.storage import (
     SourceItem,
     SourceItemRepository,
     SourceItemState,
+    bootstrap_database,
     create_all_tables,
     create_database_engine,
     create_session_factory,
@@ -60,6 +62,7 @@ def test_create_all_creates_expected_tables(database_url: str) -> None:
         "draft_variants",
         "publish_jobs",
         "publish_logs",
+        "source_item_recent_fingerprint_claims",
         "source_items",
     }
 
@@ -92,6 +95,10 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
     assert stored_item.state is SourceItemState.INGESTED
     assert stored_item.published_at == datetime(2026, 3, 16, 12, 0, tzinfo=timezone.utc)
     assert stored_item.published_at.tzinfo == timezone.utc
+    assert stored_item.canonical_url == "https://example.com/posts/1"
+    assert stored_item.normalized_title == "useful ai tool"
+    assert len(stored_item.normalized_title_hash) == 64
+    assert len(stored_item.dedupe_fingerprint) == 64
 
 
 def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
@@ -118,6 +125,112 @@ def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
     assert was_created_again is False
     assert second_item.id == first_item.id
     assert second_item.title == "Original title"
+
+
+def test_source_item_duplicate_lookup_supports_canonical_url_and_title_hash(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        created = repository.add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-lookup",
+                source_url="https://example.com/posts/lookup?utm_source=x",
+                title="AI Tool Launch",
+                summary="A short summary",
+            )
+        )
+
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        by_url = repository.get_by_canonical_url("https://example.com/posts/lookup")
+        by_title_hash = repository.get_by_normalized_title_hash(created.normalized_title_hash)
+
+    assert by_url is not None
+    assert by_url.id == created.id
+    assert by_title_hash is not None
+    assert by_title_hash.id == created.id
+
+
+def test_source_item_duplicate_canonical_url_is_rejected(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-a",
+                source_url="https://example.com/posts/same",
+                title="First title",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            SourceItemRepository(session).add(
+                SourceItem(
+                    source_key="ai_tools_manual",
+                    external_id="entry-b",
+                    source_url="https://example.com/posts/same?utm_source=x",
+                    title="Second title",
+                )
+            )
+
+
+def test_source_item_duplicate_normalized_title_hash_is_rejected(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-title-a",
+                source_url="https://example.com/posts/title-a",
+                title="AI Tool Launch",
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            SourceItemRepository(session).add(
+                SourceItem(
+                    source_key="ai_tools_manual",
+                    external_id="entry-title-b",
+                    source_url="https://example.com/posts/title-b",
+                    title="AI   Tool: Launch!",
+                )
+            )
+
+
+def test_source_item_recent_fingerprint_lookup_honors_window_cutoff(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        repository.add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-old",
+                source_url="https://example.com/posts/old",
+                title="Shared Summary Title",
+                summary="Same text",
+                created_at=datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        recent = repository.add(
+            SourceItem(
+                source_key="ai_tools_manual",
+                external_id="entry-recent",
+                source_url="https://example.com/posts/recent",
+                title="Title Shared Summary",
+                summary="Same text",
+                created_at=datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        fingerprint = recent.dedupe_fingerprint
+
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        match = repository.get_recent_by_dedupe_fingerprint(
+            fingerprint,
+            created_since=datetime(2026, 3, 10, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert match is not None
+    assert match.id == recent.id
 
 
 def test_source_item_duplicate_identity_is_rejected(session_factory) -> None:
@@ -323,6 +436,94 @@ def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> N
     assert items == []
 
 
+def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE source_items (
+                    id INTEGER PRIMARY KEY,
+                    source_key VARCHAR(100) NOT NULL,
+                    external_id VARCHAR(255) NOT NULL,
+                    source_url VARCHAR(2048) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    summary TEXT,
+                    published_at DATETIME,
+                    raw_payload JSON,
+                    state VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE content_briefs (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    account_key VARCHAR(100) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    summary TEXT,
+                    landing_url VARCHAR(2048) NOT NULL,
+                    tags JSON NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE draft_variants (
+                    id INTEGER PRIMARY KEY,
+                    content_brief_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    variant_index INTEGER NOT NULL,
+                    body TEXT NOT NULL,
+                    state VARCHAR(32) NOT NULL,
+                    rejection_reason TEXT,
+                    reviewed_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE publish_jobs (
+                    id INTEGER PRIMARY KEY,
+                    draft_variant_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    scheduled_for DATETIME,
+                    state VARCHAR(32) NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    external_post_id VARCHAR(255),
+                    last_error TEXT,
+                    published_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE publish_logs (
+                    id INTEGER PRIMARY KEY,
+                    publish_job_id INTEGER NOT NULL,
+                    event_type VARCHAR(100) NOT NULL,
+                    message TEXT NOT NULL,
+                    payload JSON,
+                    created_at DATETIME NOT NULL
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(DatabaseSchemaError, match="outdated"):
+        bootstrap_database(database_url)
+
+
 def _create_draft_variant(
     session,
     *,
@@ -334,8 +535,8 @@ def _create_draft_variant(
             source_key="ai_tools_rss",
             external_id=f"draft-source-{source_id}",
             source_url=f"https://example.com/posts/draft/{source_id}",
-            title="Draft source",
-            summary="Draft source summary",
+            title=f"Draft source {source_id}",
+            summary=f"Draft source summary {source_id}",
         )
     )
     brief = ContentBriefRepository(session).add(

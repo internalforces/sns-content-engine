@@ -56,6 +56,7 @@ Run the CLI through the console script:
 sns-engine version
 sns-engine healthcheck
 sns-engine discover
+sns-engine ingest
 sns-engine db init
 ```
 
@@ -65,10 +66,15 @@ Run the same commands through the module entrypoint:
 python -m app.cli version
 python -m app.cli healthcheck
 python -m app.cli discover
+python -m app.cli ingest
 python -m app.cli db init
 ```
 
 The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV connectors, and reports normalized source item candidates plus captured failures.
+
+The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
+
+If you already have an older SQLite file from a previous milestone, recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
 
 Initialize the schema through the thin script wrapper:
 

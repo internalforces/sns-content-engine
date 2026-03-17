@@ -9,8 +9,9 @@ from typer.testing import CliRunner
 
 from app import __version__
 from app.cli import app
-from app.domain import SourceDiscoveryFailure, SourceItemCandidate
-from app.workflows import DiscoverSourcesResult
+from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
+from app.storage import DatabaseSchemaError
+from app.workflows import DiscoverSourcesResult, IngestSourcesResult, SourceIngestOutcome
 
 runner = CliRunner()
 
@@ -45,6 +46,7 @@ def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
             "draft_variants",
             "publish_jobs",
             "publish_logs",
+            "source_item_recent_fingerprint_claims",
             "source_items",
         }
     finally:
@@ -107,6 +109,78 @@ def test_discover_command_exits_nonzero_when_failures_are_present(monkeypatch) -
     assert "ai_tools_sitemap [fetch] timeout" in result.output
 
 
+def test_ingest_command_reports_saved_and_duplicate_counts(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "ingest_sources",
+        lambda _config_dir, database_url=None: IngestSourcesResult(
+            outcomes=(
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-1",
+                        source_url="https://example.com/posts/1",
+                        title="Fresh item",
+                    ),
+                    status="saved",
+                    source_item_id=1,
+                ),
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-2",
+                        source_url="https://example.com/posts/2",
+                        title="Duplicate item",
+                    ),
+                    status="duplicate",
+                    duplicate_reason=DuplicateReason.CANONICAL_URL,
+                    matched_item_id=9,
+                ),
+            ),
+            failures=(),
+            processed_sources=("ai_tools_rss",),
+        ),
+    )
+
+    result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 0
+    assert "processed 2 discovered candidates from 1 sources" in result.stdout
+    assert "saved: 1" in result.stdout
+    assert "duplicates blocked: 1" in result.stdout
+    assert "duplicates[canonical_url]: 1" in result.stdout
+
+
+def test_ingest_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "ingest_sources",
+        lambda _config_dir, database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
+def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "bootstrap_database",
+        lambda database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["db", "init"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
 def test_help_command_is_available() -> None:
     result = runner.invoke(app, ["--help"])
 
@@ -114,6 +188,7 @@ def test_help_command_is_available() -> None:
     assert "Usage" in result.stdout
     assert "db" in result.stdout
     assert "discover" in result.stdout
+    assert "ingest" in result.stdout
 
 
 def test_main_runs_the_typer_app(monkeypatch) -> None:

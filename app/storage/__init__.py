@@ -1,6 +1,7 @@
 """Storage primitives for the sns-content-engine database layer."""
 
 from app.storage.bootstrap import bootstrap_database, create_all_tables
+from app.storage.bootstrap import DatabaseSchemaError, ensure_database_schema_is_current
 from app.storage.database import (
     DEFAULT_DATABASE_URL,
     Base,
@@ -17,6 +18,7 @@ from app.storage.models import (
     PublishJobState,
     PublishLog,
     SourceItem,
+    SourceItemRecentFingerprintClaim,
     SourceItemState,
 )
 from app.storage.repositories import (
@@ -27,6 +29,7 @@ from app.storage.repositories import (
     PublishJobRepository,
     PublishLogRepository,
     SourceItemRepository,
+    SourceItemRecentFingerprintClaimRepository,
 )
 
 __all__ = [
@@ -34,9 +37,11 @@ __all__ = [
     "Base",
     "ContentBrief",
     "ContentBriefRepository",
+    "DatabaseSchemaError",
     "DraftVariant",
     "DraftVariantRepository",
     "DraftVariantState",
+    "ensure_database_schema_is_current",
     "InvalidStateTransitionError",
     "ManualApprovalRequiredError",
     "PublishJob",
@@ -45,6 +50,8 @@ __all__ = [
     "PublishLog",
     "PublishLogRepository",
     "SourceItem",
+    "SourceItemRecentFingerprintClaim",
+    "SourceItemRecentFingerprintClaimRepository",
     "SourceItemRepository",
     "SourceItemState",
     "bootstrap_database",

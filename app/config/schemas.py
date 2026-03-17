@@ -146,21 +146,27 @@ class SourceSetConfig(FrozenConfigModel):
         return _normalize_non_empty_string_sequence(values, label="source references")
 
 
-class RssSourceConfig(FrozenConfigModel):
+class BaseSourceConfig(FrozenConfigModel):
+    """Shared source configuration fields."""
+
+    duplicate_window_days: int = Field(default=30, ge=0)
+
+
+class RssSourceConfig(BaseSourceConfig):
     """RSS source definition."""
 
     type: Literal["rss"]
     url: HttpUrl
 
 
-class SitemapSourceConfig(FrozenConfigModel):
+class SitemapSourceConfig(BaseSourceConfig):
     """Sitemap source definition."""
 
     type: Literal["sitemap"]
     url: HttpUrl
 
 
-class ManualCsvSourceConfig(FrozenConfigModel):
+class ManualCsvSourceConfig(BaseSourceConfig):
     """Manual CSV source definition."""
 
     type: Literal["manual_csv"]
