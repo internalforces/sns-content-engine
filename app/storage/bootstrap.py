@@ -56,6 +56,20 @@ _REQUIRED_TABLE_COLUMNS = {
         "payload",
         "publish_job_id",
     },
+    "review_actions": {
+        "action_type",
+        "after_text",
+        "before_text",
+        "created_at",
+        "draft_state_after",
+        "draft_state_before",
+        "draft_variant_id",
+        "id",
+        "publish_job_id",
+        "rejection_reason",
+        "reviewer",
+        "scheduled_for",
+    },
     "source_item_recent_fingerprint_claims": {
         "created_at",
         "dedupe_fingerprint",
@@ -112,7 +126,7 @@ def ensure_database_schema_is_current(engine: Engine) -> None:
     missing_tables = sorted(set(_REQUIRED_TABLE_COLUMNS) - actual_tables)
     if missing_tables:
         raise DatabaseSchemaError(
-            "database schema is missing required tables: "
+            "database schema is outdated and is missing required tables: "
             f"{', '.join(missing_tables)}. Run `sns-engine db init` against a fresh database."
         )
 
@@ -155,7 +169,10 @@ def bootstrap_database(database_url: str | None = None) -> str:
     resolved_url = resolve_database_url(database_url)
     engine = create_database_engine(resolved_url)
     try:
-        create_all_tables(engine)
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        if not existing_tables:
+            create_all_tables(engine)
         ensure_database_schema_is_current(engine)
     finally:
         engine.dispose()

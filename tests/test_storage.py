@@ -23,6 +23,8 @@ from app.storage import (
     PublishJobRepository,
     PublishJobState,
     PublishLogRepository,
+    ReviewActionRepository,
+    ReviewActionType,
     SourceItem,
     SourceItemRepository,
     SourceItemState,
@@ -63,6 +65,7 @@ def test_create_all_creates_expected_tables(database_url: str) -> None:
         "draft_variants",
         "publish_jobs",
         "publish_logs",
+        "review_actions",
         "source_item_recent_fingerprint_claims",
         "source_items",
     }
@@ -667,6 +670,65 @@ def test_publish_job_forward_transitions_recheck_manual_approval(session_factory
             PublishJobRepository(session).transition_state(stored_job, PublishJobState.PUBLISHING)
 
 
+def test_review_action_repository_records_and_lists_for_draft(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session)
+        repository = ReviewActionRepository(session)
+        action = repository.record(
+            draft=draft,
+            action_type=ReviewActionType.EDIT,
+            reviewer="editor-a",
+            before_text="Draft text",
+            after_text="Updated draft text",
+            draft_state_before=DraftVariantState.PENDING_REVIEW,
+            draft_state_after=DraftVariantState.PENDING_REVIEW,
+        )
+        action_id = action.id
+        draft_id = draft.id
+
+    with session_scope(session_factory) as session:
+        stored_action = ReviewActionRepository(session).get(action_id)
+        draft_actions = ReviewActionRepository(session).list_for_draft(draft_id)
+
+    assert stored_action is not None
+    assert stored_action.reviewer == "editor-a"
+    assert stored_action.before_text == "Draft text"
+    assert stored_action.after_text == "Updated draft text"
+    assert stored_action.draft_state_before is DraftVariantState.PENDING_REVIEW
+    assert stored_action.draft_state_after is DraftVariantState.PENDING_REVIEW
+    assert [draft_action.id for draft_action in draft_actions] == [action_id]
+
+
+def test_publish_job_repository_detects_only_active_jobs_for_draft(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        cancelled_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        cancelled_job = repository.add(
+            PublishJob(
+                draft_variant=cancelled_draft,
+                channel="x",
+                scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        repository.transition_state(cancelled_job, PublishJobState.CANCELLED)
+        cancelled_draft_id = cancelled_draft.id
+
+        active_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        repository.add(
+            PublishJob(
+                draft_variant=active_draft,
+                channel="x",
+                scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        active_draft_id = active_draft.id
+
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        assert repository.has_active_job_for_draft(cancelled_draft_id) is False
+        assert repository.has_active_job_for_draft(active_draft_id) is True
+
+
 def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> None:
     with pytest.raises(RuntimeError):
         with session_scope(session_factory) as session:
@@ -835,6 +897,19 @@ def test_bootstrap_database_detects_missing_draft_variant_unique_constraint(data
         DatabaseSchemaError,
         match="draft_variants: missing unique constraints uq_draft_variants_content_brief_id_channel_variant_index",
     ):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_review_actions_table(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE review_actions")
+    finally:
+        engine.dispose()
+
+    with pytest.raises(DatabaseSchemaError, match="missing required tables: review_actions"):
         bootstrap_database(database_url)
 
 

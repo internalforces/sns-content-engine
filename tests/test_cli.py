@@ -1,5 +1,6 @@
 """Tests for the bootstrap CLI commands."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import app.cli as cli_module
@@ -10,7 +11,7 @@ from typer.testing import CliRunner
 from app import __version__
 from app.cli import app
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
-from app.storage import DatabaseSchemaError
+from app.storage import DatabaseSchemaError, DraftVariantState, ReviewActionType
 from app.workflows import (
     BuildContentBriefOutcome,
     BuildContentBriefsResult,
@@ -18,6 +19,10 @@ from app.workflows import (
     GenerateDraftOutcome,
     GenerateDraftsResult,
     IngestSourcesResult,
+    PendingReviewDraft,
+    PendingReviewDraftsResult,
+    ReviewDraftResult,
+    ReviewQueueError,
     SourceIngestOutcome,
 )
 
@@ -54,6 +59,7 @@ def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
             "draft_variants",
             "publish_jobs",
             "publish_logs",
+            "review_actions",
             "source_item_recent_fingerprint_claims",
             "source_items",
         }
@@ -280,6 +286,71 @@ def test_generate_drafts_command_rejects_invalid_variant_count() -> None:
     assert "--variant-count" in result.output
 
 
+def test_review_list_command_reports_pending_drafts(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "list_pending_review_drafts",
+        lambda database_url=None: PendingReviewDraftsResult(
+            drafts=(
+                PendingReviewDraft(
+                    draft_id=42,
+                    account_key="ai_tools_daily",
+                    channel="x",
+                    variant_index=0,
+                    created_at=datetime(2026, 3, 17, 9, 0, tzinfo=timezone.utc),
+                    title="Useful AI workflow patterns",
+                    body="Draft body https://gilgop.cloud/ai-tools",
+                ),
+            )
+        ),
+    )
+
+    result = runner.invoke(app, ["review", "list"])
+
+    assert result.exit_code == 0
+    assert "pending drafts: 1" in result.stdout
+    assert "draft_id: 42" in result.stdout
+    assert "account_key: ai_tools_daily" in result.stdout
+    assert "body: Draft body https://gilgop.cloud/ai-tools" in result.stdout
+
+
+def test_review_approve_command_reports_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "approve_draft",
+        lambda draft_id, reviewer=None, database_url=None: ReviewDraftResult(
+            draft_id=draft_id,
+            reviewer=reviewer or "ops-user",
+            action_type=ReviewActionType.APPROVE,
+            draft_state=DraftVariantState.APPROVED,
+            action_id=1001,
+        ),
+    )
+
+    result = runner.invoke(app, ["review", "approve", "42", "--reviewer", "ops-user"])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "approved draft 42 as ops-user"
+
+
+def test_review_schedule_command_surfaces_workflow_errors(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "schedule_draft",
+        lambda draft_id, scheduled_for, reviewer=None, database_url=None: (_ for _ in ()).throw(
+            ReviewQueueError("scheduled_for must include a timezone offset")
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        ["review", "schedule", "42", "--scheduled-for", "2026-03-18T09:00:00"],
+    )
+
+    assert result.exit_code == 1
+    assert "scheduled_for must include a timezone offset" in result.output
+
+
 def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
@@ -305,6 +376,7 @@ def test_help_command_is_available() -> None:
     assert "discover" in result.stdout
     assert "generate-drafts" in result.stdout
     assert "ingest" in result.stdout
+    assert "review" in result.stdout
 
 
 def test_main_runs_the_typer_app(monkeypatch) -> None:

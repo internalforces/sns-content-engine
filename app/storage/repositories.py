@@ -17,6 +17,8 @@ from app.storage.models import (
     PublishJob,
     PublishJobState,
     PublishLog,
+    ReviewAction,
+    ReviewActionType,
     SourceItem,
     SourceItemRecentFingerprintClaim,
     SourceItemState,
@@ -230,6 +232,10 @@ class DraftVariantRepository:
     def list(self) -> list[DraftVariant]:
         return list(self.session.scalars(select(DraftVariant).order_by(DraftVariant.id)))
 
+    def list_by_state(self, state: DraftVariantState) -> list[DraftVariant]:
+        statement = select(DraftVariant).where(DraftVariant.state == state).order_by(DraftVariant.id)
+        return list(self.session.scalars(statement))
+
     def list_by_content_brief_and_channel(
         self,
         content_brief_id: int,
@@ -322,6 +328,11 @@ class DraftVariantRepository:
 class PublishJobRepository:
     """Persistence and workflow operations for publish jobs."""
 
+    _active_states = (
+        PublishJobState.SCHEDULED,
+        PublishJobState.PUBLISHING,
+        PublishJobState.PUBLISHED,
+    )
     _allowed_transitions: dict[PublishJobState, tuple[PublishJobState, ...]] = {
         PublishJobState.SCHEDULED: (
             PublishJobState.PUBLISHING,
@@ -351,6 +362,13 @@ class PublishJobRepository:
 
     def list(self) -> list[PublishJob]:
         return list(self.session.scalars(select(PublishJob).order_by(PublishJob.id)))
+
+    def has_active_job_for_draft(self, draft_variant_id: int) -> bool:
+        statement = select(PublishJob.id).where(
+            PublishJob.draft_variant_id == draft_variant_id,
+            PublishJob.state.in_(self._active_states),
+        )
+        return self.session.scalar(statement) is not None
 
     def delete(self, job: PublishJob) -> None:
         self.session.delete(job)
@@ -447,3 +465,58 @@ class PublishLogRepository:
         self.session.add(log)
         self.session.flush()
         return log
+
+
+class ReviewActionRepository:
+    """Persistence operations for manual review audit rows."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, action: ReviewAction) -> ReviewAction:
+        self.session.add(action)
+        self.session.flush()
+        return action
+
+    def get(self, action_id: int) -> ReviewAction | None:
+        return self.session.get(ReviewAction, action_id)
+
+    def list(self) -> list[ReviewAction]:
+        return list(self.session.scalars(select(ReviewAction).order_by(ReviewAction.id)))
+
+    def list_for_draft(self, draft_variant_id: int) -> Sequence[ReviewAction]:
+        statement = select(ReviewAction).where(ReviewAction.draft_variant_id == draft_variant_id).order_by(
+            ReviewAction.created_at,
+            ReviewAction.id,
+        )
+        return list(self.session.scalars(statement))
+
+    def record(
+        self,
+        *,
+        draft: DraftVariant,
+        action_type: ReviewActionType,
+        reviewer: str,
+        before_text: str,
+        after_text: str,
+        draft_state_before: DraftVariantState,
+        draft_state_after: DraftVariantState,
+        rejection_reason: str | None = None,
+        scheduled_for: datetime | None = None,
+        publish_job: PublishJob | None = None,
+    ) -> ReviewAction:
+        action = ReviewAction(
+            draft_variant=draft,
+            action_type=action_type,
+            reviewer=reviewer.strip(),
+            before_text=before_text,
+            after_text=after_text,
+            draft_state_before=draft_state_before,
+            draft_state_after=draft_state_after,
+            rejection_reason=rejection_reason,
+            scheduled_for=scheduled_for,
+            publish_job=publish_job,
+        )
+        self.session.add(action)
+        self.session.flush()
+        return action

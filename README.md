@@ -13,7 +13,7 @@ The initial MVP is intentionally limited to:
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, local developer entrypoints, and the MVP database layer. It does not include real publisher integrations, scheduler workflows, or review UI yet.
+The current milestone includes configuration loading, source ingestion, brief generation, draft generation, and a CLI-first manual review queue. It does not include real publisher integrations, scheduler execution, or review UI yet.
 
 ## Repository Structure
 
@@ -59,6 +59,11 @@ sns-engine discover
 sns-engine ingest
 sns-engine build-briefs
 sns-engine generate-drafts
+sns-engine review list
+sns-engine review approve 42 --reviewer editor
+sns-engine review reject 42 --reason "Off topic"
+sns-engine review edit 42 --body "Revised draft text"
+sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00
 sns-engine db init
 ```
 
@@ -71,6 +76,7 @@ python -m app.cli discover
 python -m app.cli ingest
 python -m app.cli build-briefs
 python -m app.cli generate-drafts
+python -m app.cli review list
 python -m app.cli db init
 ```
 
@@ -82,7 +88,9 @@ The `build-briefs` command reads ingested source items, matches them to eligible
 
 The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review.
 
-If you already have an older SQLite file from a previous milestone, recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
+The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
+
+If you already have an older SQLite file from a previous milestone, delete it and recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
 
 Initialize the schema through the thin script wrapper:
 
