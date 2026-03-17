@@ -58,6 +58,32 @@ def _normalize_string_sequence(
     return tuple(normalized_values)
 
 
+def _normalize_tag_sequence(
+    values: tuple[str, ...] | list[str],
+    *,
+    label: str,
+    require_non_empty: bool,
+) -> tuple[str, ...]:
+    normalized_values: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        normalized_input = _normalize_non_empty_string(value, label=label)
+        try:
+            normalized = normalize_title_text(normalized_input)
+        except ValueError as exc:
+            raise ValueError(f"{label} must contain non-empty alphanumeric tags") from exc
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_values.append(normalized)
+
+    if require_non_empty and not normalized_values:
+        raise ValueError(f"{label} must contain at least one value")
+
+    return tuple(normalized_values)
+
+
 def _validate_mapping_keys(
     mapping: Mapping[str, object], *, label: str
 ) -> Mapping[str, object]:
@@ -79,7 +105,11 @@ class LandingRuleConfig(FrozenConfigModel):
     @field_validator("when_tags_any")
     @classmethod
     def validate_tags(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        return _normalize_non_empty_string_sequence(values, label="landing rule tags")
+        return _normalize_tag_sequence(
+            values,
+            label="landing rule tags",
+            require_non_empty=True,
+        )
 
 
 class LandingConfig(FrozenConfigModel):
@@ -138,10 +168,10 @@ class AccountMatchingConfig(FrozenConfigModel):
     @field_validator("source_tags")
     @classmethod
     def validate_source_tags(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        return _normalize_string_sequence(
+        return _normalize_tag_sequence(
             values,
             label="matching value",
-            normalizer=normalize_title_text,
+            require_non_empty=False,
         )
 
 

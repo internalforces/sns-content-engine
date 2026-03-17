@@ -400,6 +400,41 @@ def test_blank_matching_keyword_raises_validation_error(tmp_path: Path) -> None:
     assert "must not be empty" in message
 
 
+def test_invalid_landing_rule_tags_raise_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules:
+                - when_tags_any:
+                    - "!!!"
+                  url: https://gilgop.cloud/ai-agents
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.landing.rules.0.when_tags_any" in message
+    assert "must contain non-empty alphanumeric tags" in message
+
+
 def _write_valid_prompts_yaml(tmp_path: Path) -> None:
     _write_file(
         tmp_path / "prompts.yaml",

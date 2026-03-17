@@ -1,6 +1,7 @@
 """Shared domain models for the sns-content-engine."""
 
 from app.domain.account_matching import AccountMatchCandidate, select_top_account_candidates
+from app.domain.landing_resolution import LandingDecision
 from app.domain.source_deduplication import (
     DuplicateCheckResult,
     DuplicateReason,
@@ -21,6 +22,7 @@ __all__ = [
     "AccountMatchCandidate",
     "DuplicateCheckResult",
     "DuplicateReason",
+    "LandingDecision",
     "RawSourceItem",
     "SourceConnectorResult",
     "SourceDiscoveryFailure",
