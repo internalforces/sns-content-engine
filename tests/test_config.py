@@ -13,6 +13,7 @@ from app.config import (
     ConfigRegistry,
     ConfigValidationError,
     ManualCsvSourceConfig,
+    RssSourceConfig,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -206,6 +207,60 @@ def test_manual_csv_source_variant_loads_successfully(tmp_path: Path) -> None:
 
     assert isinstance(source, ManualCsvSourceConfig)
     assert source.path == (tmp_path / "data/manual/ai_tools.csv").resolve()
+
+
+def test_sources_default_duplicate_window_days_to_thirty() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
+    source = registry.get_source("ai_tools_rss")
+
+    assert isinstance(source, RssSourceConfig)
+    assert source.duplicate_window_days == 30
+
+
+def test_negative_duplicate_window_days_raise_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            duplicate_window_days: -1
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "sources.ai_tools_rss.rss.duplicate_window_days" in message
+    assert "greater than or equal to 0" in message
 
 
 def test_duplicate_yaml_keys_raise_load_error(tmp_path: Path) -> None:

@@ -46,6 +46,32 @@ class SourceItemRepository:
         )
         return self.session.scalar(statement)
 
+    def get_by_canonical_url(self, canonical_url: str) -> SourceItem | None:
+        statement = select(SourceItem).where(SourceItem.canonical_url == canonical_url)
+        return self.session.scalar(statement)
+
+    def get_by_normalized_title_hash(self, normalized_title_hash: str) -> SourceItem | None:
+        statement = select(SourceItem).where(
+            SourceItem.normalized_title_hash == normalized_title_hash
+        )
+        return self.session.scalar(statement)
+
+    def get_recent_by_dedupe_fingerprint(
+        self,
+        dedupe_fingerprint: str,
+        *,
+        created_since: datetime,
+    ) -> SourceItem | None:
+        statement = (
+            select(SourceItem)
+            .where(
+                SourceItem.dedupe_fingerprint == dedupe_fingerprint,
+                SourceItem.created_at >= created_since,
+            )
+            .order_by(SourceItem.created_at.desc(), SourceItem.id.desc())
+        )
+        return self.session.scalar(statement)
+
     def get_or_create(self, item: SourceItem) -> tuple[SourceItem, bool]:
         existing = self.get_by_source_identity(item.source_key, item.external_id)
         if existing is not None:

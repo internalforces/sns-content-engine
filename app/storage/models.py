@@ -7,9 +7,15 @@ from enum import Enum
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import TypeDecorator
 
+from app.domain import (
+    build_dedupe_fingerprint,
+    build_normalized_title_hash,
+    canonicalize_url,
+    normalize_title_text,
+)
 from app.storage.database import Base
 
 
@@ -89,8 +95,12 @@ class SourceItem(Base):
     source_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     external_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    canonical_url: Mapped[str] = mapped_column(String(2048), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    normalized_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    normalized_title_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dedupe_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     state: Mapped[SourceItemState] = mapped_column(
@@ -110,6 +120,28 @@ class SourceItem(Base):
         back_populates="source_item",
         cascade="all, delete-orphan",
     )
+
+    @validates("source_url", "title", "summary")
+    def _populate_dedupe_fields(self, key: str, value: str | None) -> str | None:
+        if key == "source_url":
+            if value is None:
+                raise ValueError("source_url must not be empty")
+            canonical_url = canonicalize_url(value)
+            self.canonical_url = canonical_url
+            return canonical_url
+
+        if key == "title":
+            if value is None:
+                raise ValueError("title must not be empty")
+            self.normalized_title = normalize_title_text(value)
+            self.normalized_title_hash = build_normalized_title_hash(value)
+
+        title = value if key == "title" else getattr(self, "title", None)
+        summary = value if key == "summary" else getattr(self, "summary", None)
+        if title:
+            self.dedupe_fingerprint = build_dedupe_fingerprint(title=title, summary=summary)
+
+        return value
 
 
 class ContentBrief(Base):

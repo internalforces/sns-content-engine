@@ -9,7 +9,7 @@ import typer
 
 from app import __version__
 from app.storage import bootstrap_database
-from app.workflows import discover_sources
+from app.workflows import discover_sources, ingest_sources
 
 app = typer.Typer(
     help="Config-driven multi-account SNS content engine.",
@@ -58,6 +58,52 @@ def discover_command(
 
     for source_id, count in result.counts_by_source().items():
         typer.echo(f"{source_id}: {count}")
+
+    if result.failure_count == 0:
+        return
+
+    typer.echo("failures:", err=True)
+    for failure in result.failures:
+        typer.echo(f"- {failure.format_for_cli()}", err=True)
+
+    raise typer.Exit(code=1)
+
+
+@app.command("ingest")
+def ingest_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Discover sources and persist only non-duplicate items."""
+
+    result = ingest_sources(config_dir, database_url=database_url)
+    typer.echo(
+        "processed "
+        f"{result.discovered_count} discovered candidates "
+        f"from {len(result.processed_sources)} sources"
+    )
+    typer.echo(f"saved: {result.saved_count}")
+    typer.echo(f"duplicates blocked: {result.duplicate_count}")
+
+    for reason, count in result.duplicate_counts_by_reason().items():
+        typer.echo(f"duplicates[{reason}]: {count}")
 
     if result.failure_count == 0:
         return

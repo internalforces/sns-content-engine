@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
+from app.domain import canonicalize_url
 from app.domain.source_ingestion import RawSourceItem, SourceItemCandidate, SourceNormalizationError
 
 
@@ -36,7 +37,7 @@ def _normalize_source_url(value: str | None) -> str:
     parsed = urlparse(normalized)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise SourceNormalizationError("source_url must be an absolute HTTP(S) URL")
-    return normalized
+    return canonicalize_url(normalized)
 
 
 def _normalize_published_at(value: datetime | str | None) -> datetime | None:

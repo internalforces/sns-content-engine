@@ -92,6 +92,10 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
     assert stored_item.state is SourceItemState.INGESTED
     assert stored_item.published_at == datetime(2026, 3, 16, 12, 0, tzinfo=timezone.utc)
     assert stored_item.published_at.tzinfo == timezone.utc
+    assert stored_item.canonical_url == "https://example.com/posts/1"
+    assert stored_item.normalized_title == "useful ai tool"
+    assert len(stored_item.normalized_title_hash) == 64
+    assert len(stored_item.dedupe_fingerprint) == 64
 
 
 def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
@@ -118,6 +122,66 @@ def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
     assert was_created_again is False
     assert second_item.id == first_item.id
     assert second_item.title == "Original title"
+
+
+def test_source_item_duplicate_lookup_supports_canonical_url_and_title_hash(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        created = repository.add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-lookup",
+                source_url="https://example.com/posts/lookup?utm_source=x",
+                title="AI Tool Launch",
+                summary="A short summary",
+            )
+        )
+
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        by_url = repository.get_by_canonical_url("https://example.com/posts/lookup")
+        by_title_hash = repository.get_by_normalized_title_hash(created.normalized_title_hash)
+
+    assert by_url is not None
+    assert by_url.id == created.id
+    assert by_title_hash is not None
+    assert by_title_hash.id == created.id
+
+
+def test_source_item_recent_fingerprint_lookup_honors_window_cutoff(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        repository.add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-old",
+                source_url="https://example.com/posts/old",
+                title="Shared summary",
+                summary="Same text",
+                created_at=datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        recent = repository.add(
+            SourceItem(
+                source_key="ai_tools_manual",
+                external_id="entry-recent",
+                source_url="https://example.com/posts/recent",
+                title="Shared summary",
+                summary="Same text",
+                created_at=datetime(2026, 3, 15, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        fingerprint = recent.dedupe_fingerprint
+
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        match = repository.get_recent_by_dedupe_fingerprint(
+            fingerprint,
+            created_since=datetime(2026, 3, 10, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert match is not None
+    assert match.id == recent.id
 
 
 def test_source_item_duplicate_identity_is_rejected(session_factory) -> None:

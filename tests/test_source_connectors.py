@@ -29,6 +29,26 @@ def test_normalizer_derives_missing_fields_from_url() -> None:
 
     assert candidate.external_id == "https://example.com/blog/very-useful-tool"
     assert candidate.title == "Very Useful Tool"
+    assert candidate.canonical_url == "https://example.com/blog/very-useful-tool"
+    assert candidate.normalized_title == "very useful tool"
+
+
+def test_normalizer_canonicalizes_urls_and_builds_dedupe_metadata() -> None:
+    candidate = normalize_raw_source_item(
+        RawSourceItem(
+            source_id="ai_tools_rss",
+            external_id="entry-1",
+            source_url="HTTPS://Example.com/posts/1/?utm_source=x&b=2&a=1#section",
+            title="AI   Tool: Launch!",
+            summary="Fast, simple workflow tips.",
+        )
+    )
+
+    assert candidate.source_url == "https://example.com/posts/1?a=1&b=2"
+    assert candidate.canonical_url == "https://example.com/posts/1?a=1&b=2"
+    assert candidate.normalized_title == "ai tool launch"
+    assert len(candidate.normalized_title_hash) == 64
+    assert len(candidate.dedupe_fingerprint) == 64
 
 
 def test_rss_connector_discovers_normalized_items_from_fixture() -> None:

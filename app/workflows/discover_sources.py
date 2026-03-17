@@ -47,6 +47,14 @@ def discover_sources(
 
     registry = ConfigRegistry.from_directory(Path(config_dir))
     connectors = connector_registry or SourceConnectorRegistry()
+    return _discover_sources_from_registry(registry, connectors)
+
+
+def _discover_sources_from_registry(
+    registry: ConfigRegistry,
+    connector_registry: SourceConnectorRegistry,
+) -> DiscoverSourcesResult:
+    """Run source discovery using a preloaded registry."""
 
     items = []
     failures = []
@@ -55,7 +63,7 @@ def discover_sources(
     for source_id in sorted(registry.sources):
         source_config = registry.get_source(source_id)
         processed_sources.append(source_id)
-        connector = connectors.get_connector(source_config)
+        connector = connector_registry.get_connector(source_config)
 
         try:
             result = connector.discover(source_id, source_config)
