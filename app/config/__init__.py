@@ -5,6 +5,7 @@ from app.config.loaders import load_accounts_config, load_prompts_config, load_s
 from app.config.registry import ConfigRegistry
 from app.config.schemas import (
     AccountConfig,
+    AccountMatchingConfig,
     AccountsFileConfig,
     BaseSourceConfig,
     ChannelConfig,
@@ -23,6 +24,7 @@ from app.config.schemas import (
 
 __all__ = [
     "AccountConfig",
+    "AccountMatchingConfig",
     "AccountsFileConfig",
     "BaseSourceConfig",
     "ChannelConfig",

@@ -51,6 +51,24 @@ def test_normalizer_canonicalizes_urls_and_builds_dedupe_metadata() -> None:
     assert len(candidate.dedupe_fingerprint) == 64
 
 
+def test_normalizer_extracts_source_tags_from_raw_payload() -> None:
+    candidate = normalize_raw_source_item(
+        RawSourceItem(
+            source_id="ai_tools_manual",
+            external_id="manual-1",
+            source_url="https://example.com/posts/ai-agents",
+            title="AI Agents",
+            raw_payload={
+                "tags": ["AI", "Automation"],
+                "category": "Agents",
+                "source_tags": "workflows, AI",
+            },
+        )
+    )
+
+    assert candidate.source_tags == ("ai", "automation", "agents", "workflows")
+
+
 def test_rss_connector_discovers_normalized_items_from_fixture() -> None:
     feed_xml = (FIXTURES_DIR / "sample_feed.xml").read_bytes()
     connector = RssSourceConnector(fetch_bytes=lambda _: feed_xml)
@@ -66,6 +84,31 @@ def test_rss_connector_discovers_normalized_items_from_fixture() -> None:
     assert result.items[0].summary == "Short summary"
     assert result.items[0].published_at == datetime(2026, 3, 16, 10, 0, tzinfo=timezone.utc)
     assert result.items[1].external_id == "https://example.com/posts/2"
+
+
+def test_rss_connector_extracts_category_tags_for_matching() -> None:
+    feed_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>AI Tools</title>
+    <item>
+      <guid>tagged-1</guid>
+      <link>https://example.com/posts/tagged</link>
+      <title>Tagged Entry</title>
+      <category>AI</category>
+      <category>Automation</category>
+    </item>
+  </channel>
+</rss>
+"""
+    connector = RssSourceConnector(fetch_bytes=lambda _: feed_xml)
+    config = RssSourceConfig(type="rss", url="https://example.com/feed.xml")
+
+    result = connector.discover("ai_tools_rss", config)
+
+    assert result.failures == ()
+    assert len(result.items) == 1
+    assert result.items[0].source_tags == ("ai", "automation")
 
 
 def test_sitemap_connector_discovers_normalized_items_from_fixture() -> None:

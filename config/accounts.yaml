@@ -11,6 +11,18 @@ accounts:
             - agents
             - automation
           url: https://gilgop.cloud/ai-agents
+    matching:
+      include_keywords:
+        - ai
+        - agent
+        - automation
+      exclude_keywords:
+        - earnings
+        - stock
+      source_tags:
+        - ai
+        - automation
+      strict_topic_guard: true
     channels:
       x:
         schedule:

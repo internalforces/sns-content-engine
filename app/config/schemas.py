@@ -32,6 +32,22 @@ def _normalize_non_empty_string_sequence(
     return normalized
 
 
+def _normalize_string_sequence(
+    values: tuple[str, ...] | list[str], *, label: str
+) -> tuple[str, ...]:
+    normalized_values: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        normalized = _normalize_non_empty_string(value, label=label).casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_values.append(normalized)
+
+    return tuple(normalized_values)
+
+
 def _validate_mapping_keys(
     mapping: Mapping[str, object], *, label: str
 ) -> Mapping[str, object]:
@@ -96,6 +112,20 @@ class ChannelConfig(FrozenConfigModel):
     render: RenderConfig
 
 
+class AccountMatchingConfig(FrozenConfigModel):
+    """Deterministic rule-based account matching configuration."""
+
+    include_keywords: tuple[str, ...] = Field(default_factory=tuple)
+    exclude_keywords: tuple[str, ...] = Field(default_factory=tuple)
+    source_tags: tuple[str, ...] = Field(default_factory=tuple)
+    strict_topic_guard: bool = False
+
+    @field_validator("include_keywords", "exclude_keywords", "source_tags")
+    @classmethod
+    def validate_keyword_sequences(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_string_sequence(values, label="matching value")
+
+
 class AccountConfig(FrozenConfigModel):
     """Account-level content engine settings."""
 
@@ -103,6 +133,7 @@ class AccountConfig(FrozenConfigModel):
     source_sets: tuple[str, ...] = Field(min_length=1)
     prompt_profile: str
     landing: LandingConfig
+    matching: AccountMatchingConfig = Field(default_factory=AccountMatchingConfig)
     channels: Mapping[str, ChannelConfig] = Field(min_length=1)
 
     @field_validator("topic", "prompt_profile")

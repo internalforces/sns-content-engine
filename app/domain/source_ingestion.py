@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import re
 from typing import Any, Mapping
 
 from app.domain.source_deduplication import (
@@ -46,6 +47,7 @@ class SourceItemCandidate:
     normalized_title: str = field(init=False)
     normalized_title_hash: str = field(init=False)
     dedupe_fingerprint: str = field(init=False)
+    source_tags: tuple[str, ...] = field(init=False)
 
     def __post_init__(self) -> None:
         """Derive deterministic duplicate-check fields from the candidate payload."""
@@ -67,6 +69,11 @@ class SourceItemCandidate:
             self,
             "dedupe_fingerprint",
             build_dedupe_fingerprint(title=self.title, summary=self.summary),
+        )
+        object.__setattr__(
+            self,
+            "source_tags",
+            _extract_source_tags(self.raw_payload),
         )
 
 
@@ -94,3 +101,62 @@ class SourceConnectorResult:
 
     items: tuple[SourceItemCandidate, ...] = ()
     failures: tuple[SourceDiscoveryFailure, ...] = ()
+
+
+_SOURCE_TAG_KEYS = (
+    "tag",
+    "tags",
+    "category",
+    "categories",
+    "source_tag",
+    "source_tags",
+)
+_TAG_SPLIT_RE = re.compile(r"[,;|]")
+
+
+def _extract_source_tags(raw_payload: Mapping[str, Any]) -> tuple[str, ...]:
+    collected_tags: list[str] = []
+    seen: set[str] = set()
+
+    for key in _SOURCE_TAG_KEYS:
+        if key not in raw_payload:
+            continue
+
+        for tag in _coerce_source_tags(raw_payload[key]):
+            if tag in seen:
+                continue
+            seen.add(tag)
+            collected_tags.append(tag)
+
+    return tuple(collected_tags)
+
+
+def _coerce_source_tags(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+
+    if isinstance(value, str):
+        return _normalize_tag_sequence(_TAG_SPLIT_RE.split(value))
+
+    if isinstance(value, Mapping):
+        return ()
+
+    if isinstance(value, (list, tuple, set, frozenset)):
+        tags: list[str] = []
+        for item in value:
+            tags.extend(_coerce_source_tags(item))
+        return tuple(tags)
+
+    return ()
+
+
+def _normalize_tag_sequence(values: list[str]) -> tuple[str, ...]:
+    normalized_tags: list[str] = []
+
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            continue
+        normalized_tags.append(normalize_title_text(normalized))
+
+    return tuple(normalized_tags)
