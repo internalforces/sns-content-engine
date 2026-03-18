@@ -158,12 +158,25 @@ class ChannelValidationConfig(FrozenConfigModel):
         return _normalize_string_sequence(values, label="banned phrase")
 
 
+class ChannelPublisherConfig(FrozenConfigModel):
+    """Publisher credential lookup settings for a channel."""
+
+    credential_ref: str
+
+    @field_validator("credential_ref")
+    @classmethod
+    def validate_credential_ref(cls, value: str) -> str:
+        return _normalize_non_empty_string(value, label="credential_ref")
+
+
 class ChannelConfig(FrozenConfigModel):
     """Channel-level settings for publishing."""
 
     schedule: ScheduleConfig
     render: RenderConfig
     validation: ChannelValidationConfig = Field(default_factory=ChannelValidationConfig)
+    publisher: ChannelPublisherConfig | None = None
+
 
 
 class AccountMatchingConfig(FrozenConfigModel):

@@ -10,6 +10,8 @@ from textwrap import dedent
 import pytest
 
 from app.config import ScheduleConfig
+from app.connectors.publishers import FakePublisher, PublishResult
+import app.scheduler.jobs as scheduler_jobs_module
 from app.scheduler import (
     PublishExecutionResult,
     SlotPlanner,
@@ -331,6 +333,110 @@ def test_publish_due_jobs_marks_jobs_published_with_stateful_executor(session_fa
     assert [log.event_type for log in logs] == ["publishing", "published"]
 
 
+def test_publish_due_jobs_marks_jobs_published_with_publisher_resolver(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="resolver-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    publisher = FakePublisher(
+        result=PublishResult(
+            status="published",
+            external_post_id=f"tweet:{job_id}",
+            provider="x",
+            credential_ref="X_TEST_CREDENTIALS",
+        )
+    )
+    resolver = _StaticPublisherResolver(publisher)
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        publisher_resolver=resolver,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.dry_run is False
+    assert result.published_count == 1
+    assert resolver.resolved_job_ids == [job_id]
+    assert publisher.requests[0].publish_job_id == job_id
+    assert publisher.requests[0].account_key == "ai_tools_daily"
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        logs = PublishLogRepository(session).list_for_job(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.PUBLISHED
+    assert stored_job.external_post_id == f"tweet:{job_id}"
+    assert stored_job.attempt_count == 1
+    assert [log.event_type for log in logs] == ["publishing", "published"]
+    assert logs[1].payload == {
+        "status": "published",
+        "external_post_id": f"tweet:{job_id}",
+        "attempt_count": 1,
+        "account_key": "ai_tools_daily",
+        "channel": "x",
+        "provider": "x",
+    }
+
+
+def test_publish_due_jobs_commits_publishing_claim_before_external_publish(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="precommit-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    class InspectingPublisher:
+        provider_name = "x"
+        credential_ref = "X_TEST_CREDENTIALS"
+
+        def __init__(self, inspected_session_factory, inspected_job_id: int) -> None:
+            self._session_factory = inspected_session_factory
+            self._job_id = inspected_job_id
+
+        def publish(self, request) -> PublishResult:
+            with session_scope(self._session_factory) as session:
+                stored_job = PublishJobRepository(session).get(self._job_id)
+                stored_logs = PublishLogRepository(session).list_for_job(self._job_id)
+
+            assert stored_job is not None
+            assert stored_job.state is PublishJobState.PUBLISHING
+            assert stored_job.attempt_count == 1
+            assert [log.event_type for log in stored_logs] == ["publishing"]
+            return PublishResult(
+                status="published",
+                external_post_id=f"tweet:{self._job_id}",
+                provider="x",
+                credential_ref="X_TEST_CREDENTIALS",
+            )
+
+    resolver = _StaticPublisherResolver(InspectingPublisher(session_factory, job_id))
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        publisher_resolver=resolver,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.published_count == 1
+
+
 def test_publish_due_jobs_fail_independently_per_job(session_factory) -> None:
     with session_scope(session_factory) as session:
         failing_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
@@ -387,6 +493,116 @@ def test_publish_due_jobs_fail_independently_per_job(session_factory) -> None:
     assert stored_passing_job.state is PublishJobState.PUBLISHED
     assert stored_passing_job.external_post_id == f"tweet:{passing_job.id}"
     assert [log.event_type for log in passing_logs] == ["publishing", "published"]
+
+
+def test_publish_due_jobs_records_normalized_failed_publish_results(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="failing-resolver-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    resolver = _StaticPublisherResolver(
+        FakePublisher(
+            result=PublishResult(
+                status="failed",
+                error_message="missing access token",
+                provider="x",
+                credential_ref="X_TEST_CREDENTIALS",
+            )
+        )
+    )
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        publisher_resolver=resolver,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.processed_count == 1
+    assert result.failed_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        logs = PublishLogRepository(session).list_for_job(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.FAILED
+    assert stored_job.last_error == "missing access token"
+    assert stored_job.attempt_count == 1
+    assert [log.event_type for log in logs] == ["publishing", "failed"]
+    assert logs[1].payload == {
+        "status": "failed",
+        "error_message": "missing access token",
+        "attempt_count": 1,
+        "account_key": "ai_tools_daily",
+        "channel": "x",
+        "provider": "x",
+        "credential_ref": "X_TEST_CREDENTIALS",
+    }
+
+
+def test_publish_due_jobs_live_defaults_to_config_publisher_resolver(session_factory, monkeypatch) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="default-resolver-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    captured: dict[str, object] = {}
+
+    class StubResolver:
+        def __init__(self, *, config_dir="config") -> None:
+            captured["config_dir"] = config_dir
+
+        def resolve(self, publish_job):
+            captured["resolved_job_id"] = publish_job.id
+            return FakePublisher(
+                result=PublishResult(
+                    status="published",
+                    external_post_id=f"tweet:{publish_job.id}",
+                    provider="x",
+                    credential_ref="X_TEST_CREDENTIALS",
+                )
+            )
+
+    monkeypatch.setattr(scheduler_jobs_module, "ConfigPublisherResolver", StubResolver)
+
+    result = publish_due_jobs(
+        config_dir=Path("/tmp/m12-live-config"),
+        session_factory=session_factory,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.published_count == 1
+    assert captured == {
+        "config_dir": Path("/tmp/m12-live-config"),
+        "resolved_job_id": job_id,
+    }
+
+
+class _StaticPublisherResolver:
+    def __init__(self, publisher) -> None:
+        self._publisher = publisher
+        self.resolved_job_ids: list[int] = []
+
+    def resolve(self, publish_job):
+        self.resolved_job_ids.append(publish_job.id)
+        return self._publisher
 
 
 def _create_draft_variant(

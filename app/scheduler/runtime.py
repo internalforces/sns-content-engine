@@ -20,7 +20,7 @@ def build_scheduler_runtime(
     publish_due_interval_seconds: int = 60,
     scheduler: BlockingScheduler | None = None,
 ) -> BlockingScheduler:
-    """Build a blocking APScheduler instance with the default M11 jobs."""
+    """Build a blocking APScheduler instance with dry-run publish execution."""
 
     runtime = scheduler or BlockingScheduler(timezone="UTC")
     runtime.add_job(
@@ -44,6 +44,7 @@ def build_scheduler_runtime(
     runtime.add_job(
         partial(
             publish_due_jobs,
+            config_dir=config_dir,
             database_url=database_url,
             dry_run=True,
         ),

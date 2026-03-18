@@ -13,7 +13,7 @@ The initial MVP is intentionally limited to:
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, source ingestion, brief generation, draft generation, and a CLI-first manual review queue. It does not include real publisher integrations, scheduler execution, or review UI yet.
+The current milestone includes configuration loading, source ingestion, brief generation, draft generation, a CLI-first manual review queue, scheduled publish jobs, and an X publisher adapter. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
 
 ## Repository Structure
 
@@ -64,6 +64,8 @@ sns-engine review approve 42 --reviewer editor
 sns-engine review reject 42 --reason "Off topic"
 sns-engine review edit 42 --body "Revised draft text"
 sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00
+sns-engine scheduler publish-due
+sns-engine scheduler publish-due --live
 sns-engine db init
 ```
 
@@ -77,6 +79,7 @@ python -m app.cli ingest
 python -m app.cli build-briefs
 python -m app.cli generate-drafts
 python -m app.cli review list
+python -m app.cli scheduler publish-due
 python -m app.cli db init
 ```
 
@@ -89,6 +92,28 @@ The `build-briefs` command reads ingested source items, matches them to eligible
 The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
+
+The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable.
+
+Example channel config:
+
+```yaml
+channels:
+  x:
+    schedule:
+      cron: "0 9 * * *"
+    render:
+      max_chars: 280
+    publisher:
+      credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+```
+
+Example credential bundle:
+
+```bash
+export X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-user-access-token"}'
+sns-engine scheduler publish-due --live
+```
 
 If you already have an older SQLite file from a previous milestone, delete it and recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
 

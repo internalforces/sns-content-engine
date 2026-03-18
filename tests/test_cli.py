@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from app import __version__
 from app.cli import app
+from app.config import ConfigValidationError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import BackfillResult, PublishDueOutcome, PublishDueResult, SchedulerDiscoverResult
 from app.storage import DatabaseSchemaError, DraftVariantState, PublishJobState, ReviewActionType
@@ -386,10 +387,19 @@ def test_scheduler_backfill_command_reports_summary(monkeypatch) -> None:
 
 
 def test_scheduler_publish_due_command_reports_dry_run_summary(monkeypatch) -> None:
-    monkeypatch.setattr(
-        cli_module,
-        "publish_due_jobs",
-        lambda database_url=None, dry_run=True: PublishDueResult(
+    captured: dict[str, object] = {}
+
+    def fake_publish_due_jobs(
+        config_dir=None,
+        database_url=None,
+        dry_run=True,
+        publisher_resolver=None,
+        executor=None,
+    ):
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
             outcomes=(
                 PublishDueOutcome(
                     publish_job_id=42,
@@ -400,14 +410,94 @@ def test_scheduler_publish_due_command_reports_dry_run_summary(monkeypatch) -> N
                 ),
             ),
             dry_run=True,
-        ),
+        )
+
+    monkeypatch.setattr(
+        cli_module,
+        "publish_due_jobs",
+        fake_publish_due_jobs,
     )
 
     result = runner.invoke(app, ["scheduler", "publish-due"])
 
     assert result.exit_code == 0
+    assert captured["dry_run"] is True
     assert "processed due jobs: 1 (dry_run=1, failed=0, skipped=0)" in result.stdout
     assert "executor mode: fake dry-run (no state changes)" in result.stdout
+
+
+def test_scheduler_publish_due_command_live_mode_reports_summary(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_publish_due_jobs(
+        config_dir=None,
+        database_url=None,
+        dry_run=True,
+        publisher_resolver=None,
+        executor=None,
+    ):
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=42,
+                    status="published",
+                    state=PublishJobState.PUBLISHED,
+                    message="published successfully",
+                    external_post_id="tweet:42",
+                ),
+                PublishDueOutcome(
+                    publish_job_id=43,
+                    status="failed",
+                    state=PublishJobState.FAILED,
+                    message="missing access token",
+                ),
+            ),
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(cli_module, "publish_due_jobs", fake_publish_due_jobs)
+
+    result = runner.invoke(
+        app,
+        ["scheduler", "publish-due", "--config-dir", str(tmp_path), "--live"],
+    )
+
+    assert result.exit_code == 0
+    assert captured["dry_run"] is False
+    assert captured["config_dir"] == tmp_path.resolve()
+    assert "processed due jobs: 2 (published=1, failed=1, skipped=0)" in result.stdout
+    assert "executor mode: live publish via configured publishers" in result.stdout
+
+
+def test_scheduler_publish_due_command_live_mode_surfaces_config_errors_cleanly(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "publish_due_jobs",
+        lambda config_dir=None, database_url=None, dry_run=True, publisher_resolver=None, executor=None: (
+            _ for _ in ()
+        ).throw(
+            ConfigValidationError(
+                path=tmp_path / "accounts.yaml",
+                errors=("accounts.yaml: accounts.ai_tools_daily.channels.x.schedule.cron: invalid cron expression",),
+            )
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        ["scheduler", "publish-due", "--config-dir", str(tmp_path), "--live"],
+    )
+
+    assert result.exit_code == 1
+    assert "invalid cron expression" in result.output
+    assert "executor mode: fake dry-run" not in result.output
+    assert "executor mode: live publish via configured publishers" not in result.output
 
 
 def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) -> None:
