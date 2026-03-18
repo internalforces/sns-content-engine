@@ -34,6 +34,7 @@ def test_create_db_script_bootstraps_the_database(tmp_path: Path) -> None:
             "draft_variants",
             "publish_jobs",
             "publish_logs",
+            "review_actions",
             "source_item_recent_fingerprint_claims",
             "source_items",
         }

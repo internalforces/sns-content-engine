@@ -23,6 +23,8 @@ from app.storage import (
     PublishJobRepository,
     PublishJobState,
     PublishLogRepository,
+    ReviewActionRepository,
+    ReviewActionType,
     SourceItem,
     SourceItemRepository,
     SourceItemState,
@@ -63,6 +65,7 @@ def test_create_all_creates_expected_tables(database_url: str) -> None:
         "draft_variants",
         "publish_jobs",
         "publish_logs",
+        "review_actions",
         "source_item_recent_fingerprint_claims",
         "source_items",
     }
@@ -667,6 +670,89 @@ def test_publish_job_forward_transitions_recheck_manual_approval(session_factory
             PublishJobRepository(session).transition_state(stored_job, PublishJobState.PUBLISHING)
 
 
+def test_review_action_repository_records_and_lists_for_draft(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session)
+        repository = ReviewActionRepository(session)
+        action = repository.record(
+            draft=draft,
+            action_type=ReviewActionType.EDIT,
+            reviewer="editor-a",
+            before_text="Draft text",
+            after_text="Updated draft text",
+            draft_state_before=DraftVariantState.PENDING_REVIEW,
+            draft_state_after=DraftVariantState.PENDING_REVIEW,
+        )
+        action_id = action.id
+        draft_id = draft.id
+
+    with session_scope(session_factory) as session:
+        stored_action = ReviewActionRepository(session).get(action_id)
+        draft_actions = ReviewActionRepository(session).list_for_draft(draft_id)
+
+    assert stored_action is not None
+    assert stored_action.reviewer == "editor-a"
+    assert stored_action.before_text == "Draft text"
+    assert stored_action.after_text == "Updated draft text"
+    assert stored_action.draft_state_before is DraftVariantState.PENDING_REVIEW
+    assert stored_action.draft_state_after is DraftVariantState.PENDING_REVIEW
+    assert [draft_action.id for draft_action in draft_actions] == [action_id]
+
+
+def test_publish_job_repository_detects_only_active_jobs_for_draft(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        cancelled_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        cancelled_job = repository.add(
+            PublishJob(
+                draft_variant=cancelled_draft,
+                channel="x",
+                scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        repository.transition_state(cancelled_job, PublishJobState.CANCELLED)
+        cancelled_draft_id = cancelled_draft.id
+
+        active_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        repository.add(
+            PublishJob(
+                draft_variant=active_draft,
+                channel="x",
+                scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        active_draft_id = active_draft.id
+
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        assert repository.has_active_job_for_draft(cancelled_draft_id) is False
+        assert repository.has_active_job_for_draft(active_draft_id) is True
+
+
+def test_publish_job_active_unique_index_rejects_duplicate_active_jobs(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        repository.add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            draft = DraftVariantRepository(session).list_by_state(DraftVariantState.APPROVED)[0]
+            PublishJobRepository(session).add(
+                PublishJob(
+                    draft_variant=draft,
+                    channel="x",
+                    scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+
 def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> None:
     with pytest.raises(RuntimeError):
         with session_scope(session_factory) as session:
@@ -834,6 +920,153 @@ def test_bootstrap_database_detects_missing_draft_variant_unique_constraint(data
     with pytest.raises(
         DatabaseSchemaError,
         match="draft_variants: missing unique constraints uq_draft_variants_content_brief_id_channel_variant_index",
+    ):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_review_actions_table(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE review_actions")
+    finally:
+        engine.dispose()
+
+    with pytest.raises(DatabaseSchemaError, match="missing required tables: review_actions"):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_publish_job_active_unique_index(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE source_items (
+                    id INTEGER PRIMARY KEY,
+                    source_key VARCHAR(100) NOT NULL,
+                    external_id VARCHAR(255) NOT NULL,
+                    source_url VARCHAR(2048) NOT NULL,
+                    canonical_url VARCHAR(2048) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    normalized_title VARCHAR(500) NOT NULL,
+                    normalized_title_hash VARCHAR(64) NOT NULL,
+                    summary TEXT,
+                    dedupe_fingerprint VARCHAR(64) NOT NULL,
+                    published_at DATETIME,
+                    raw_payload JSON,
+                    state VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_source_items_source_key_external_id UNIQUE (source_key, external_id),
+                    CONSTRAINT uq_source_items_canonical_url UNIQUE (canonical_url),
+                    CONSTRAINT uq_source_items_normalized_title_hash UNIQUE (normalized_title_hash)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE source_item_recent_fingerprint_claims (
+                    id INTEGER PRIMARY KEY,
+                    dedupe_fingerprint VARCHAR(64) NOT NULL,
+                    source_item_id INTEGER,
+                    expires_at DATETIME NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_source_item_recent_fingerprint_claims_dedupe_fingerprint UNIQUE (dedupe_fingerprint),
+                    CONSTRAINT uq_source_item_recent_fingerprint_claims_source_item_id UNIQUE (source_item_id)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE content_briefs (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    account_key VARCHAR(100) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    summary TEXT,
+                    key_points JSON NOT NULL,
+                    landing_url VARCHAR(2048) NOT NULL,
+                    tags JSON NOT NULL,
+                    angle VARCHAR(64) NOT NULL,
+                    language VARCHAR(8) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_content_briefs_source_item_id_account_key UNIQUE (source_item_id, account_key)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE draft_variants (
+                    id INTEGER PRIMARY KEY,
+                    content_brief_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    variant_index INTEGER NOT NULL,
+                    body TEXT NOT NULL,
+                    state VARCHAR(32) NOT NULL,
+                    rejection_reason TEXT,
+                    reviewed_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_draft_variants_content_brief_id_channel_variant_index UNIQUE (content_brief_id, channel, variant_index)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE publish_jobs (
+                    id INTEGER PRIMARY KEY,
+                    draft_variant_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    scheduled_for DATETIME,
+                    state VARCHAR(32) NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    external_post_id VARCHAR(255),
+                    last_error TEXT,
+                    published_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE publish_logs (
+                    id INTEGER PRIMARY KEY,
+                    publish_job_id INTEGER NOT NULL,
+                    event_type VARCHAR(100) NOT NULL,
+                    message TEXT NOT NULL,
+                    payload JSON,
+                    created_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE review_actions (
+                    id INTEGER PRIMARY KEY,
+                    draft_variant_id INTEGER NOT NULL,
+                    action_type VARCHAR(32) NOT NULL,
+                    reviewer VARCHAR(255) NOT NULL,
+                    before_text TEXT NOT NULL,
+                    after_text TEXT NOT NULL,
+                    draft_state_before VARCHAR(32) NOT NULL,
+                    draft_state_after VARCHAR(32) NOT NULL,
+                    rejection_reason TEXT,
+                    scheduled_for DATETIME,
+                    publish_job_id INTEGER,
+                    created_at DATETIME NOT NULL
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match="publish_jobs: missing unique indexes uq_publish_jobs_active_draft_variant_id",
     ):
         bootstrap_database(database_url)
 

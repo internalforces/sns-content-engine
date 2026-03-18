@@ -9,15 +9,28 @@ import typer
 
 from app import __version__
 from app.storage import DatabaseSchemaError, bootstrap_database
-from app.workflows import build_content_briefs, discover_sources, generate_drafts, ingest_sources
+from app.workflows import (
+    ReviewQueueError,
+    approve_draft,
+    build_content_briefs,
+    discover_sources,
+    edit_draft,
+    generate_drafts,
+    ingest_sources,
+    list_pending_review_drafts,
+    reject_draft,
+    schedule_draft,
+)
 
 app = typer.Typer(
     help="Config-driven multi-account SNS content engine.",
     no_args_is_help=True,
 )
 db_app = typer.Typer(help="Database bootstrap and inspection commands.")
+review_app = typer.Typer(help="Manual review queue commands.")
 
 app.add_typer(db_app, name="db")
+app.add_typer(review_app, name="review")
 
 
 @app.command()
@@ -206,6 +219,227 @@ def generate_drafts_command(
     typer.echo(f"draft variants created: {result.created_variant_count}")
 
 
+@review_app.command("list")
+def review_list_command(
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """List all drafts currently awaiting manual review."""
+
+    try:
+        result = list_pending_review_drafts(database_url=database_url)
+    except (DatabaseSchemaError, ReviewQueueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(f"pending drafts: {result.pending_count}")
+    for index, draft in enumerate(result.drafts):
+        if index:
+            typer.echo("")
+        typer.echo(f"draft_id: {draft.draft_id}")
+        typer.echo(f"account_key: {draft.account_key}")
+        typer.echo(f"channel: {draft.channel}")
+        typer.echo(f"variant_index: {draft.variant_index}")
+        typer.echo(f"created_at: {draft.created_at.isoformat()}")
+        typer.echo(f"title: {draft.title}")
+        typer.echo(f"body: {draft.body}")
+
+
+@review_app.command("approve")
+def review_approve_command(
+    draft_id: Annotated[int, typer.Argument(help="Draft variant id to approve.")],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    reviewer: Annotated[
+        str | None,
+        typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
+    ] = None,
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Approve a pending draft."""
+
+    try:
+        result = approve_draft(
+            draft_id,
+            reviewer=reviewer,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except (DatabaseSchemaError, ReviewQueueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(f"approved draft {result.draft_id} as {result.reviewer}")
+
+
+@review_app.command("reject")
+def review_reject_command(
+    draft_id: Annotated[int, typer.Argument(help="Draft variant id to reject.")],
+    reason: Annotated[
+        str,
+        typer.Option("--reason", help="Reason recorded with the rejection."),
+    ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    reviewer: Annotated[
+        str | None,
+        typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
+    ] = None,
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Reject a pending draft."""
+
+    try:
+        result = reject_draft(
+            draft_id,
+            reason=reason,
+            reviewer=reviewer,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except (DatabaseSchemaError, ReviewQueueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(f"rejected draft {result.draft_id} as {result.reviewer}")
+
+
+@review_app.command("edit")
+def review_edit_command(
+    draft_id: Annotated[int, typer.Argument(help="Draft variant id to edit.")],
+    body: Annotated[
+        str,
+        typer.Option("--body", help="Replacement body text for the draft."),
+    ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    reviewer: Annotated[
+        str | None,
+        typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
+    ] = None,
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Edit a pending draft in place."""
+
+    try:
+        result = edit_draft(
+            draft_id,
+            body=body,
+            reviewer=reviewer,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except (DatabaseSchemaError, ReviewQueueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(f"edited draft {result.draft_id} as {result.reviewer}")
+
+
+@review_app.command("schedule")
+def review_schedule_command(
+    draft_id: Annotated[int, typer.Argument(help="Draft variant id to schedule.")],
+    scheduled_for: Annotated[
+        str,
+        typer.Option(
+            "--scheduled-for",
+            help="Timezone-aware ISO 8601 publish time.",
+        ),
+    ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    reviewer: Annotated[
+        str | None,
+        typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
+    ] = None,
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Create a scheduled publish job for an approved draft."""
+
+    try:
+        result = schedule_draft(
+            draft_id,
+            scheduled_for=scheduled_for,
+            reviewer=reviewer,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except (DatabaseSchemaError, ReviewQueueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(
+        "scheduled "
+        f"draft {result.draft_id} as publish job {result.publish_job_id} "
+        f"for {result.scheduled_for.isoformat() if result.scheduled_for else 'unknown'} "
+        f"as {result.reviewer}"
+    )
+
+
 @db_app.command("init")
 def init_database(
     database_url: Annotated[
@@ -224,6 +458,11 @@ def init_database(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"database initialized: {resolved_url}")
+
+
+def _exit_with_error(exc: Exception) -> None:
+    typer.echo(str(exc), err=True)
+    raise typer.Exit(code=1) from exc
 
 
 def main() -> None:

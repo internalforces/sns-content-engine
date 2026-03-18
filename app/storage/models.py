@@ -6,7 +6,18 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum as SqlEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import TypeDecorator
 
@@ -77,6 +88,15 @@ class PublishJobState(str, Enum):
     PUBLISHED = "published"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class ReviewActionType(str, Enum):
+    """Audit action types for manual review operations."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    EDIT = "edit"
+    SCHEDULE = "schedule"
 
 
 class SourceItem(Base):
@@ -268,12 +288,24 @@ class DraftVariant(Base):
         back_populates="draft_variant",
         cascade="all, delete-orphan",
     )
+    review_actions: Mapped[list["ReviewAction"]] = relationship(
+        back_populates="draft_variant",
+        cascade="all, delete-orphan",
+    )
 
 
 class PublishJob(Base):
     """Scheduled publishing intent for an approved draft variant."""
 
     __tablename__ = "publish_jobs"
+    __table_args__ = (
+        Index(
+            "uq_publish_jobs_active_draft_variant_id",
+            "draft_variant_id",
+            unique=True,
+            sqlite_where=text("state IN ('SCHEDULED', 'PUBLISHING', 'PUBLISHED')"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     draft_variant_id: Mapped[int] = mapped_column(
@@ -305,6 +337,46 @@ class PublishJob(Base):
         back_populates="publish_job",
         cascade="all, delete-orphan",
     )
+    review_actions: Mapped[list["ReviewAction"]] = relationship(back_populates="publish_job")
+
+
+class ReviewAction(Base):
+    """Stored audit trail for manual review queue activity."""
+
+    __tablename__ = "review_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_variant_id: Mapped[int] = mapped_column(
+        ForeignKey("draft_variants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action_type: Mapped[ReviewActionType] = mapped_column(
+        SqlEnum(ReviewActionType, native_enum=False, length=32),
+        nullable=False,
+    )
+    reviewer: Mapped[str] = mapped_column(String(255), nullable=False)
+    before_text: Mapped[str] = mapped_column(Text, nullable=False)
+    after_text: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_state_before: Mapped[DraftVariantState] = mapped_column(
+        SqlEnum(DraftVariantState, native_enum=False, length=32),
+        nullable=False,
+    )
+    draft_state_after: Mapped[DraftVariantState] = mapped_column(
+        SqlEnum(DraftVariantState, native_enum=False, length=32),
+        nullable=False,
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_for: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    publish_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("publish_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+
+    draft_variant: Mapped[DraftVariant] = relationship(back_populates="review_actions")
+    publish_job: Mapped[PublishJob | None] = relationship(back_populates="review_actions")
 
 
 class PublishLog(Base):
