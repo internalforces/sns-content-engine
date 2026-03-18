@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,19 @@ class InvalidStateTransitionError(ValueError):
 
 class ManualApprovalRequiredError(ValueError):
     """Raised when publishing is attempted before manual approval."""
+
+
+def build_publish_job_idempotency_key(
+    *,
+    draft_variant_id: int,
+    channel: str,
+    scheduled_for: datetime,
+) -> str:
+    """Build a stable idempotency key for a draft/channel/slot combination."""
+
+    normalized_scheduled_for = scheduled_for.astimezone(timezone.utc)
+    raw_key = f"{draft_variant_id}:{channel.strip()}:{normalized_scheduled_for.isoformat()}"
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
 class SourceItemRepository:
@@ -333,6 +347,7 @@ class PublishJobRepository:
         PublishJobState.PUBLISHING,
         PublishJobState.PUBLISHED,
     )
+    _backfill_blocking_states = _active_states + (PublishJobState.FAILED,)
     _allowed_transitions: dict[PublishJobState, tuple[PublishJobState, ...]] = {
         PublishJobState.SCHEDULED: (
             PublishJobState.PUBLISHING,
@@ -353,6 +368,7 @@ class PublishJobRepository:
 
     def add(self, job: PublishJob) -> PublishJob:
         self._ensure_draft_is_approved(job)
+        self._ensure_idempotency_key(job)
         self.session.add(job)
         self.session.flush()
         return job
@@ -362,6 +378,96 @@ class PublishJobRepository:
 
     def list(self) -> list[PublishJob]:
         return list(self.session.scalars(select(PublishJob).order_by(PublishJob.id)))
+
+    def list_due_scheduled(self, *, as_of: datetime) -> list[PublishJob]:
+        statement = (
+            select(PublishJob)
+            .where(
+                PublishJob.state == PublishJobState.SCHEDULED,
+                PublishJob.scheduled_for.is_not(None),
+                PublishJob.scheduled_for <= as_of,
+            )
+            .order_by(PublishJob.scheduled_for, PublishJob.id)
+        )
+        return list(self.session.scalars(statement))
+
+    def list_active_for_account_channel(self, account_key: str, channel: str) -> list[PublishJob]:
+        statement = (
+            select(PublishJob)
+            .join(PublishJob.draft_variant)
+            .join(DraftVariant.content_brief)
+            .where(
+                ContentBrief.account_key == account_key,
+                PublishJob.channel == channel,
+                PublishJob.state.in_(self._active_states),
+            )
+            .order_by(
+                PublishJob.scheduled_for.is_(None),
+                PublishJob.scheduled_for,
+                PublishJob.id,
+            )
+        )
+        return list(self.session.scalars(statement))
+
+    def list_approved_without_active_job(
+        self,
+        account_key: str,
+        channel: str,
+    ) -> list[DraftVariant]:
+        blocking_job_exists = (
+            select(PublishJob.id)
+            .where(
+                PublishJob.draft_variant_id == DraftVariant.id,
+                PublishJob.state.in_(self._backfill_blocking_states),
+            )
+            .exists()
+        )
+        statement = (
+            select(DraftVariant)
+            .join(DraftVariant.content_brief)
+            .where(
+                ContentBrief.account_key == account_key,
+                DraftVariant.channel == channel,
+                DraftVariant.state == DraftVariantState.APPROVED,
+                ~blocking_job_exists,
+            )
+            .order_by(
+                func.coalesce(DraftVariant.reviewed_at, DraftVariant.created_at),
+                DraftVariant.created_at,
+                DraftVariant.id,
+            )
+        )
+        return list(self.session.scalars(statement))
+
+    def claim_due_job(
+        self,
+        job_id: int,
+        *,
+        as_of: datetime,
+        claimed_at: datetime | None = None,
+    ) -> PublishJob | None:
+        event_time = claimed_at or datetime.now(timezone.utc)
+        statement = (
+            update(PublishJob)
+            .where(
+                PublishJob.id == job_id,
+                PublishJob.state == PublishJobState.SCHEDULED,
+                PublishJob.scheduled_for.is_not(None),
+                PublishJob.scheduled_for <= as_of,
+            )
+            .values(
+                state=PublishJobState.PUBLISHING,
+                attempt_count=PublishJob.attempt_count + 1,
+                last_error=None,
+                updated_at=event_time,
+            )
+        )
+        result = self.session.execute(statement)
+        if result.rowcount != 1:
+            return None
+
+        self.session.expire_all()
+        return self.get(job_id)
 
     def has_active_job_for_draft(self, draft_variant_id: int) -> bool:
         statement = select(PublishJob.id).where(
@@ -419,6 +525,30 @@ class PublishJobRepository:
             raise ManualApprovalRequiredError(
                 "publish jobs require an approved draft variant before scheduling or publishing"
             )
+
+    def ensure_publishable(self, job: PublishJob) -> None:
+        self._ensure_draft_is_approved(job)
+
+    def _ensure_idempotency_key(self, job: PublishJob) -> None:
+        existing_key = job.idempotency_key.strip() if getattr(job, "idempotency_key", "") else ""
+        if existing_key:
+            job.idempotency_key = existing_key
+            return
+
+        if job.scheduled_for is None:
+            raise ValueError("publish jobs require scheduled_for to derive an idempotency key")
+
+        draft_variant_id = job.draft_variant_id
+        if draft_variant_id is None and job.draft_variant is not None:
+            draft_variant_id = job.draft_variant.id
+        if draft_variant_id is None:
+            raise ValueError("publish jobs require a persisted draft variant to derive an idempotency key")
+
+        job.idempotency_key = build_publish_job_idempotency_key(
+            draft_variant_id=draft_variant_id,
+            channel=job.channel,
+            scheduled_for=job.scheduled_for,
+        )
 
 
 class PublishLogRepository:

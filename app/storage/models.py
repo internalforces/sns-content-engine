@@ -300,6 +300,11 @@ class PublishJob(Base):
     __tablename__ = "publish_jobs"
     __table_args__ = (
         Index(
+            "uq_publish_jobs_idempotency_key",
+            "idempotency_key",
+            unique=True,
+        ),
+        Index(
             "uq_publish_jobs_active_draft_variant_id",
             "draft_variant_id",
             unique=True,
@@ -314,6 +319,7 @@ class PublishJob(Base):
         index=True,
     )
     channel: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     scheduled_for: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     state: Mapped[PublishJobState] = mapped_column(
         SqlEnum(PublishJobState, native_enum=False, length=32),

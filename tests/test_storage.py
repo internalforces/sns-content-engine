@@ -624,6 +624,7 @@ def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
     assert stored_job.state is PublishJobState.PUBLISHED
     assert stored_job.attempt_count == 1
     assert stored_job.external_post_id == "tweet-123"
+    assert stored_job.idempotency_key
     assert stored_job.published_at is not None
 
     with session_scope(session_factory) as session:
@@ -640,6 +641,7 @@ def test_publish_job_requires_manual_approval_before_creation(session_factory) -
                 PublishJob(
                     draft_variant=pending_draft,
                     channel="x",
+                    idempotency_key="pending-draft-job",
                     scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
                 )
             )
@@ -651,6 +653,7 @@ def test_publish_job_requires_manual_approval_before_creation(session_factory) -
                 PublishJob(
                     draft_variant=rejected_draft,
                     channel="x",
+                    idempotency_key="rejected-draft-job",
                     scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
                 )
             )
@@ -707,6 +710,7 @@ def test_publish_job_repository_detects_only_active_jobs_for_draft(session_facto
             PublishJob(
                 draft_variant=cancelled_draft,
                 channel="x",
+                idempotency_key="cancelled-job",
                 scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
             )
         )
@@ -718,6 +722,7 @@ def test_publish_job_repository_detects_only_active_jobs_for_draft(session_facto
             PublishJob(
                 draft_variant=active_draft,
                 channel="x",
+                idempotency_key="active-job",
                 scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
             )
         )
@@ -737,6 +742,7 @@ def test_publish_job_active_unique_index_rejects_duplicate_active_jobs(session_f
             PublishJob(
                 draft_variant=draft,
                 channel="x",
+                idempotency_key="first-active-job",
                 scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
             )
         )
@@ -748,9 +754,148 @@ def test_publish_job_active_unique_index_rejects_duplicate_active_jobs(session_f
                 PublishJob(
                     draft_variant=draft,
                     channel="x",
+                    idempotency_key="second-active-job",
                     scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
                 )
             )
+
+
+def test_publish_job_idempotency_key_is_generated_when_missing(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        job_id = job.id
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+
+    assert stored_job is not None
+    assert len(stored_job.idempotency_key) == 64
+
+
+def test_publish_job_idempotency_unique_index_rejects_duplicates(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        first_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        second_draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        repository = PublishJobRepository(session)
+        repository.add(
+            PublishJob(
+                draft_variant=first_draft,
+                channel="x",
+                idempotency_key="duplicate-key",
+                scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        with session_scope(session_factory) as session:
+            draft = DraftVariantRepository(session).get(second_draft.id)
+            assert draft is not None
+            PublishJobRepository(session).add(
+                PublishJob(
+                    draft_variant=draft,
+                    channel="x",
+                    idempotency_key="duplicate-key",
+                    scheduled_for=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+                )
+            )
+
+
+def test_publish_job_repository_lists_due_scheduled_jobs(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        due_job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        future_job = repository.add(
+            PublishJob(
+                draft_variant=_create_draft_variant(session, draft_state=DraftVariantState.APPROVED),
+                channel="x",
+                idempotency_key="future-job",
+                scheduled_for=datetime(2026, 3, 18, 11, 0, tzinfo=timezone.utc),
+            )
+        )
+        failed_job = repository.add(
+            PublishJob(
+                draft_variant=_create_draft_variant(session, draft_state=DraftVariantState.APPROVED),
+                channel="x",
+                idempotency_key="failed-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        repository.transition_state(failed_job, PublishJobState.FAILED, last_error="boom")
+
+    with session_scope(session_factory) as session:
+        due_jobs = PublishJobRepository(session).list_due_scheduled(
+            as_of=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc)
+        )
+
+    assert [job.id for job in due_jobs] == [due_job.id]
+    assert future_job.id not in [job.id for job in due_jobs]
+
+
+def test_publish_job_repository_lists_approved_drafts_without_active_jobs(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        eligible = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 17, 9, 0, tzinfo=timezone.utc),
+        )
+        active_job_draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 17, 10, 0, tzinfo=timezone.utc),
+        )
+        _create_publish_job_for_draft(session, active_job_draft, idempotency_key="active-job-for-draft")
+        failed_job_draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 17, 10, 30, tzinfo=timezone.utc),
+        )
+        failed_job = _create_publish_job_for_draft(
+            session,
+            failed_job_draft,
+            idempotency_key="failed-job-for-draft",
+        )
+        PublishJobRepository(session).transition_state(failed_job, PublishJobState.FAILED, last_error="boom")
+        _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.PENDING_REVIEW,
+            created_at=datetime(2026, 3, 17, 11, 0, tzinfo=timezone.utc),
+        )
+        _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            account_key="finance_news_daily",
+            created_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
+        )
+
+    with session_scope(session_factory) as session:
+        drafts = PublishJobRepository(session).list_approved_without_active_job("ai_tools_daily", "x")
+
+    assert [draft.id for draft in drafts] == [eligible.id]
+
+
+def test_publish_job_repository_claim_due_job_is_atomic(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        job_id = job.id
+
+    with session_scope(session_factory) as session:
+        claimed_job = PublishJobRepository(session).claim_due_job(
+            job_id,
+            as_of=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            claimed_at=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+        )
+        assert claimed_job is not None
+        assert claimed_job.state is PublishJobState.PUBLISHING
+        assert claimed_job.attempt_count == 1
+
+    with session_scope(session_factory) as session:
+        claimed_again = PublishJobRepository(session).claim_due_job(
+            job_id,
+            as_of=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            claimed_at=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+        )
+
+    assert claimed_again is None
 
 
 def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> None:
@@ -834,6 +979,7 @@ def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
                     id INTEGER PRIMARY KEY,
                     draft_variant_id INTEGER NOT NULL,
                     channel VARCHAR(50) NOT NULL,
+                    idempotency_key VARCHAR(64) NOT NULL,
                     scheduled_for DATETIME,
                     state VARCHAR(32) NOT NULL,
                     attempt_count INTEGER NOT NULL,
@@ -1020,6 +1166,7 @@ def test_bootstrap_database_detects_missing_publish_job_active_unique_index(data
                     id INTEGER PRIMARY KEY,
                     draft_variant_id INTEGER NOT NULL,
                     channel VARCHAR(50) NOT NULL,
+                    idempotency_key VARCHAR(64) NOT NULL,
                     scheduled_for DATETIME,
                     state VARCHAR(32) NOT NULL,
                     attempt_count INTEGER NOT NULL,
@@ -1030,6 +1177,9 @@ def test_bootstrap_database_detects_missing_publish_job_active_unique_index(data
                     updated_at DATETIME NOT NULL
                 )
                 """
+            )
+            connection.exec_driver_sql(
+                "CREATE UNIQUE INDEX uq_publish_jobs_idempotency_key ON publish_jobs (idempotency_key)"
             )
             connection.exec_driver_sql(
                 """
@@ -1067,6 +1217,56 @@ def test_bootstrap_database_detects_missing_publish_job_active_unique_index(data
     with pytest.raises(
         DatabaseSchemaError,
         match="publish_jobs: missing unique indexes uq_publish_jobs_active_draft_variant_id",
+    ):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_publish_job_idempotency_column(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE publish_jobs")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE publish_jobs (
+                    id INTEGER PRIMARY KEY,
+                    draft_variant_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    scheduled_for DATETIME,
+                    state VARCHAR(32) NOT NULL,
+                    attempt_count INTEGER NOT NULL,
+                    external_post_id VARCHAR(255),
+                    last_error TEXT,
+                    published_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                "CREATE UNIQUE INDEX uq_publish_jobs_active_draft_variant_id "
+                "ON publish_jobs (draft_variant_id) WHERE state IN ('SCHEDULED', 'PUBLISHING', 'PUBLISHED')"
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(DatabaseSchemaError, match="publish_jobs: missing columns idempotency_key"):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_publish_job_idempotency_unique_index(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP INDEX uq_publish_jobs_idempotency_key")
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match="publish_jobs: missing unique indexes uq_publish_jobs_idempotency_key",
     ):
         bootstrap_database(database_url)
 
@@ -1144,10 +1344,20 @@ def _create_publish_job(
     draft_state: DraftVariantState = DraftVariantState.APPROVED,
 ) -> PublishJob:
     draft = _create_draft_variant(session, draft_state=draft_state)
+    return _create_publish_job_for_draft(session, draft)
+
+
+def _create_publish_job_for_draft(
+    session,
+    draft: DraftVariant,
+    *,
+    idempotency_key: str | None = None,
+) -> PublishJob:
     return PublishJobRepository(session).add(
         PublishJob(
             draft_variant=draft,
             channel="x",
+            idempotency_key=idempotency_key or "",
             scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
         )
     )

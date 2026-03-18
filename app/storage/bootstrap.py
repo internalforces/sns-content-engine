@@ -42,6 +42,7 @@ _REQUIRED_TABLE_COLUMNS = {
         "draft_variant_id",
         "external_post_id",
         "id",
+        "idempotency_key",
         "last_error",
         "published_at",
         "scheduled_for",
@@ -115,6 +116,7 @@ _REQUIRED_UNIQUE_CONSTRAINTS = {
 _REQUIRED_UNIQUE_INDEXES = {
     "publish_jobs": {
         "uq_publish_jobs_active_draft_variant_id",
+        "uq_publish_jobs_idempotency_key",
     },
 }
 

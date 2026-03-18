@@ -11,7 +11,8 @@ from typer.testing import CliRunner
 from app import __version__
 from app.cli import app
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
-from app.storage import DatabaseSchemaError, DraftVariantState, ReviewActionType
+from app.scheduler import BackfillResult, PublishDueOutcome, PublishDueResult, SchedulerDiscoverResult
+from app.storage import DatabaseSchemaError, DraftVariantState, PublishJobState, ReviewActionType
 from app.workflows import (
     BuildContentBriefOutcome,
     BuildContentBriefsResult,
@@ -351,6 +352,88 @@ def test_review_schedule_command_surfaces_workflow_errors(monkeypatch) -> None:
     assert "scheduled_for must include a timezone offset" in result.output
 
 
+def test_scheduler_discover_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "scheduler_discover",
+        lambda config_dir=None: SchedulerDiscoverResult(
+            discovered_count=2,
+            processed_sources=("ai_tools_manual", "ai_tools_rss"),
+            failure_messages=(),
+        ),
+    )
+
+    result = runner.invoke(app, ["scheduler", "discover"])
+
+    assert result.exit_code == 0
+    assert "scheduler discover found 2 item candidates from 2 sources" in result.stdout
+
+
+def test_scheduler_backfill_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "backfill_publish_jobs",
+        lambda config_dir=None, database_url=None: BackfillResult(outcomes=()),
+    )
+
+    result = runner.invoke(app, ["scheduler", "backfill"])
+
+    assert result.exit_code == 0
+    assert "processed backlog channels: 0" in result.stdout
+    assert "existing future jobs: 0" in result.stdout
+    assert "created jobs: 0" in result.stdout
+    assert "skipped slots: 0" in result.stdout
+
+
+def test_scheduler_publish_due_command_reports_dry_run_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "publish_due_jobs",
+        lambda database_url=None, dry_run=True: PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=42,
+                    status="dry_run",
+                    state=PublishJobState.SCHEDULED,
+                    message="dry-run only; no state changes were applied",
+                    external_post_id="dry-run:42",
+                ),
+            ),
+            dry_run=True,
+        ),
+    )
+
+    result = runner.invoke(app, ["scheduler", "publish-due"])
+
+    assert result.exit_code == 0
+    assert "processed due jobs: 1 (dry_run=1, failed=0, skipped=0)" in result.stdout
+    assert "executor mode: fake dry-run (no state changes)" in result.stdout
+
+
+def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeScheduler:
+        def start(self) -> None:
+            captured["started"] = True
+
+    def fake_build_scheduler_runtime(**kwargs):
+        captured.update(kwargs)
+        return FakeScheduler()
+
+    monkeypatch.setattr(cli_module, "build_scheduler_runtime", fake_build_scheduler_runtime)
+
+    result = runner.invoke(app, ["scheduler", "run"])
+
+    assert result.exit_code == 0
+    assert captured["discover_interval_minutes"] == 30
+    assert captured["backfill_interval_minutes"] == 15
+    assert captured["publish_due_interval_seconds"] == 60
+    assert captured["started"] is True
+    assert "scheduler registered jobs: discover, backfill, publish_due" in result.stdout
+    assert "dry_run=true" in result.stdout
+
+
 def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
@@ -377,6 +460,7 @@ def test_help_command_is_available() -> None:
     assert "generate-drafts" in result.stdout
     assert "ingest" in result.stdout
     assert "review" in result.stdout
+    assert "scheduler" in result.stdout
 
 
 def test_main_runs_the_typer_app(monkeypatch) -> None:
