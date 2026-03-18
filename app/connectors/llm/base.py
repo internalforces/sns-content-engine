@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class DraftGenerationProviderError(RuntimeError):
+    """Raised when a draft generation provider cannot fulfill a request."""
+
+
 @dataclass(frozen=True, slots=True)
 class DraftGenerationRequest:
     """Normalized request payload for channel draft generation."""
@@ -25,4 +29,3 @@ class DraftGenerationProvider(Protocol):
 
     def generate_variants(self, request: DraftGenerationRequest) -> tuple[str, ...]:
         """Return channel-ready draft variants for the given request."""
-

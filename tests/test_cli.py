@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from app import __version__
 from app.cli import app
+from app.connectors.llm import DraftGenerationProviderError
 from app.config import ConfigValidationError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import BackfillResult, PublishDueOutcome, PublishDueResult, SchedulerDiscoverResult
@@ -370,6 +371,21 @@ def test_generate_drafts_command_surfaces_schema_errors_cleanly(monkeypatch) -> 
 
     assert result.exit_code == 1
     assert "database schema is outdated" in result.output
+
+
+def test_generate_drafts_command_surfaces_provider_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "generate_drafts",
+        lambda _config_dir, database_url=None, variant_count=3: (_ for _ in ()).throw(
+            DraftGenerationProviderError("OpenAI draft generation request failed: boom")
+        ),
+    )
+
+    result = runner.invoke(app, ["generate-drafts"])
+
+    assert result.exit_code == 1
+    assert "OpenAI draft generation request failed: boom" in result.output
 
 
 def test_generate_drafts_command_rejects_invalid_variant_count() -> None:

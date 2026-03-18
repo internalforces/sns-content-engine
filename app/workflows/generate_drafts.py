@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import ConfigRegistry
-from app.connectors.llm import DraftGenerationProvider, FakeLLMProvider
+from app.connectors.llm import DraftGenerationProvider, resolve_draft_generation_provider
 from app.services import XDraftGenerator
 from app.storage import (
     ContentBriefRepository,
@@ -94,7 +94,7 @@ def generate_drafts(
         raise ValueError("variant_count must be 2 or 3")
 
     registry = ConfigRegistry.from_directory(Path(config_dir))
-    provider = llm_provider or FakeLLMProvider()
+    provider = llm_provider or resolve_draft_generation_provider()
 
     owned_engine = None
     if session_factory is None:

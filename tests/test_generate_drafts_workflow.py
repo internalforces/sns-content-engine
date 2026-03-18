@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import app.connectors.llm.openai_provider as openai_provider_module
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
+from app.connectors.llm import DraftGenerationProviderError
 from app.storage import (
     ContentBrief,
     ContentBriefRepository,
@@ -150,6 +152,91 @@ def test_generate_drafts_rejects_invalid_variant_count(tmp_path: Path) -> None:
         generate_drafts(tmp_path, session_factory=session_factory, variant_count=4)
 
 
+def test_generate_drafts_uses_fake_provider_when_openai_key_is_absent(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    generate_drafts(tmp_path, session_factory=session_factory)
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+
+    assert len(stored_drafts) == 3
+    assert stored_drafts[0].body.startswith("Practical takeaway:")
+
+
+def test_generate_drafts_uses_openai_provider_when_api_key_is_present(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    recording_client = _RecordingOpenAIClient(
+        _StubOpenAIResponse(
+            '{"variants":['
+            '"OpenAI first draft https://gilgop.cloud/ai-tools",'
+            '"OpenAI second draft https://gilgop.cloud/ai-tools",'
+            '"OpenAI third draft https://gilgop.cloud/ai-tools"'
+            "]}"
+        )
+    )
+    monkeypatch.setattr(
+        openai_provider_module,
+        "_build_default_openai_responses_client",
+        lambda **_: recording_client,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+
+    assert [draft.body for draft in stored_drafts] == [
+        "OpenAI first draft https://gilgop.cloud/ai-tools",
+        "OpenAI second draft https://gilgop.cloud/ai-tools",
+        "OpenAI third draft https://gilgop.cloud/ai-tools",
+    ]
+    assert recording_client.payloads[0]["model"] == "gpt-5.4-mini"
+
+
+def test_generate_drafts_aborts_when_openai_provider_fails(monkeypatch, tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(
+        openai_provider_module,
+        "_build_default_openai_responses_client",
+        lambda **_: _RecordingOpenAIClient(RuntimeError("boom")),
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    with pytest.raises(DraftGenerationProviderError, match="OpenAI draft generation request failed: boom"):
+        generate_drafts(tmp_path, session_factory=session_factory)
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+
+    assert stored_drafts == []
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'drafts.db'}")
     create_all_tables(engine)
@@ -236,3 +323,20 @@ def _write_project_config(path: Path, *, accounts_yaml: str | None = None) -> No
 
 def _write_file(path: Path, content: str) -> None:
     path.write_text(dedent(content).strip() + "\n", encoding="utf-8")
+
+
+class _StubOpenAIResponse:
+    def __init__(self, output_text: str) -> None:
+        self.output_text = output_text
+
+
+class _RecordingOpenAIClient:
+    def __init__(self, response_or_exception: object) -> None:
+        self._response_or_exception = response_or_exception
+        self.payloads: list[object] = []
+
+    def create_response(self, *, payload) -> object:
+        self.payloads.append(payload)
+        if isinstance(self._response_or_exception, Exception):
+            raise self._response_or_exception
+        return self._response_or_exception
