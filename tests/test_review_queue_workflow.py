@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from itertools import count
+from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -26,6 +28,7 @@ from app.storage import (
 from app.workflows import (
     DraftReviewStateError,
     DraftScheduleError,
+    DraftValidationFailedError,
     approve_draft,
     edit_draft,
     list_pending_review_drafts,
@@ -34,6 +37,7 @@ from app.workflows import (
 )
 
 _DRAFT_SOURCE_COUNTER = count()
+_VALID_DRAFT_BODY = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
 
 
 @pytest.fixture
@@ -43,6 +47,12 @@ def session_factory(tmp_path):
     factory = create_session_factory(engine)
     yield factory
     engine.dispose()
+
+
+@pytest.fixture
+def config_dir(tmp_path: Path) -> Path:
+    _write_project_config(tmp_path)
+    return tmp_path
 
 
 def test_list_pending_review_drafts_returns_only_pending(session_factory) -> None:
@@ -61,12 +71,17 @@ def test_list_pending_review_drafts_returns_only_pending(session_factory) -> Non
     assert result.drafts[0].title == "Brief for draft"
 
 
-def test_approve_draft_updates_state_and_records_review_action(session_factory) -> None:
+def test_approve_draft_updates_state_and_records_review_action(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session)
         draft_id = draft.id
 
-    result = approve_draft(draft_id, reviewer="editor-a", session_factory=session_factory)
+    result = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
 
     assert result.draft_id == draft_id
     assert result.reviewer == "editor-a"
@@ -82,13 +97,13 @@ def test_approve_draft_updates_state_and_records_review_action(session_factory) 
     assert stored_draft.reviewed_at is not None
     assert len(actions) == 1
     assert actions[0].action_type is ReviewActionType.APPROVE
-    assert actions[0].before_text == "Draft text"
-    assert actions[0].after_text == "Draft text"
+    assert actions[0].before_text == _VALID_DRAFT_BODY
+    assert actions[0].after_text == _VALID_DRAFT_BODY
     assert actions[0].draft_state_before is DraftVariantState.PENDING_REVIEW
     assert actions[0].draft_state_after is DraftVariantState.APPROVED
 
 
-def test_reject_draft_updates_state_and_records_reason(session_factory) -> None:
+def test_reject_draft_updates_state_and_records_reason(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session)
         draft_id = draft.id
@@ -97,6 +112,7 @@ def test_reject_draft_updates_state_and_records_reason(session_factory) -> None:
         draft_id,
         reason="Off topic for this account",
         reviewer="editor-b",
+        config_dir=config_dir,
         session_factory=session_factory,
     )
 
@@ -114,7 +130,7 @@ def test_reject_draft_updates_state_and_records_reason(session_factory) -> None:
     assert actions[0].rejection_reason == "Off topic for this account"
 
 
-def test_edit_draft_uses_environment_reviewer_fallback(session_factory, monkeypatch) -> None:
+def test_edit_draft_uses_environment_reviewer_fallback(session_factory, config_dir, monkeypatch) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session)
         draft_id = draft.id
@@ -123,6 +139,7 @@ def test_edit_draft_uses_environment_reviewer_fallback(session_factory, monkeypa
     result = edit_draft(
         draft_id,
         body="Updated draft body https://gilgop.cloud/ai-tools",
+        config_dir=config_dir,
         session_factory=session_factory,
     )
 
@@ -138,13 +155,13 @@ def test_edit_draft_uses_environment_reviewer_fallback(session_factory, monkeypa
     assert stored_draft.body == "Updated draft body https://gilgop.cloud/ai-tools"
     assert stored_draft.reviewed_at is None
     assert len(actions) == 1
-    assert actions[0].before_text == "Draft text"
+    assert actions[0].before_text == _VALID_DRAFT_BODY
     assert actions[0].after_text == "Updated draft body https://gilgop.cloud/ai-tools"
     assert actions[0].draft_state_before is DraftVariantState.PENDING_REVIEW
     assert actions[0].draft_state_after is DraftVariantState.PENDING_REVIEW
 
 
-def test_schedule_draft_creates_publish_job_and_review_action(session_factory) -> None:
+def test_schedule_draft_creates_publish_job_and_review_action(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
         draft_id = draft.id
@@ -153,6 +170,7 @@ def test_schedule_draft_creates_publish_job_and_review_action(session_factory) -
         draft_id,
         scheduled_for="2026-03-18T09:00:00+09:00",
         reviewer="scheduler-a",
+        config_dir=config_dir,
         session_factory=session_factory,
     )
 
@@ -172,6 +190,28 @@ def test_schedule_draft_creates_publish_job_and_review_action(session_factory) -
     assert actions[0].scheduled_for == datetime(2026, 3, 18, 0, 0, tzinfo=timezone.utc)
     assert actions[0].draft_state_before is DraftVariantState.APPROVED
     assert actions[0].draft_state_after is DraftVariantState.APPROVED
+
+
+def test_approve_draft_rejects_invalid_body_against_config_rules(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session)
+        draft_id = draft.id
+
+    edit_draft(
+        draft_id,
+        body="Operator update for general readers https://gilgop.cloud/ai-tools",
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+
+    with pytest.raises(DraftValidationFailedError, match="topic_guard_failed"):
+        approve_draft(
+            draft_id,
+            reviewer="editor-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
 
 
 @pytest.mark.parametrize(
@@ -195,6 +235,7 @@ def test_schedule_draft_creates_publish_job_and_review_action(session_factory) -
 )
 def test_review_queue_rejects_invalid_state_operations(
     session_factory,
+    config_dir,
     operation,
     draft_state,
     kwargs,
@@ -205,10 +246,16 @@ def test_review_queue_rejects_invalid_state_operations(
         draft_id = draft.id
 
     with pytest.raises(DraftReviewStateError, match=match):
-        operation(draft_id, reviewer="editor-a", session_factory=session_factory, **kwargs)
+        operation(
+            draft_id,
+            reviewer="editor-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+            **kwargs,
+        )
 
 
-def test_schedule_draft_rejects_duplicate_active_jobs(session_factory) -> None:
+def test_schedule_draft_rejects_duplicate_active_jobs(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
         draft_id = draft.id
@@ -217,6 +264,7 @@ def test_schedule_draft_rejects_duplicate_active_jobs(session_factory) -> None:
         draft_id,
         scheduled_for="2026-03-18T09:00:00+00:00",
         reviewer="scheduler-a",
+        config_dir=config_dir,
         session_factory=session_factory,
     )
 
@@ -225,11 +273,12 @@ def test_schedule_draft_rejects_duplicate_active_jobs(session_factory) -> None:
             draft_id,
             scheduled_for="2026-03-18T10:00:00+00:00",
             reviewer="scheduler-a",
+            config_dir=config_dir,
             session_factory=session_factory,
         )
 
 
-def test_schedule_draft_rejects_naive_datetimes(session_factory) -> None:
+def test_schedule_draft_rejects_naive_datetimes(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
 
@@ -238,6 +287,7 @@ def test_schedule_draft_rejects_naive_datetimes(session_factory) -> None:
             draft.id,
             scheduled_for="2026-03-18T09:00:00",
             reviewer="scheduler-a",
+            config_dir=config_dir,
             session_factory=session_factory,
         )
 
@@ -276,7 +326,7 @@ def _create_draft_variant(
             content_brief=brief,
             channel="x",
             variant_index=0,
-            body="Draft text",
+            body=_VALID_DRAFT_BODY,
         )
     )
     if draft_state is DraftVariantState.APPROVED:
@@ -288,3 +338,65 @@ def _create_draft_variant(
             rejection_reason="Rejected during test setup",
         )
     return draft
+
+
+def _write_project_config(path: Path) -> None:
+    _write_file(
+        path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            matching:
+              include_keywords:
+                - ai
+                - automation
+              source_tags:
+                - ai
+                - automation
+              strict_topic_guard: true
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+        """,
+    )
+    _write_file(
+        path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "System for {{ account_key }} on {{ channel }}"
+            user_template: "Write about {{ title }} and use {{ landing_url }}"
+        """,
+    )
+    _write_file(
+        path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+
+def _write_file(path: Path, content: str) -> None:
+    path.write_text(dedent(content).strip() + "\n", encoding="utf-8")

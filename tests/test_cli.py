@@ -318,7 +318,7 @@ def test_review_approve_command_reports_success(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
         "approve_draft",
-        lambda draft_id, reviewer=None, database_url=None: ReviewDraftResult(
+        lambda draft_id, reviewer=None, config_dir=None, database_url=None: ReviewDraftResult(
             draft_id=draft_id,
             reviewer=reviewer or "ops-user",
             action_type=ReviewActionType.APPROVE,
@@ -337,7 +337,7 @@ def test_review_schedule_command_surfaces_workflow_errors(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
         "schedule_draft",
-        lambda draft_id, scheduled_for, reviewer=None, database_url=None: (_ for _ in ()).throw(
+        lambda draft_id, scheduled_for, reviewer=None, config_dir=None, database_url=None: (_ for _ in ()).throw(
             ReviewQueueError("scheduled_for must include a timezone offset")
         ),
     )

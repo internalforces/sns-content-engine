@@ -252,6 +252,18 @@ def review_list_command(
 @review_app.command("approve")
 def review_approve_command(
     draft_id: Annotated[int, typer.Argument(help="Draft variant id to approve.")],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
     reviewer: Annotated[
         str | None,
         typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
@@ -267,7 +279,12 @@ def review_approve_command(
     """Approve a pending draft."""
 
     try:
-        result = approve_draft(draft_id, reviewer=reviewer, database_url=database_url)
+        result = approve_draft(
+            draft_id,
+            reviewer=reviewer,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
     except (DatabaseSchemaError, ReviewQueueError) as exc:
         _exit_with_error(exc)
 
@@ -281,6 +298,18 @@ def review_reject_command(
         str,
         typer.Option("--reason", help="Reason recorded with the rejection."),
     ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
     reviewer: Annotated[
         str | None,
         typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
@@ -300,6 +329,7 @@ def review_reject_command(
             draft_id,
             reason=reason,
             reviewer=reviewer,
+            config_dir=config_dir,
             database_url=database_url,
         )
     except (DatabaseSchemaError, ReviewQueueError) as exc:
@@ -315,6 +345,18 @@ def review_edit_command(
         str,
         typer.Option("--body", help="Replacement body text for the draft."),
     ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
     reviewer: Annotated[
         str | None,
         typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
@@ -334,6 +376,7 @@ def review_edit_command(
             draft_id,
             body=body,
             reviewer=reviewer,
+            config_dir=config_dir,
             database_url=database_url,
         )
     except (DatabaseSchemaError, ReviewQueueError) as exc:
@@ -352,6 +395,18 @@ def review_schedule_command(
             help="Timezone-aware ISO 8601 publish time.",
         ),
     ],
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
     reviewer: Annotated[
         str | None,
         typer.Option("--reviewer", help="Reviewer identity. Falls back to USER or USERNAME."),
@@ -371,6 +426,7 @@ def review_schedule_command(
             draft_id,
             scheduled_for=scheduled_for,
             reviewer=reviewer,
+            config_dir=config_dir,
             database_url=database_url,
         )
     except (DatabaseSchemaError, ReviewQueueError) as exc:

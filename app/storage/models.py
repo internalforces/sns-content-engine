@@ -6,7 +6,18 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum as SqlEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import TypeDecorator
 
@@ -287,6 +298,14 @@ class PublishJob(Base):
     """Scheduled publishing intent for an approved draft variant."""
 
     __tablename__ = "publish_jobs"
+    __table_args__ = (
+        Index(
+            "uq_publish_jobs_active_draft_variant_id",
+            "draft_variant_id",
+            unique=True,
+            sqlite_where=text("state IN ('SCHEDULED', 'PUBLISHING', 'PUBLISHED')"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     draft_variant_id: Mapped[int] = mapped_column(

@@ -112,6 +112,11 @@ _REQUIRED_UNIQUE_CONSTRAINTS = {
         "uq_source_items_source_key_external_id",
     },
 }
+_REQUIRED_UNIQUE_INDEXES = {
+    "publish_jobs": {
+        "uq_publish_jobs_active_draft_variant_id",
+    },
+}
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -148,6 +153,16 @@ def ensure_database_schema_is_current(engine: Engine) -> None:
             mismatches.append(
                 f"{table_name}: missing unique constraints {', '.join(missing_constraints)}"
             )
+
+    for table_name, required_indexes in sorted(_REQUIRED_UNIQUE_INDEXES.items()):
+        actual_indexes = {
+            index["name"]
+            for index in inspector.get_indexes(table_name)
+            if index.get("name") and index.get("unique")
+        }
+        missing_indexes = sorted(required_indexes - actual_indexes)
+        if missing_indexes:
+            mismatches.append(f"{table_name}: missing unique indexes {', '.join(missing_indexes)}")
 
     if mismatches:
         mismatch_text = "; ".join(mismatches)

@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
+
+from app.config import ConfigRegistry
+from app.services import DraftValidator
 from app.storage import (
     DraftVariantState,
     PublishJob,
@@ -38,6 +43,10 @@ class DraftReviewStateError(ReviewQueueError):
 
 class DraftScheduleError(ReviewQueueError):
     """Raised when scheduling validation fails."""
+
+
+class DraftValidationFailedError(ReviewQueueError):
+    """Raised when a draft fails the approval/publish validator."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +124,7 @@ def approve_draft(
     draft_id: int,
     *,
     reviewer: str | None = None,
+    config_dir: Path | str = Path("config"),
     database_url: str | None = None,
     session_factory=None,
 ) -> ReviewDraftResult:
@@ -125,7 +135,12 @@ def approve_draft(
         reviewer=reviewer,
         database_url=database_url,
         session_factory=session_factory,
-        handler=_approve_draft,
+        handler=lambda session, draft, reviewer_name: _approve_draft(
+            session,
+            draft,
+            reviewer_name,
+            config_dir=config_dir,
+        ),
     )
 
 
@@ -134,6 +149,7 @@ def reject_draft(
     *,
     reason: str,
     reviewer: str | None = None,
+    config_dir: Path | str = Path("config"),
     database_url: str | None = None,
     session_factory=None,
 ) -> ReviewDraftResult:
@@ -162,6 +178,7 @@ def edit_draft(
     *,
     body: str,
     reviewer: str | None = None,
+    config_dir: Path | str = Path("config"),
     database_url: str | None = None,
     session_factory=None,
 ) -> ReviewDraftResult:
@@ -190,6 +207,7 @@ def schedule_draft(
     *,
     scheduled_for: str | datetime,
     reviewer: str | None = None,
+    config_dir: Path | str = Path("config"),
     database_url: str | None = None,
     session_factory=None,
 ) -> ReviewDraftResult:
@@ -205,6 +223,7 @@ def schedule_draft(
             session,
             draft,
             reviewer_name,
+            config_dir=config_dir,
             scheduled_for=normalized_scheduled_for,
         ),
     )
@@ -224,8 +243,9 @@ def resolve_reviewer_identity(reviewer: str | None = None) -> str:
     raise ReviewerIdentityError("reviewer identity is required; pass --reviewer or set USER/USERNAME")
 
 
-def _approve_draft(session, draft, reviewer: str) -> ReviewDraftResult:
+def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.PENDING_REVIEW, action="approve")
+    _validate_draft_for_review(session, draft, config_dir=config_dir)
 
     drafts = DraftVariantRepository(session)
     before_state = draft.state
@@ -303,20 +323,31 @@ def _edit_draft(session, draft, reviewer: str, *, body: str) -> ReviewDraftResul
     )
 
 
-def _schedule_draft(session, draft, reviewer: str, *, scheduled_for: datetime) -> ReviewDraftResult:
+def _schedule_draft(
+    session,
+    draft,
+    reviewer: str,
+    *,
+    config_dir: Path | str,
+    scheduled_for: datetime,
+) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.APPROVED, action="schedule")
+    _validate_draft_for_review(session, draft, config_dir=config_dir)
 
     publish_jobs = PublishJobRepository(session)
     if publish_jobs.has_active_job_for_draft(draft.id):
         raise DraftScheduleError(f"draft {draft.id} already has an active publish job")
 
-    job = publish_jobs.add(
-        PublishJob(
-            draft_variant=draft,
-            channel=draft.channel,
-            scheduled_for=scheduled_for,
+    try:
+        job = publish_jobs.add(
+            PublishJob(
+                draft_variant=draft,
+                channel=draft.channel,
+                scheduled_for=scheduled_for,
+            )
         )
-    )
+    except IntegrityError as exc:
+        raise DraftScheduleError(f"draft {draft.id} already has an active publish job") from exc
     action = ReviewActionRepository(session).record(
         draft=draft,
         action_type=ReviewActionType.SCHEDULE,
@@ -337,6 +368,50 @@ def _schedule_draft(session, draft, reviewer: str, *, scheduled_for: datetime) -
         publish_job_id=job.id,
         scheduled_for=job.scheduled_for,
     )
+
+
+def _validate_draft_for_review(session, draft, *, config_dir: Path | str) -> None:
+    content_brief = draft.content_brief
+    if content_brief is None:
+        raise ReviewQueueError(f"draft {draft.id} is missing its content brief")
+
+    registry = ConfigRegistry.from_directory(Path(config_dir))
+    account_key = content_brief.account_key
+    try:
+        account = registry.get_account(account_key)
+    except KeyError as exc:
+        raise ReviewQueueError(
+            f"draft {draft.id} references unknown account {account_key!r}"
+        ) from exc
+
+    if draft.channel not in account.channels:
+        raise ReviewQueueError(
+            f"draft {draft.id} references channel {draft.channel!r} missing from account {account_key!r}"
+        )
+
+    duplicate_window_days = account.channels[draft.channel].validation.recent_duplicate_window_days
+    now = datetime.now(timezone.utc)
+    recent_drafts = DraftVariantRepository(session).list_recent_by_account_and_channel(
+        account_key,
+        draft.channel,
+        created_since=now - timedelta(days=duplicate_window_days),
+        exclude_draft_id=draft.id,
+    )
+    validation = DraftValidator().validate(
+        draft.body,
+        content_brief=content_brief,
+        account_key=account_key,
+        account=account,
+        channel=draft.channel,
+        recent_drafts=recent_drafts,
+        draft_id=draft.id,
+        now=now,
+    )
+    if validation.is_valid:
+        return
+
+    messages = "; ".join(f"{issue.code}: {issue.message}" for issue in validation.errors)
+    raise DraftValidationFailedError(f"draft {draft.id} failed validation: {messages}")
 
 
 def _run_review_action(
