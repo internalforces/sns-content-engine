@@ -92,6 +92,97 @@ def test_draft_validator_flags_recent_duplicate_draft() -> None:
     assert _issue_codes(result) == {"recent_duplicate"}
 
 
+def test_draft_validator_flags_missing_expected_landing_url() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators",
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"landing_url_missing"}
+
+
+def test_draft_validator_flags_landing_url_mismatch() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://example.com/seo-tool",
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"landing_url_mismatch"}
+
+
+def test_draft_validator_flags_disallowed_landing_prefix() -> None:
+    validator = DraftValidator()
+    landing_url = "https://odtoolbase.com/tools/seo-audit"
+
+    result = validator.validate(
+        f"Useful AI automation workflows for operators {landing_url}",
+        content_brief=_build_content_brief(landing_url=landing_url),
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            landing_url="https://odtoolbase.com/guides",
+            allowed_url_prefixes=("https://odtoolbase.com/guides",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"landing_url_disallowed"}
+
+
+def test_draft_validator_flags_unreachable_landing_url_when_required() -> None:
+    validator = DraftValidator()
+    landing_url = "https://odtoolbase.com/guides/ai-agent-workflows-small-teams"
+
+    result = validator.validate(
+        f"Useful AI automation workflows for operators {landing_url}",
+        content_brief=_build_content_brief(landing_url=landing_url),
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            landing_url="https://odtoolbase.com/guides",
+            require_live_url=True,
+            allowed_url_prefixes=("https://odtoolbase.com/guides",),
+        ),
+        channel="x",
+        landing_url_status_fetcher=lambda _: (_ for _ in ()).throw(OSError("HTTP 404")),
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"landing_url_unreachable"}
+
+
+def test_draft_validator_accepts_live_landing_url_when_required() -> None:
+    validator = DraftValidator()
+    landing_url = "https://odtoolbase.com/guides/ai-agent-workflows-small-teams"
+
+    result = validator.validate(
+        f"Useful AI automation workflows for operators {landing_url}",
+        content_brief=_build_content_brief(landing_url=landing_url),
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            landing_url="https://odtoolbase.com/guides",
+            require_live_url=True,
+            allowed_url_prefixes=("https://odtoolbase.com/guides",),
+        ),
+        channel="x",
+        landing_url_status_fetcher=lambda _: 200,
+    )
+
+    assert result.is_valid is True
+    assert result.issues == ()
+
+
 def test_draft_validator_ignores_rejected_and_stale_duplicates() -> None:
     validator = DraftValidator()
     now = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
@@ -194,12 +285,21 @@ def _build_account_config(
     profile: str = "standard",
     include_keywords: tuple[str, ...] = ("ai", "automation"),
     source_tags: tuple[str, ...] = ("ai", "automation"),
+    require_live_url: bool = False,
+    allowed_url_prefixes: tuple[str, ...] = (),
 ) -> AccountConfig:
     return AccountConfig(
         topic=topic,
         source_sets=("primary",),
         prompt_profile="default",
-        landing={"fallback_url": landing_url, "rules": []},
+        landing={
+            "fallback_url": landing_url,
+            "rules": [],
+            "validation": {
+                "require_live_url": require_live_url,
+                "allowed_url_prefixes": list(allowed_url_prefixes),
+            },
+        },
         matching={
             "include_keywords": list(include_keywords),
             "source_tags": list(source_tags),

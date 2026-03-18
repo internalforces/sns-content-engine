@@ -11,10 +11,15 @@ _OPENING_PHRASES = (
     "Worth a look:",
     "Quick insight:",
 )
-_CTA_PHRASES = (
-    "Read more:",
-    "See the full breakdown:",
-    "Get the details:",
+_GUIDE_CTA_PHRASES = (
+    "Try this workflow:",
+    "See the framework:",
+    "Open the guide:",
+)
+_TOOL_CTA_PHRASES = (
+    "Try the tool:",
+    "See it in action:",
+    "Open the tool:",
 )
 _WORD_RE = re.compile(r"[A-Za-z0-9']+")
 _PROMPT_STOPWORDS = frozenset(
@@ -82,9 +87,10 @@ class FakeLLMProvider:
             raise ValueError("variant_count must be 2 or 3")
 
         variants: list[str] = []
+        cta_phrases = _select_cta_phrases(request)
         for index in range(request.variant_count):
             opening = _OPENING_PHRASES[index]
-            call_to_action = _CTA_PHRASES[index]
+            call_to_action = cta_phrases[index]
             key_point = _select_key_point(request.key_points, index=index)
             prompt_focus = _build_prompt_focus(request)
             prefix = _build_prefix(
@@ -156,6 +162,18 @@ def _build_prompt_focus(request: DraftGenerationRequest) -> str | None:
     if not prompt_words:
         return None
     return " ".join(prompt_words)
+
+
+def _select_cta_phrases(request: DraftGenerationRequest) -> tuple[str, ...]:
+    landing_text = request.landing_url.casefold()
+    prompt_text = " ".join((request.system_prompt, request.user_prompt)).casefold()
+
+    if "/guides" in landing_text or any(
+        marker in prompt_text for marker in ("guide", "framework", "workflow")
+    ):
+        return _GUIDE_CTA_PHRASES
+
+    return _TOOL_CTA_PHRASES
 
 
 def _tokenize(text: str) -> tuple[str, ...]:

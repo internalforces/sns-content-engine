@@ -22,31 +22,56 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_registry_loads_sample_config_directory() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
 
-    account = registry.get_account("ai_tools_daily")
-    channel = account.channels["x"]
+    ai_account = registry.get_account("ai_tools_daily")
+    ai_channel = ai_account.channels["x"]
+    seo_account = registry.get_account("seo_tools_daily")
 
-    assert account.topic == "AI tools and workflows"
-    assert account.prompt_profile == "ai_tools_default"
-    assert list(registry.accounts) == ["ai_tools_daily"]
-    assert str(account.landing.fallback_url) == "https://gilgop.cloud/ai-tools"
-    assert str(account.landing.rules[0].url) == "https://gilgop.cloud/ai-agents"
-    assert account.matching.include_keywords == ("ai", "agent", "automation")
-    assert account.matching.exclude_keywords == ("earnings", "stock")
-    assert account.matching.source_tags == ("ai", "automation")
-    assert account.matching.strict_topic_guard is True
-    assert account.validation.profile == "standard"
-    assert channel.schedule.cron == "0 9 * * *"
-    assert channel.render.max_chars == 280
-    assert channel.validation.max_links == 1
-    assert channel.validation.banned_phrases == ()
-    assert channel.validation.recent_duplicate_window_days == 7
-    assert channel.publisher is not None
-    assert channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
-    assert registry.get_prompt_profile("ai_tools_default").system_template.startswith("You are an editor")
-    assert registry.get_source_set("ai_tools_primary").sources == (
-        "ai_tools_rss",
-        "ai_tools_sitemap",
+    assert ai_account.topic == "AI workflows and guides"
+    assert ai_account.prompt_profile == "ai_tools_default"
+    assert list(registry.accounts) == ["ai_tools_daily", "seo_tools_daily"]
+    assert str(ai_account.landing.fallback_url) == "https://odtoolbase.com/guides"
+    assert str(ai_account.landing.rules[0].url) == (
+        "https://odtoolbase.com/guides/ai-research-stack-content-pipelines"
     )
+    assert str(ai_account.landing.rules[1].url) == (
+        "https://odtoolbase.com/guides/ai-agent-workflows-small-teams"
+    )
+    assert ai_account.landing.validation.require_live_url is True
+    assert tuple(str(prefix) for prefix in ai_account.landing.validation.allowed_url_prefixes) == (
+        "https://odtoolbase.com/guides",
+    )
+    assert ai_account.matching.include_keywords == ("ai", "agent", "workflow", "automation", "guide")
+    assert ai_account.matching.exclude_keywords == (
+        "seo",
+        "backlink",
+        "search ranking",
+        "earnings",
+        "stock",
+    )
+    assert ai_account.matching.source_tags == ("ai", "automation", "workflow", "guide")
+    assert ai_account.matching.strict_topic_guard is True
+    assert ai_account.validation.profile == "standard"
+    assert ai_channel.schedule.cron == "0 9 * * *"
+    assert ai_channel.render.max_chars == 280
+    assert ai_channel.validation.max_links == 1
+    assert ai_channel.validation.banned_phrases == ()
+    assert ai_channel.validation.recent_duplicate_window_days == 7
+    assert ai_channel.publisher is not None
+    assert ai_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
+
+    assert seo_account.topic == "SEO tools and search optimization"
+    assert seo_account.prompt_profile == "seo_tools_default"
+    assert str(seo_account.landing.fallback_url) == "https://odtoolbase.com/tools"
+    assert seo_account.landing.validation.require_live_url is True
+
+    assert registry.get_prompt_profile("ai_tools_default").system_template.startswith(
+        "You are the growth editor"
+    )
+    assert registry.get_prompt_profile("seo_tools_default").system_template.startswith(
+        "You are the growth editor"
+    )
+    assert registry.get_source_set("ai_tools_primary").sources == ("ai_tools_manual",)
+    assert registry.get_source_set("seo_tools_primary").sources == ("seo_tools_manual",)
 
 
 def test_registry_is_deeply_immutable() -> None:
