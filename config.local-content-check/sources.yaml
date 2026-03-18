@@ -2,8 +2,14 @@ sources:
   ai_tools_manual:
     type: manual_csv
     path: ../data/ai_tools_manual.csv
+  seo_tools_manual:
+    type: manual_csv
+    path: ../data/seo_tools_manual.csv
 
 source_sets:
   ai_tools_primary:
     sources:
       - ai_tools_manual
+  seo_tools_primary:
+    sources:
+      - seo_tools_manual

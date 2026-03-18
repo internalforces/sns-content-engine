@@ -1,27 +1,44 @@
 accounts:
   ai_tools_daily:
-    topic: "AI tools and workflows"
+    topic: "AI workflows and guides"
     source_sets:
       - ai_tools_primary
     prompt_profile: ai_tools_default
     landing:
-      fallback_url: https://gilgop.cloud/ai-tools
+      fallback_url: https://odtoolbase.com/guides
       rules:
+        - when_tags_any:
+            - research
+            - workflow
+            - workflows
+            - content
+          url: https://odtoolbase.com/guides/ai-research-stack-content-pipelines
         - when_tags_any:
             - agents
             - automation
-          url: https://gilgop.cloud/ai-agents
+          url: https://odtoolbase.com/guides/ai-agent-workflows-small-teams
+      validation:
+        require_live_url: true
+        allowed_url_prefixes:
+          - https://odtoolbase.com/guides
     matching:
       include_keywords:
         - ai
         - agent
+        - workflow
         - automation
+        - guide
       exclude_keywords:
+        - seo
+        - backlink
+        - search ranking
         - earnings
         - stock
       source_tags:
         - ai
         - automation
+        - workflow
+        - guide
       strict_topic_guard: true
     channels:
       x:
@@ -35,3 +52,39 @@ accounts:
           max_chars: 280
         publisher:
           credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+  seo_tools_daily:
+    topic: "SEO tools and search optimization"
+    source_sets:
+      - seo_tools_primary
+    prompt_profile: seo_tools_default
+    landing:
+      fallback_url: https://odtoolbase.com/tools
+      validation:
+        require_live_url: true
+        allowed_url_prefixes:
+          - https://odtoolbase.com/tools
+    matching:
+      include_keywords:
+        - seo
+        - search
+        - backlink
+        - audit
+      exclude_keywords:
+        - earnings
+        - stock
+      source_tags:
+        - seo
+        - search
+      strict_topic_guard: true
+    channels:
+      x:
+        schedule:
+          cron: "0 11 * * *"
+          window_minutes: 60
+          jitter_minutes: 15
+          min_gap_minutes: 180
+          backlog_target: 2
+        render:
+          max_chars: 280
+        publisher:
+          credential_ref: X_SEO_TOOLS_DAILY_PUBLISHER_CREDENTIALS

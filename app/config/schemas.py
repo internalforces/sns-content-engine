@@ -117,6 +117,14 @@ class LandingConfig(FrozenConfigModel):
 
     fallback_url: HttpUrl
     rules: tuple[LandingRuleConfig, ...] = Field(default_factory=tuple)
+    validation: "LandingValidationConfig" = Field(default_factory=lambda: LandingValidationConfig())
+
+
+class LandingValidationConfig(FrozenConfigModel):
+    """Validation rules applied to resolved landing URLs."""
+
+    require_live_url: bool = False
+    allowed_url_prefixes: tuple[HttpUrl, ...] = Field(default_factory=tuple)
 
 
 class ScheduleConfig(FrozenConfigModel):

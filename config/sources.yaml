@@ -1,77 +1,18 @@
 sources:
-  cnbc_markets_rss:
-    type: rss
-    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664
+  ai_tools_manual:
+    type: manual_csv
+    path: ../data/ai_tools_manual.csv
 
-  marketwatch_rss:
-    type: rss
-    url: https://feeds.content.dowjones.io/public/rss/mw_marketpulse
-
-  investing_stock_rss:
-    type: rss
-    url: https://www.investing.com/rss/news_25.rss
-
-  nasdaq_news_rss:
-    type: rss
-    url: https://www.nasdaq.com/feed/rssoutbound?category=Stock%20Market%20News
-
-  yahoo_finance_rss:
-    type: rss
-    url: https://finance.yahoo.com/rss/topstories
-
-  seekingalpha_rss:
-    type: rss
-    url: https://seekingalpha.com/market_currents.xml
-
-  globenewswire_rss:
-    type: rss
-    url: https://www.globenewswire.com/rss/newsroom
-
-  marketwatch_sitemap:
-    type: sitemap
-    url: https://www.marketwatch.com/sitemap.xml
-
-  investing_sitemap:
-    type: sitemap
-    url: https://www.investing.com/sitemap.xml
-
-  nasdaq_sitemap:
-    type: sitemap
-    url: https://www.nasdaq.com/sitemap.xml
+  seo_tools_manual:
+    type: manual_csv
+    path: ../data/seo_tools_manual.csv
 
 
 source_sets:
-  global_stock_core:
+  ai_tools_primary:
     sources:
-      - cnbc_markets_rss
-      - marketwatch_rss
-      - investing_stock_rss
-      - yahoo_finance_rss
+      - ai_tools_manual
 
-  stock_analysis:
+  seo_tools_primary:
     sources:
-      - seekingalpha_rss
-      - nasdaq_news_rss
-
-  stock_events:
-    sources:
-      - globenewswire_rss
-
-  stock_sitemap_fallback:
-    sources:
-      - marketwatch_sitemap
-      - investing_sitemap
-      - nasdaq_sitemap
-
-  stock_all:
-    sources:
-      - cnbc_markets_rss
-      - marketwatch_rss
-      - investing_stock_rss
-      - nasdaq_news_rss
-      - yahoo_finance_rss
-      - seekingalpha_rss
-      - globenewswire_rss
-      - marketwatch_sitemap
-      - investing_sitemap
-      - nasdaq_sitemap
+      - seo_tools_manual

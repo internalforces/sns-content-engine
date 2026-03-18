@@ -58,6 +58,26 @@ def test_fake_llm_provider_output_changes_when_prompts_change() -> None:
     assert provider.generate_variants(left) != provider.generate_variants(right)
 
 
+def test_fake_llm_provider_uses_guide_cta_for_guide_landings() -> None:
+    provider = FakeLLMProvider()
+    request = DraftGenerationRequest(
+        channel="x",
+        system_prompt="Keep posts practical for workflow operators.",
+        user_prompt="Write about useful AI workflow patterns and make the click feel like a guide.",
+        landing_url="https://odtoolbase.com/guides/ai-agent-workflows-small-teams",
+        max_chars=160,
+        variant_count=3,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops", "Better scheduling"),
+    )
+
+    variants = provider.generate_variants(request)
+
+    assert "Try this workflow:" in variants[0]
+    assert "See the framework:" in variants[1]
+    assert "Open the guide:" in variants[2]
+
+
 def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> None:
     provider = _CapturingProvider(
         (
