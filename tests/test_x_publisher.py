@@ -155,6 +155,47 @@ def test_config_publisher_resolver_reports_missing_access_token(tmp_path: Path) 
     assert result.credential_ref == "X_TEST_CREDENTIALS"
 
 
+def test_config_publisher_resolver_only_requires_accounts_yaml(tmp_path: Path) -> None:
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - any_source_set_name
+            prompt_profile: any_prompt_name
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: X_TEST_CREDENTIALS
+        """,
+    )
+    resolver = ConfigPublisherResolver(
+        config_dir=tmp_path,
+        environment={"X_TEST_CREDENTIALS": '{"access_token":"user-token"}'},
+        x_http_client=StubXHttpClient(
+            XHttpResponse(
+                status_code=201,
+                payload={"data": {"id": "tweet-789"}},
+            )
+        ),
+    )
+
+    publisher = resolver.resolve(_sample_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "published"
+    assert result.external_post_id == "tweet-789"
+
+
 def _sample_publish_request() -> PublishRequest:
     return PublishRequest(
         publish_job_id=42,

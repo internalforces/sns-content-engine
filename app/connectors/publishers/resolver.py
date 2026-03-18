@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 
-from app.config import ConfigRegistry
+from app.config import AccountConfig, load_accounts_config
 from app.connectors.publishers.base import PublishRequest, PublishResult, Publisher
 from app.connectors.publishers.x import XHttpClient, XPublisher
 
@@ -22,7 +22,8 @@ class ConfigPublisherResolver:
         environment: Mapping[str, str] | None = None,
         x_http_client: XHttpClient | None = None,
     ) -> None:
-        self._registry = ConfigRegistry.from_directory(Path(config_dir))
+        accounts_file = Path(config_dir) / "accounts.yaml"
+        self._accounts: Mapping[str, AccountConfig] = load_accounts_config(accounts_file).accounts
         self._environment = environment if environment is not None else os.environ
         self._x_http_client = x_http_client
         self._cache: dict[tuple[str, str], XPublisher] = {}
@@ -56,7 +57,7 @@ class ConfigPublisherResolver:
                 error_message=f"channel {channel!r} does not support live publishing in the MVP",
             )
 
-        account = self._registry.accounts.get(account_key)
+        account = self._accounts.get(account_key)
         if account is None:
             return _FailurePublisher(
                 provider_name="x",
@@ -152,4 +153,3 @@ def _provider_name_for_channel(channel: object) -> str:
     if isinstance(channel, str) and channel.strip():
         return channel.strip()
     return "unknown"
-

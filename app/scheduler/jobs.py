@@ -144,6 +144,14 @@ class PublishDueResult:
         return sum(outcome.status == "skipped" for outcome in self.outcomes)
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedPublish:
+    """Durably claimed publish job context for the external publish step."""
+
+    publish_job_id: int
+    publish_request: PublishRequest
+
+
 def scheduler_discover(
     config_dir: Path | str = Path("config"),
 ) -> SchedulerDiscoverResult:
@@ -325,28 +333,65 @@ def _process_due_job(
     now: datetime,
     dry_run: bool,
 ) -> PublishDueOutcome:
+    if dry_run:
+        return _process_due_job_dry_run(
+            publish_job_id=publish_job_id,
+            session_factory=session_factory,
+            executor=executor,
+            now=now,
+        )
+
+    prepared_or_outcome = _prepare_live_publish(
+        publish_job_id=publish_job_id,
+        session_factory=session_factory,
+        now=now,
+    )
+    if isinstance(prepared_or_outcome, PublishDueOutcome):
+        return prepared_or_outcome
+
+    try:
+        publish_result = _execute_live_publish(
+            session_factory=session_factory,
+            prepared=prepared_or_outcome,
+            executor=executor,
+            publisher_resolver=publisher_resolver,
+        )
+    except Exception as exc:
+        return _finalize_live_publish_failure(
+            publish_job_id=prepared_or_outcome.publish_job_id,
+            session_factory=session_factory,
+            now=now,
+            error_message=str(exc),
+            provider=_provider_name_for_channel(prepared_or_outcome.publish_request.channel),
+        )
+
+    return _finalize_live_publish_result(
+        publish_job_id=prepared_or_outcome.publish_job_id,
+        session_factory=session_factory,
+        now=now,
+        publish_result=publish_result,
+    )
+
+
+def _process_due_job_dry_run(
+    *,
+    publish_job_id: int,
+    session_factory,
+    executor: PublishExecutor | None,
+    now: datetime,
+) -> PublishDueOutcome:
     with session_scope(session_factory) as session:
         jobs = PublishJobRepository(session)
-        logs = PublishLogRepository(session)
-        if dry_run:
-            job = jobs.get(publish_job_id)
-        else:
-            job = jobs.claim_due_job(
-                publish_job_id,
-                as_of=now,
-                claimed_at=now,
-            )
+        job = jobs.get(publish_job_id)
         if job is None:
-            current_job = jobs.get(publish_job_id)
             return PublishDueOutcome(
                 publish_job_id=publish_job_id,
                 status="skipped",
-                state=current_job.state if current_job is not None else PublishJobState.CANCELLED,
+                state=PublishJobState.CANCELLED,
                 message="publish job is no longer claimable",
-                external_post_id=current_job.external_post_id if current_job is not None else None,
             )
 
-        if dry_run and (
+        if (
             job.state is not PublishJobState.SCHEDULED
             or job.scheduled_for is None
             or job.scheduled_for > now
@@ -359,45 +404,44 @@ def _process_due_job(
                 external_post_id=job.external_post_id,
             )
 
-        try:
-            if dry_run:
-                execution = (executor or FakePublishExecutor()).execute(job)
-                return PublishDueOutcome(
-                    publish_job_id=job.id,
-                    status="dry_run",
-                    state=job.state,
-                    message="dry-run only; no state changes were applied",
-                    external_post_id=execution.external_post_id,
-                )
+        execution = (executor or FakePublishExecutor()).execute(job)
+        return PublishDueOutcome(
+            publish_job_id=job.id,
+            status="dry_run",
+            state=job.state,
+            message="dry-run only; no state changes were applied",
+            external_post_id=execution.external_post_id,
+        )
 
+
+def _prepare_live_publish(
+    *,
+    publish_job_id: int,
+    session_factory,
+    now: datetime,
+) -> PreparedPublish | PublishDueOutcome:
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session)
+        logs = PublishLogRepository(session)
+        job = jobs.claim_due_job(
+            publish_job_id,
+            as_of=now,
+            claimed_at=now,
+        )
+        if job is None:
+            current_job = jobs.get(publish_job_id)
+            return PublishDueOutcome(
+                publish_job_id=publish_job_id,
+                status="skipped",
+                state=current_job.state if current_job is not None else PublishJobState.CANCELLED,
+                message="publish job is no longer claimable",
+                external_post_id=current_job.external_post_id if current_job is not None else None,
+            )
+
+        try:
             jobs.ensure_publishable(job)
             publish_request = _build_publish_request(job)
-            logs.record(
-                publish_job=job,
-                event_type="publishing",
-                message=f"publishing job {job.id} with idempotency key {job.idempotency_key}",
-                payload={
-                    "idempotency_key": job.idempotency_key,
-                    "attempt_count": job.attempt_count,
-                    "account_key": publish_request.account_key,
-                    "channel": publish_request.channel,
-                },
-            )
-            publish_result = _execute_live_publish(
-                job=job,
-                publish_request=publish_request,
-                executor=executor,
-                publisher_resolver=publisher_resolver,
-            )
         except Exception as exc:
-            if dry_run:
-                return PublishDueOutcome(
-                    publish_job_id=job.id,
-                    status="failed",
-                    state=job.state,
-                    message=str(exc),
-                )
-
             jobs.transition_state(
                 job,
                 PublishJobState.FAILED,
@@ -421,116 +465,97 @@ def _process_due_job(
                 message=str(exc),
             )
 
-        if publish_result.dry_run:
-            dry_run_error = "stateful publish execution requires a non-dry-run executor result"
-            jobs.transition_state(
-                job,
-                PublishJobState.FAILED,
-                last_error=dry_run_error,
-                occurred_at=now,
-            )
-            logs.record(
-                publish_job=job,
-                event_type="failed",
-                message=f"publish job {job.id} failed: {dry_run_error}",
-                payload=_build_failure_payload(
-                    job,
-                    error_message=dry_run_error,
-                    provider=publish_result.provider or _provider_name_for_channel(job.channel),
-                    credential_ref=publish_result.credential_ref,
-                    status=publish_result.status,
-                    provider_payload=publish_result.provider_payload,
-                ),
-            )
-            return PublishDueOutcome(
-                publish_job_id=job.id,
-                status="failed",
-                state=job.state,
-                message=dry_run_error,
-            )
+        logs.record(
+            publish_job=job,
+            event_type="publishing",
+            message=f"publishing job {job.id} with idempotency key {job.idempotency_key}",
+            payload={
+                "idempotency_key": job.idempotency_key,
+                "attempt_count": job.attempt_count,
+                "account_key": publish_request.account_key,
+                "channel": publish_request.channel,
+            },
+        )
+        return PreparedPublish(
+            publish_job_id=job.id,
+            publish_request=publish_request,
+        )
 
-        if publish_result.status == "failed":
-            error_message = publish_result.error_message or "publisher returned a failed result"
-            jobs.transition_state(
-                job,
-                PublishJobState.FAILED,
-                last_error=error_message,
-                occurred_at=now,
-            )
-            logs.record(
-                publish_job=job,
-                event_type="failed",
-                message=f"publish job {job.id} failed: {error_message}",
-                payload=_build_failure_payload(
-                    job,
-                    error_message=error_message,
-                    provider=publish_result.provider or _provider_name_for_channel(job.channel),
-                    credential_ref=publish_result.credential_ref,
-                    status=publish_result.status,
-                    provider_payload=publish_result.provider_payload,
-                ),
-            )
-            return PublishDueOutcome(
-                publish_job_id=job.id,
-                status="failed",
-                state=job.state,
-                message=error_message,
-            )
 
-        if publish_result.status != "published":
-            invalid_status_error = f"publisher returned unsupported status {publish_result.status!r}"
-            jobs.transition_state(
-                job,
-                PublishJobState.FAILED,
-                last_error=invalid_status_error,
-                occurred_at=now,
-            )
-            logs.record(
-                publish_job=job,
-                event_type="failed",
-                message=f"publish job {job.id} failed: {invalid_status_error}",
-                payload=_build_failure_payload(
-                    job,
-                    error_message=invalid_status_error,
-                    provider=publish_result.provider or _provider_name_for_channel(job.channel),
-                    credential_ref=publish_result.credential_ref,
-                    status=publish_result.status,
-                    provider_payload=publish_result.provider_payload,
-                ),
-            )
-            return PublishDueOutcome(
-                publish_job_id=job.id,
-                status="failed",
-                state=job.state,
-                message=invalid_status_error,
-            )
+def _finalize_live_publish_result(
+    *,
+    publish_job_id: int,
+    session_factory,
+    now: datetime,
+    publish_result: PublishResult,
+) -> PublishDueOutcome:
+    if publish_result.dry_run:
+        return _finalize_live_publish_failure(
+            publish_job_id=publish_job_id,
+            session_factory=session_factory,
+            now=now,
+            error_message="stateful publish execution requires a non-dry-run executor result",
+            provider=publish_result.provider,
+            credential_ref=publish_result.credential_ref,
+            status=publish_result.status,
+            provider_payload=publish_result.provider_payload,
+        )
 
-        if publish_result.external_post_id is None:
-            missing_post_id_error = "publisher returned a published result without external_post_id"
-            jobs.transition_state(
-                job,
-                PublishJobState.FAILED,
-                last_error=missing_post_id_error,
-                occurred_at=now,
+    if publish_result.status == "failed":
+        return _finalize_live_publish_failure(
+            publish_job_id=publish_job_id,
+            session_factory=session_factory,
+            now=now,
+            error_message=publish_result.error_message or "publisher returned a failed result",
+            provider=publish_result.provider,
+            credential_ref=publish_result.credential_ref,
+            status=publish_result.status,
+            provider_payload=publish_result.provider_payload,
+        )
+
+    if publish_result.status != "published":
+        return _finalize_live_publish_failure(
+            publish_job_id=publish_job_id,
+            session_factory=session_factory,
+            now=now,
+            error_message=f"publisher returned unsupported status {publish_result.status!r}",
+            provider=publish_result.provider,
+            credential_ref=publish_result.credential_ref,
+            status=publish_result.status,
+            provider_payload=publish_result.provider_payload,
+        )
+
+    if publish_result.external_post_id is None:
+        return _finalize_live_publish_failure(
+            publish_job_id=publish_job_id,
+            session_factory=session_factory,
+            now=now,
+            error_message="publisher returned a published result without external_post_id",
+            provider=publish_result.provider,
+            credential_ref=publish_result.credential_ref,
+            status=publish_result.status,
+            provider_payload=publish_result.provider_payload,
+        )
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session)
+        logs = PublishLogRepository(session)
+        job = jobs.get(publish_job_id)
+        if job is None:
+            return PublishDueOutcome(
+                publish_job_id=publish_job_id,
+                status="skipped",
+                state=PublishJobState.CANCELLED,
+                message="publish job disappeared before finalization",
+                external_post_id=publish_result.external_post_id,
             )
-            logs.record(
-                publish_job=job,
-                event_type="failed",
-                message=f"publish job {job.id} failed: {missing_post_id_error}",
-                payload=_build_failure_payload(
-                    job,
-                    error_message=missing_post_id_error,
-                    provider=publish_result.provider or _provider_name_for_channel(job.channel),
-                    credential_ref=publish_result.credential_ref,
-                    status=publish_result.status,
-                    provider_payload=publish_result.provider_payload,
-                ),
-            )
+        if job.state is not PublishJobState.PUBLISHING:
             return PublishDueOutcome(
                 publish_job_id=job.id,
-                status="failed",
+                status="skipped",
                 state=job.state,
-                message=missing_post_id_error,
+                message="publish job is no longer awaiting finalization",
+                external_post_id=job.external_post_id or publish_result.external_post_id,
             )
 
         jobs.transition_state(
@@ -560,6 +585,64 @@ def _process_due_job(
         )
 
 
+def _finalize_live_publish_failure(
+    *,
+    publish_job_id: int,
+    session_factory,
+    now: datetime,
+    error_message: str,
+    provider: str | None,
+    credential_ref: str | None = None,
+    status: str = "failed",
+    provider_payload: dict | None = None,
+) -> PublishDueOutcome:
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session)
+        logs = PublishLogRepository(session)
+        job = jobs.get(publish_job_id)
+        if job is None:
+            return PublishDueOutcome(
+                publish_job_id=publish_job_id,
+                status="skipped",
+                state=PublishJobState.CANCELLED,
+                message=error_message,
+            )
+        if job.state is not PublishJobState.PUBLISHING:
+            return PublishDueOutcome(
+                publish_job_id=job.id,
+                status="skipped",
+                state=job.state,
+                message="publish job is no longer awaiting finalization",
+                external_post_id=job.external_post_id,
+            )
+
+        jobs.transition_state(
+            job,
+            PublishJobState.FAILED,
+            last_error=error_message,
+            occurred_at=now,
+        )
+        logs.record(
+            publish_job=job,
+            event_type="failed",
+            message=f"publish job {job.id} failed: {error_message}",
+            payload=_build_failure_payload(
+                job,
+                error_message=error_message,
+                provider=provider or _provider_name_for_channel(job.channel),
+                credential_ref=credential_ref,
+                status=status,
+                provider_payload=provider_payload,
+            ),
+        )
+        return PublishDueOutcome(
+            publish_job_id=job.id,
+            status="failed",
+            state=job.state,
+            message=error_message,
+        )
+
+
 def _build_publish_request(job: PublishJob) -> PublishRequest:
     draft = job.draft_variant
     if draft is None:
@@ -581,24 +664,38 @@ def _build_publish_request(job: PublishJob) -> PublishRequest:
 
 def _execute_live_publish(
     *,
-    job: PublishJob,
-    publish_request: PublishRequest,
+    session_factory,
+    prepared: PreparedPublish,
     executor: PublishExecutor | None,
     publisher_resolver: PublisherResolver | None,
 ) -> PublishResult:
-    if executor is not None:
-        execution = executor.execute(job)
-        return PublishResult(
-            status="dry_run" if execution.dry_run else "published",
-            external_post_id=execution.external_post_id,
-            dry_run=execution.dry_run,
-        )
+    session = session_factory()
+    try:
+        jobs = PublishJobRepository(session)
+        job = jobs.get(prepared.publish_job_id)
+        if job is None:
+            raise ValueError(f"publish job {prepared.publish_job_id} disappeared before execution")
 
-    if publisher_resolver is None:
-        raise ValueError("stateful publish execution requires a publisher resolver or executor")
+        if job.state is not PublishJobState.PUBLISHING:
+            raise ValueError(
+                f"publish job {prepared.publish_job_id} is not ready for execution from state {job.state.value!r}"
+            )
 
-    publisher = publisher_resolver.resolve(job)
-    return publisher.publish(publish_request)
+        if executor is not None:
+            execution = executor.execute(job)
+            return PublishResult(
+                status="dry_run" if execution.dry_run else "published",
+                external_post_id=execution.external_post_id,
+                dry_run=execution.dry_run,
+            )
+
+        if publisher_resolver is None:
+            raise ValueError("stateful publish execution requires a publisher resolver or executor")
+
+        publisher = publisher_resolver.resolve(job)
+        return publisher.publish(prepared.publish_request)
+    finally:
+        session.close()
 
 
 def _build_success_payload(
