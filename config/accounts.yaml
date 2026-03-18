@@ -33,3 +33,5 @@ accounts:
           backlog_target: 2
         render:
           max_chars: 280
+        publisher:
+          credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS

@@ -515,6 +515,18 @@ def scheduler_backfill_command(
 
 @scheduler_app.command("publish-due")
 def scheduler_publish_due_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
     database_url: Annotated[
         str | None,
         typer.Option(
@@ -522,23 +534,38 @@ def scheduler_publish_due_command(
             help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
         ),
     ] = None,
+    live: Annotated[
+        bool,
+        typer.Option(
+            "--live",
+            help="Execute live publishing with configured publisher credentials instead of dry-run mode.",
+        ),
+    ] = False,
 ) -> None:
-    """Simulate due publish jobs with the M11 fake executor."""
+    """Process due publish jobs, defaulting to dry-run unless --live is passed."""
 
     try:
         result = publish_due_jobs(
+            config_dir=config_dir,
             database_url=database_url,
-            dry_run=True,
+            dry_run=not live,
         )
     except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
         _exit_with_error(exc)
 
+    if result.dry_run:
+        typer.echo(
+            f"processed due jobs: {result.processed_count} "
+            f"(dry_run={result.dry_run_count}, failed={result.failed_count}, skipped={result.skipped_count})"
+        )
+        typer.echo("executor mode: fake dry-run (no state changes)")
+        return
+
     typer.echo(
         f"processed due jobs: {result.processed_count} "
-        f"(dry_run={result.dry_run_count}, failed={result.failed_count}, skipped={result.skipped_count})"
+        f"(published={result.published_count}, failed={result.failed_count}, skipped={result.skipped_count})"
     )
-    if result.dry_run:
-        typer.echo("executor mode: fake dry-run (no state changes)")
+    typer.echo("executor mode: live publish via configured publishers")
 
 
 @scheduler_app.command("run")

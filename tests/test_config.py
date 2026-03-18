@@ -40,6 +40,8 @@ def test_registry_loads_sample_config_directory() -> None:
     assert channel.validation.max_links == 1
     assert channel.validation.banned_phrases == ()
     assert channel.validation.recent_duplicate_window_days == 7
+    assert channel.publisher is not None
+    assert channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
     assert registry.get_prompt_profile("ai_tools_default").system_template.startswith("You are an editor")
     assert registry.get_source_set("ai_tools_primary").sources == (
         "ai_tools_rss",
@@ -546,6 +548,40 @@ def test_blank_banned_phrase_raises_validation_error(tmp_path: Path) -> None:
 
     message = str(exc_info.value)
     assert "accounts.ai_tools_daily.channels.x.validation.banned_phrases" in message
+    assert "must not be empty" in message
+
+
+def test_blank_publisher_credential_ref_raises_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_valid_sources_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: "   "
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "accounts.ai_tools_daily.channels.x.publisher.credential_ref" in message
     assert "must not be empty" in message
 
 
