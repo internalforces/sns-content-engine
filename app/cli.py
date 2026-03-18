@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from app import __version__
+from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database
 from app.workflows import (
     ReviewQueueError,
@@ -28,9 +29,11 @@ app = typer.Typer(
 )
 db_app = typer.Typer(help="Database bootstrap and inspection commands.")
 review_app = typer.Typer(help="Manual review queue commands.")
+scheduler_app = typer.Typer(help="Automated scheduler commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(review_app, name="review")
+app.add_typer(scheduler_app, name="scheduler")
 
 
 @app.command()
@@ -438,6 +441,172 @@ def review_schedule_command(
         f"for {result.scheduled_for.isoformat() if result.scheduled_for else 'unknown'} "
         f"as {result.reviewer}"
     )
+
+
+@scheduler_app.command("discover")
+def scheduler_discover_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+) -> None:
+    """Run the scheduled discovery job once."""
+
+    result = scheduler_discover(config_dir=config_dir)
+    typer.echo(
+        "scheduler discover found "
+        f"{result.discovered_count} item candidates "
+        f"from {len(result.processed_sources)} sources"
+    )
+    if result.failure_count == 0:
+        return
+
+    typer.echo("failures:", err=True)
+    for failure_message in result.failure_messages:
+        typer.echo(f"- {failure_message}", err=True)
+    raise typer.Exit(code=1)
+
+
+@scheduler_app.command("backfill")
+def scheduler_backfill_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Backfill publish jobs up to the configured backlog targets."""
+
+    try:
+        result = backfill_publish_jobs(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(f"processed backlog channels: {result.processed_channel_count}")
+    typer.echo(f"existing future jobs: {result.existing_count}")
+    typer.echo(f"created jobs: {result.created_count}")
+    typer.echo(f"skipped slots: {result.skipped_count}")
+
+
+@scheduler_app.command("publish-due")
+def scheduler_publish_due_command(
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Execute due publish jobs with the M11 fake executor."""
+
+    try:
+        result = publish_due_jobs(database_url=database_url)
+    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+        _exit_with_error(exc)
+
+    typer.echo(
+        f"processed due jobs: {result.processed_count} "
+        f"(published={result.published_count}, failed={result.failed_count}, skipped={result.skipped_count})"
+    )
+    if result.dry_run:
+        typer.echo("executor mode: fake dry-run")
+
+
+@scheduler_app.command("run")
+def scheduler_run_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+    discover_interval_minutes: Annotated[
+        int,
+        typer.Option(
+            "--discover-interval-minutes",
+            min=1,
+            help="Interval in minutes for the discover job.",
+        ),
+    ] = 30,
+    backfill_interval_minutes: Annotated[
+        int,
+        typer.Option(
+            "--backfill-interval-minutes",
+            min=1,
+            help="Interval in minutes for the backfill job.",
+        ),
+    ] = 15,
+    publish_due_interval_seconds: Annotated[
+        int,
+        typer.Option(
+            "--publish-due-interval-seconds",
+            min=1,
+            help="Interval in seconds for the publish-due job.",
+        ),
+    ] = 60,
+) -> None:
+    """Start the local APScheduler loop for M11 jobs."""
+
+    try:
+        scheduler = build_scheduler_runtime(
+            config_dir=config_dir,
+            database_url=database_url,
+            discover_interval_minutes=discover_interval_minutes,
+            backfill_interval_minutes=backfill_interval_minutes,
+            publish_due_interval_seconds=publish_due_interval_seconds,
+        )
+    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+        _exit_with_error(exc)
+    typer.echo(
+        "scheduler registered jobs: "
+        "discover, backfill, publish_due "
+        f"(discover={discover_interval_minutes}m, "
+        f"backfill={backfill_interval_minutes}m, "
+        f"publish_due={publish_due_interval_seconds}s)"
+    )
+    try:
+        scheduler.start()
+    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+        _exit_with_error(exc)
 
 
 @db_app.command("init")

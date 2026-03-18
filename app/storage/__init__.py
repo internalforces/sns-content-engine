@@ -33,6 +33,7 @@ from app.storage.repositories import (
     ReviewActionRepository,
     SourceItemRepository,
     SourceItemRecentFingerprintClaimRepository,
+    build_publish_job_idempotency_key,
 )
 
 __all__ = [
@@ -61,6 +62,7 @@ __all__ = [
     "SourceItemRepository",
     "SourceItemState",
     "bootstrap_database",
+    "build_publish_job_idempotency_key",
     "create_all_tables",
     "create_database_engine",
     "create_session_factory",
