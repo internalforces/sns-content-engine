@@ -13,7 +13,7 @@ The initial MVP is intentionally limited to:
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, source ingestion, brief generation, draft generation, a CLI-first manual review queue, scheduled publish jobs, and an X publisher adapter. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
+The current milestone includes configuration loading, source ingestion, brief generation, draft generation, a CLI-first manual review queue, scheduled publish jobs, an X publisher adapter, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
 
 ## Repository Structure
 
@@ -54,7 +54,7 @@ Run the CLI through the console script:
 
 ```bash
 sns-engine version
-sns-engine healthcheck
+sns-engine healthcheck --config-dir config
 sns-engine discover
 sns-engine ingest
 sns-engine build-briefs
@@ -64,8 +64,11 @@ sns-engine review approve 42 --reviewer editor
 sns-engine review reject 42 --reason "Off topic"
 sns-engine review edit 42 --body "Revised draft text"
 sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00
+sns-engine scheduler discover
+sns-engine scheduler backfill
 sns-engine scheduler publish-due
 sns-engine scheduler publish-due --live
+sns-engine scheduler run
 sns-engine db init
 ```
 
@@ -73,13 +76,15 @@ Run the same commands through the module entrypoint:
 
 ```bash
 python -m app.cli version
-python -m app.cli healthcheck
+python -m app.cli healthcheck --config-dir config
 python -m app.cli discover
 python -m app.cli ingest
 python -m app.cli build-briefs
 python -m app.cli generate-drafts
 python -m app.cli review list
+python -m app.cli scheduler backfill
 python -m app.cli scheduler publish-due
+python -m app.cli scheduler run
 python -m app.cli db init
 ```
 
@@ -92,6 +97,8 @@ The `build-briefs` command reads ingested source items, matches them to eligible
 The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
+
+The `healthcheck` command is a strict readiness check. It validates both config loading and database schema readiness, prints key=value status lines, and exits non-zero if either check fails.
 
 The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable.
 
@@ -121,6 +128,65 @@ Initialize the schema through the thin script wrapper:
 
 ```bash
 python scripts/create_db.py
+```
+
+## Operations
+
+Use the following operating sequence for local or single-server runs:
+
+```bash
+sns-engine db init --database-url sqlite:///data/sns_content_engine.db
+sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine discover --config-dir config
+sns-engine ingest --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine build-briefs --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine generate-drafts --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine review list --database-url sqlite:///data/sns_content_engine.db
+sns-engine review approve 42 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db --live
+sns-engine scheduler run --config-dir config --database-url sqlite:///data/sns_content_engine.db
+```
+
+Operational notes:
+
+- `healthcheck` is readiness only. If it reports a database failure, recreate the SQLite file or run `sns-engine db init` against a fresh database.
+- Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
+- Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
+- Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
+- In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
+- Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
+
+Suggested dry-run and smoke checks:
+
+```bash
+sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
+./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
+```
+
+Example `systemd` unit for the long-running scheduler:
+
+```ini
+[Unit]
+Description=sns-content-engine scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sns-content-engine
+Environment=DATABASE_URL=sqlite:////opt/sns-content-engine/data/sns_content_engine.db
+EnvironmentFile=/opt/sns-content-engine/.env
+ExecStart=/opt/sns-content-engine/.venv/bin/sns-engine scheduler run --config-dir /opt/sns-content-engine/config
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ## Testing

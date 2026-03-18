@@ -9,6 +9,7 @@ from textwrap import dedent
 
 import pytest
 
+import app.scheduler.runtime as runtime_module
 from app.config import ScheduleConfig
 from app.connectors.publishers import FakePublisher, PublishResult
 import app.scheduler.jobs as scheduler_jobs_module
@@ -385,6 +386,7 @@ def test_publish_due_jobs_marks_jobs_published_with_publisher_resolver(session_f
         "account_key": "ai_tools_daily",
         "channel": "x",
         "provider": "x",
+        "retry_policy": "manual_reschedule",
     }
 
 
@@ -546,7 +548,45 @@ def test_publish_due_jobs_records_normalized_failed_publish_results(session_fact
         "channel": "x",
         "provider": "x",
         "credential_ref": "X_TEST_CREDENTIALS",
+        "retry_policy": "manual_reschedule",
     }
+
+
+def test_scheduler_runtime_logs_failures_without_raising(monkeypatch, capsys) -> None:
+    registered_jobs: dict[str, object] = {}
+
+    class FakeScheduler:
+        def add_job(self, func, trigger, id, name, replace_existing) -> None:
+            registered_jobs[id] = func
+
+    monkeypatch.setattr(
+        runtime_module,
+        "scheduler_discover",
+        lambda config_dir=None: (_ for _ in ()).throw(RuntimeError("discover boom")),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "backfill_publish_jobs",
+        lambda config_dir=None, database_url=None: BackfillResult(outcomes=()),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "publish_due_jobs",
+        lambda config_dir=None, database_url=None, dry_run=True: PublishDueResult(
+            outcomes=(),
+            dry_run=True,
+        ),
+    )
+
+    runtime_module.build_scheduler_runtime(scheduler=FakeScheduler())
+
+    assert set(registered_jobs) == {"discover", "backfill", "publish_due"}
+    assert registered_jobs["discover"]() is None
+
+    captured = capsys.readouterr()
+    assert "event=workflow component=scheduler status=started workflow=discover" in captured.err
+    assert "event=workflow component=scheduler status=failed workflow=discover" in captured.err
+    assert 'error="discover boom"' in captured.err
 
 
 def test_publish_due_jobs_live_defaults_to_config_publisher_resolver(session_factory, monkeypatch) -> None:

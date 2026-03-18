@@ -14,6 +14,7 @@ from app.connectors.publishers import (
     PublishResult,
     PublisherResolver,
 )
+from app.operations import RetryPolicy, log_event
 from app.scheduler.planner import SlotPlanner, SlotPlanningRequest
 from app.storage import (
     PublishJob,
@@ -405,6 +406,18 @@ def _process_due_job_dry_run(
             )
 
         execution = (executor or FakePublishExecutor()).execute(job)
+        log_event(
+            event="publish_job",
+            component="publisher",
+            status="dry_run",
+            workflow="publish_due",
+            publish_job_id=job.id,
+            account_key=_account_key_for_job(job),
+            channel=job.channel,
+            attempt_count=job.attempt_count,
+            retry_policy=RetryPolicy.MANUAL_RESCHEDULE,
+            external_post_id=execution.external_post_id,
+        )
         return PublishDueOutcome(
             publish_job_id=job.id,
             status="dry_run",
@@ -457,6 +470,12 @@ def _prepare_live_publish(
                     error_message=str(exc),
                     provider=_provider_name_for_channel(job.channel),
                 ),
+            )
+            _log_publish_job_event(
+                job,
+                status="failed",
+                error=str(exc),
+                provider=_provider_name_for_channel(job.channel),
             )
             return PublishDueOutcome(
                 publish_job_id=job.id,
@@ -576,6 +595,12 @@ def _finalize_live_publish_result(
                 provider_payload=publish_result.provider_payload,
             ),
         )
+        _log_publish_job_event(
+            job,
+            status="published",
+            external_post_id=publish_result.external_post_id,
+            provider=publish_result.provider or _provider_name_for_channel(job.channel),
+        )
         return PublishDueOutcome(
             publish_job_id=job.id,
             status="published",
@@ -634,6 +659,13 @@ def _finalize_live_publish_failure(
                 status=status,
                 provider_payload=provider_payload,
             ),
+        )
+        _log_publish_job_event(
+            job,
+            status="failed",
+            error=error_message,
+            provider=provider or _provider_name_for_channel(job.channel),
+            credential_ref=credential_ref,
         )
         return PublishDueOutcome(
             publish_job_id=job.id,
@@ -713,6 +745,7 @@ def _build_success_payload(
         "account_key": _account_key_for_job(job),
         "channel": job.channel,
         "provider": provider,
+        "retry_policy": RetryPolicy.MANUAL_RESCHEDULE.value,
     }
     if provider_payload is not None:
         payload["provider_payload"] = provider_payload
@@ -736,10 +769,41 @@ def _build_failure_payload(
         "channel": job.channel,
         "provider": provider,
         "credential_ref": credential_ref,
+        "retry_policy": RetryPolicy.MANUAL_RESCHEDULE.value,
     }
     if provider_payload is not None:
         payload["provider_payload"] = provider_payload
     return payload
+
+
+def _log_publish_job_event(
+    job: PublishJob,
+    *,
+    status: str,
+    provider: str,
+    external_post_id: str | None = None,
+    error: str | None = None,
+    credential_ref: str | None = None,
+) -> None:
+    fields: dict[str, object] = {
+        "event": "publish_job",
+        "component": "publisher",
+        "status": status,
+        "workflow": "publish_due",
+        "publish_job_id": job.id,
+        "account_key": _account_key_for_job(job),
+        "channel": job.channel,
+        "attempt_count": job.attempt_count,
+        "provider": provider,
+        "retry_policy": RetryPolicy.MANUAL_RESCHEDULE,
+    }
+    if credential_ref is not None:
+        fields["credential_ref"] = credential_ref
+    if external_post_id is not None:
+        fields["external_post_id"] = external_post_id
+    if error is not None:
+        fields["error"] = error
+    log_event(**fields)
 
 
 def _account_key_for_job(job: PublishJob) -> str | None:
