@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 
 from app import __version__
-from app.config import ConfigError
+from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database
 from app.workflows import (
@@ -44,9 +44,34 @@ def version() -> None:
 
 
 @app.command()
-def healthcheck() -> None:
-    """Run a lightweight local healthcheck."""
-    typer.echo("status=ok")
+def healthcheck(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Run a strict local readiness healthcheck."""
+
+    result = run_healthcheck(config_dir=config_dir, database_url=database_url)
+    for line in result.to_lines(component="cli"):
+        typer.echo(line, err=not result.is_ok)
+    if not result.is_ok:
+        raise typer.Exit(code=1)
 
 
 @app.command("discover")
@@ -461,7 +486,13 @@ def scheduler_discover_command(
 ) -> None:
     """Run the scheduled discovery job once."""
 
-    result = scheduler_discover(config_dir=config_dir)
+    try:
+        result = scheduler_discover(config_dir=config_dir)
+    except Exception as exc:
+        log_workflow_exception(component="cli", workflow="discover", error=exc)
+        _exit_with_error(exc)
+
+    log_workflow_result(component="cli", workflow="discover", result=result)
     typer.echo(
         "scheduler discover found "
         f"{result.discovered_count} item candidates "
@@ -505,9 +536,11 @@ def scheduler_backfill_command(
             config_dir=config_dir,
             database_url=database_url,
         )
-    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+    except Exception as exc:
+        log_workflow_exception(component="cli", workflow="backfill", error=exc)
         _exit_with_error(exc)
 
+    log_workflow_result(component="cli", workflow="backfill", result=result)
     typer.echo(f"processed backlog channels: {result.processed_channel_count}")
     typer.echo(f"existing future jobs: {result.existing_count}")
     typer.echo(f"created jobs: {result.created_count}")
@@ -551,15 +584,19 @@ def scheduler_publish_due_command(
             database_url=database_url,
             dry_run=not live,
         )
-    except (ConfigError, DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+    except Exception as exc:
+        log_workflow_exception(component="cli", workflow="publish_due", error=exc)
         _exit_with_error(exc)
 
+    log_workflow_result(component="cli", workflow="publish_due", result=result)
     if result.dry_run:
         typer.echo(
             f"processed due jobs: {result.processed_count} "
             f"(dry_run={result.dry_run_count}, failed={result.failed_count}, skipped={result.skipped_count})"
         )
         typer.echo("executor mode: fake dry-run (no state changes)")
+        if result.failed_count > 0:
+            raise typer.Exit(code=1)
         return
 
     typer.echo(
@@ -567,6 +604,8 @@ def scheduler_publish_due_command(
         f"(published={result.published_count}, failed={result.failed_count}, skipped={result.skipped_count})"
     )
     typer.echo("executor mode: live publish via configured publishers")
+    if result.failed_count > 0:
+        raise typer.Exit(code=1)
 
 
 @scheduler_app.command("run")

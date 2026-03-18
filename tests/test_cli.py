@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+from textwrap import dedent
 
 import app.cli as cli_module
 from sqlalchemy import inspect
@@ -38,11 +39,101 @@ def test_version_command_outputs_application_version() -> None:
     assert result.stdout.strip() == f"sns-content-engine {__version__}"
 
 
-def test_healthcheck_command_reports_ok_status() -> None:
-    result = runner.invoke(app, ["healthcheck"])
+def test_healthcheck_command_reports_ok_status(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'healthcheck-ok.db'}"
+    init_result = runner.invoke(app, ["db", "init", "--database-url", database_url])
+
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "status=ok"
+    assert "event=healthcheck component=cli status=ok check_count=2 failed_check_count=0" in result.stdout
+    assert "event=healthcheck component=cli status=ok check=config" in result.stdout
+    assert "event=healthcheck component=cli status=ok check=database" in result.stdout
+    assert "database_backend=sqlite" in result.stdout
+    assert database_url not in result.stdout
+
+
+def test_healthcheck_command_reports_config_failure_and_database_success(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    (tmp_path / "prompts.yaml").write_text("profiles: []\n", encoding="utf-8")
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'healthcheck-config.db'}"
+    init_result = runner.invoke(app, ["db", "init", "--database-url", database_url])
+
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
+
+    assert result.exit_code == 1
+    assert "event=healthcheck component=cli status=failed check_count=2 failed_check_count=1" in result.output
+    assert "event=healthcheck component=cli status=failed check=config" in result.output
+    assert "event=healthcheck component=cli status=ok check=database" in result.output
+
+
+def test_healthcheck_command_reports_missing_database_schema(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    database_path = tmp_path / "healthcheck-missing.db"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+    assert database_path.exists() is False
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
+
+    assert result.exit_code == 1
+    assert "event=healthcheck component=cli status=failed check=database" in result.output
+    assert "database file does not exist" in result.output
+    assert "Run `sns-engine db init` against a fresh database." in result.output
+    assert database_path.exists() is False
+
+
+def test_healthcheck_command_reports_outdated_database_schema(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'healthcheck-outdated.db'}"
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE source_items (
+                    id INTEGER PRIMARY KEY,
+                    source_key VARCHAR(100) NOT NULL,
+                    external_id VARCHAR(255) NOT NULL,
+                    source_url VARCHAR(2048) NOT NULL,
+                    title VARCHAR(500),
+                    summary TEXT,
+                    published_at DATETIME,
+                    raw_payload JSON,
+                    canonical_url VARCHAR(2048),
+                    dedupe_fingerprint VARCHAR(64),
+                    normalized_title VARCHAR(500),
+                    normalized_title_hash VARCHAR(64),
+                    state VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
+
+    assert result.exit_code == 1
+    assert "event=healthcheck component=cli status=failed check=database" in result.output
+    assert "missing required tables" in result.output
 
 
 def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
@@ -450,9 +541,10 @@ def test_scheduler_publish_due_command_live_mode_reports_summary(monkeypatch, tm
                 ),
                 PublishDueOutcome(
                     publish_job_id=43,
-                    status="failed",
-                    state=PublishJobState.FAILED,
-                    message="missing access token",
+                    status="published",
+                    state=PublishJobState.PUBLISHED,
+                    message="published successfully",
+                    external_post_id="tweet:43",
                 ),
             ),
             dry_run=False,
@@ -468,6 +560,45 @@ def test_scheduler_publish_due_command_live_mode_reports_summary(monkeypatch, tm
     assert result.exit_code == 0
     assert captured["dry_run"] is False
     assert captured["config_dir"] == tmp_path.resolve()
+    assert "processed due jobs: 2 (published=2, failed=0, skipped=0)" in result.stdout
+    assert "executor mode: live publish via configured publishers" in result.stdout
+
+
+def test_scheduler_publish_due_command_live_mode_exits_nonzero_when_failures_exist(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "publish_due_jobs",
+        lambda config_dir=None, database_url=None, dry_run=True, publisher_resolver=None, executor=None: (
+            PublishDueResult(
+                outcomes=(
+                    PublishDueOutcome(
+                        publish_job_id=42,
+                        status="published",
+                        state=PublishJobState.PUBLISHED,
+                        message="published successfully",
+                        external_post_id="tweet:42",
+                    ),
+                    PublishDueOutcome(
+                        publish_job_id=43,
+                        status="failed",
+                        state=PublishJobState.FAILED,
+                        message="missing access token",
+                    ),
+                ),
+                dry_run=False,
+            )
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        ["scheduler", "publish-due", "--config-dir", str(tmp_path), "--live"],
+    )
+
+    assert result.exit_code == 1
     assert "processed due jobs: 2 (published=1, failed=1, skipped=0)" in result.stdout
     assert "executor mode: live publish via configured publishers" in result.stdout
 
@@ -565,3 +696,53 @@ def test_main_runs_the_typer_app(monkeypatch) -> None:
     cli_module.main()
 
     assert called is True
+
+
+def _write_minimal_project_config(path: Path) -> None:
+    _write_file(
+        path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "system"
+            user_template: "user"
+        """,
+    )
+    _write_file(
+        path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+
+def _write_file(path: Path, content: str) -> None:
+    path.write_text(dedent(content).strip() + "\n", encoding="utf-8")
