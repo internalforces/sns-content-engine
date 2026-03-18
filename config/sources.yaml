@@ -1,4 +1,8 @@
 sources:
+  ai_tools_rss:
+    type: rss
+    url: https://example.com/ai/feed.xml
+
   ai_tools_manual:
     type: manual_csv
     path: ../data/ai_tools_manual.csv
@@ -7,6 +11,9 @@ sources:
     type: manual_csv
     path: ../data/seo_tools_manual.csv
 
+  seo_tools_rss:
+    type: rss
+    url: https://example.com/seo/feed.xml
 
 source_sets:
   ai_tools_primary:

@@ -47,8 +47,11 @@ def test_create_db_script_bootstraps_the_database(tmp_path: Path) -> None:
     engine = create_engine(database_url)
     try:
         assert set(inspect(engine).get_table_names()) == {
+            "article_enrichments",
             "content_briefs",
             "draft_variants",
+            "pipeline_runs",
+            "pipeline_run_stages",
             "publish_jobs",
             "publish_logs",
             "review_actions",

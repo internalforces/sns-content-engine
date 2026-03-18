@@ -12,12 +12,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.storage.models import (
+    ArticleEnrichment,
     ContentBrief,
     DraftVariant,
     DraftVariantState,
     PublishJob,
     PublishJobState,
     PublishLog,
+    PipelineRun,
+    PipelineRunStage,
     ReviewAction,
     ReviewActionType,
     SourceItem,
@@ -150,6 +153,162 @@ class SourceItemRecentFingerprintClaimRepository:
             self.session.delete(claim)
         self.session.flush()
         return len(expired_claims)
+
+
+class ArticleEnrichmentRepository:
+    """Persistence operations for article enrichment rows."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, enrichment: ArticleEnrichment) -> ArticleEnrichment:
+        self.session.add(enrichment)
+        self.session.flush()
+        return enrichment
+
+    def get(self, enrichment_id: int) -> ArticleEnrichment | None:
+        return self.session.get(ArticleEnrichment, enrichment_id)
+
+    def get_by_source_item_id(self, source_item_id: int) -> ArticleEnrichment | None:
+        statement = select(ArticleEnrichment).where(
+            ArticleEnrichment.source_item_id == source_item_id
+        )
+        return self.session.scalar(statement)
+
+    def get_or_create(
+        self,
+        enrichment: ArticleEnrichment,
+    ) -> tuple[ArticleEnrichment, bool]:
+        source_item_id = enrichment.source_item_id
+        if source_item_id is None and enrichment.source_item is not None:
+            source_item_id = enrichment.source_item.id
+        if source_item_id is None:
+            raise ValueError("article enrichment must reference a persisted source item")
+
+        existing = self.get_by_source_item_id(source_item_id)
+        if existing is not None:
+            return existing, False
+
+        enrichment.source_item_id = source_item_id
+        try:
+            with self.session.begin_nested():
+                self.session.add(enrichment)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_by_source_item_id(source_item_id)
+            if existing is None:
+                raise
+            return existing, False
+        return enrichment, True
+
+    def list(self) -> list[ArticleEnrichment]:
+        statement = select(ArticleEnrichment).order_by(ArticleEnrichment.id)
+        return list(self.session.scalars(statement))
+
+    def list_failed(self, *, limit: int = 50) -> list[ArticleEnrichment]:
+        statement = (
+            select(ArticleEnrichment)
+            .where(ArticleEnrichment.failure_code.is_not(None))
+            .order_by(ArticleEnrichment.updated_at.desc(), ArticleEnrichment.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement))
+
+    def delete(self, enrichment: ArticleEnrichment) -> None:
+        self.session.delete(enrichment)
+
+
+class PipelineRunRepository:
+    """Persistence operations for local pipeline run summaries."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, pipeline_run: PipelineRun) -> PipelineRun:
+        self.session.add(pipeline_run)
+        self.session.flush()
+        return pipeline_run
+
+    def get(self, pipeline_run_id: int) -> PipelineRun | None:
+        return self.session.get(PipelineRun, pipeline_run_id)
+
+    def list(self) -> list[PipelineRun]:
+        statement = select(PipelineRun).order_by(PipelineRun.started_at.desc(), PipelineRun.id.desc())
+        return list(self.session.scalars(statement))
+
+    def list_recent(self, *, limit: int = 20) -> list[PipelineRun]:
+        statement = (
+            select(PipelineRun)
+            .order_by(PipelineRun.started_at.desc(), PipelineRun.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement))
+
+    def delete(self, pipeline_run: PipelineRun) -> None:
+        self.session.delete(pipeline_run)
+
+
+class PipelineRunStageRepository:
+    """Persistence operations for per-stage pipeline run summaries."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def add(self, stage_run: PipelineRunStage) -> PipelineRunStage:
+        self.session.add(stage_run)
+        self.session.flush()
+        return stage_run
+
+    def get(self, pipeline_run_stage_id: int) -> PipelineRunStage | None:
+        return self.session.get(PipelineRunStage, pipeline_run_stage_id)
+
+    def get_by_run_and_stage(
+        self,
+        pipeline_run_id: int,
+        stage,
+    ) -> PipelineRunStage | None:
+        statement = select(PipelineRunStage).where(
+            PipelineRunStage.pipeline_run_id == pipeline_run_id,
+            PipelineRunStage.stage == stage,
+        )
+        return self.session.scalar(statement)
+
+    def get_or_create(
+        self,
+        stage_run: PipelineRunStage,
+    ) -> tuple[PipelineRunStage, bool]:
+        pipeline_run_id = stage_run.pipeline_run_id
+        if pipeline_run_id is None and stage_run.pipeline_run is not None:
+            pipeline_run_id = stage_run.pipeline_run.id
+        if pipeline_run_id is None:
+            raise ValueError("pipeline run stage must reference a persisted pipeline run")
+
+        existing = self.get_by_run_and_stage(pipeline_run_id, stage_run.stage)
+        if existing is not None:
+            return existing, False
+
+        stage_run.pipeline_run_id = pipeline_run_id
+        try:
+            with self.session.begin_nested():
+                self.session.add(stage_run)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_by_run_and_stage(pipeline_run_id, stage_run.stage)
+            if existing is None:
+                raise
+            return existing, False
+        return stage_run, True
+
+    def list_for_run(self, pipeline_run_id: int) -> list[PipelineRunStage]:
+        statement = (
+            select(PipelineRunStage)
+            .where(PipelineRunStage.pipeline_run_id == pipeline_run_id)
+            .order_by(PipelineRunStage.id)
+        )
+        return list(self.session.scalars(statement))
+
+    def delete(self, stage_run: PipelineRunStage) -> None:
+        self.session.delete(stage_run)
 
 
 class ContentBriefRepository:

@@ -21,6 +21,9 @@ from app.workflows import (
     generate_drafts,
     ingest_sources,
     list_pending_review_drafts,
+    list_pipeline_failures,
+    list_pipeline_runs,
+    run_local_pipeline,
     reject_draft,
     schedule_draft,
 )
@@ -32,10 +35,12 @@ app = typer.Typer(
 db_app = typer.Typer(help="Database bootstrap and inspection commands.")
 review_app = typer.Typer(help="Manual review queue commands.")
 scheduler_app = typer.Typer(help="Automated scheduler commands.")
+history_app = typer.Typer(help="Readable run and failure history commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(review_app, name="review")
 app.add_typer(scheduler_app, name="scheduler")
+app.add_typer(history_app, name="history")
 
 
 @app.command()
@@ -248,6 +253,91 @@ def generate_drafts_command(
     typer.echo(f"missing account: {result.missing_account_count}")
     typer.echo(f"draft variants created: {result.created_variant_count}")
 
+
+
+
+@app.command("run-local")
+def run_local_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Run the local discover->enrich->brief->draft workflow once."""
+
+    try:
+        result = run_local_pipeline(config_dir, database_url=database_url)
+    except (DatabaseSchemaError, DraftGenerationProviderError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"pipeline run id: {result.pipeline_run_id}")
+    typer.echo(f"status: {result.status.value}")
+    typer.echo(f"discovered: {result.ingest_discovered_count}")
+    typer.echo(f"saved: {result.ingest_saved_count}")
+    typer.echo(f"enriched: {result.enrichment_enriched_count}")
+    typer.echo(f"briefs created: {result.brief_created_count}")
+    typer.echo(f"draft variants created: {result.draft_created_variant_count}")
+    typer.echo(f"failures: {result.failure_count}")
+
+
+
+@history_app.command("runs")
+def history_runs_command(
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
+) -> None:
+    """List recent local pipeline runs."""
+
+    result = list_pipeline_runs(database_url=database_url, limit=limit)
+    for row in result.runs:
+        typer.echo(
+            f"run_id={row.run_id} status={row.status} discovered={row.discovered_count} "
+            f"saved={row.saved_count} enriched={row.enriched_count} briefs={row.brief_count} "
+            f"drafts={row.draft_count} failures={row.failure_count}"
+        )
+
+
+@history_app.command("failures")
+def history_failures_command(
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 20,
+) -> None:
+    """List readable pipeline failures for review or future UI screens."""
+
+    result = list_pipeline_failures(database_url=database_url, limit=limit)
+    for row in result.failures:
+        typer.echo(
+            f"source_item_id={row.source_item_id} stage={row.failure_stage or 'unknown'} "
+            f"code={row.failure_code} message={row.failure_message}"
+        )
 
 @review_app.command("list")
 def review_list_command(

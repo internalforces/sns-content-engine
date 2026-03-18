@@ -68,6 +68,9 @@ sns-engine discover
 sns-engine ingest
 sns-engine build-briefs
 sns-engine generate-drafts
+sns-engine run-local
+sns-engine history runs
+sns-engine history failures
 sns-engine review list
 sns-engine review approve 42 --reviewer editor
 sns-engine review reject 42 --reason "Off topic"
@@ -90,6 +93,9 @@ python -m app.cli discover
 python -m app.cli ingest
 python -m app.cli build-briefs
 python -m app.cli generate-drafts
+python -m app.cli run-local
+python -m app.cli history runs
+python -m app.cli history failures
 python -m app.cli review list
 python -m app.cli scheduler backfill
 python -m app.cli scheduler publish-due
@@ -106,6 +112,10 @@ The `build-briefs` command reads ingested source items, matches them to eligible
 The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review. It automatically uses OpenAI when `OPENAI_API_KEY` is present; otherwise it falls back to the deterministic fake provider.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
+
+The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
+
+The `history runs` and `history failures` commands expose UI-friendly summaries from persisted `pipeline_runs` and article-enrichment failures so a future local homepage can read the same data model.
 
 The `healthcheck` command is a strict readiness check. It validates both config loading and database schema readiness, prints key=value status lines, and exits non-zero if either check fails.
 
@@ -150,6 +160,9 @@ sns-engine discover --config-dir config
 sns-engine ingest --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine build-briefs --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine generate-drafts --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine run-local --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine history runs --database-url sqlite:///data/sns_content_engine.db
+sns-engine history failures --database-url sqlite:///data/sns_content_engine.db
 sns-engine review list --database-url sqlite:///data/sns_content_engine.db
 sns-engine review approve 42 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
@@ -211,3 +224,13 @@ Run the test suite with:
 ## Next Steps
 
 Future milestones can add configuration loading, domain models, workflows, storage, scheduling, and publisher adapters without changing the basic package layout introduced here.
+
+## Finance Local MVP Notes
+
+Use the finance-local example config under `config/examples/finance_local/` as a starting point when you want to run the new RSS -> HTML -> summary -> brief -> draft flow without hard-coding production feeds. Copy those files into a temporary config directory and edit the feed/account values locally.
+
+Finance-local guardrails:
+- RSS is used for discovery only. The pipeline fetches article HTML and regenerates summaries from extracted body text when possible.
+- Readable failure reasons are stored for blocked fetches, extraction failures, and content that is too short to summarize.
+- Draft generation now includes source context and explicit anti-investment-advice guidance.
+- The local MVP always stops at `pending_review`; publish automation remains separate and unchanged.

@@ -98,6 +98,9 @@ def _build_render_context(
         "angle": content_brief.angle,
         "landing_url": content_brief.landing_url,
         "language": content_brief.language,
+        "source_url": _source_url(content_brief),
+        "source_name": _source_name(content_brief),
+        "article_summary": _article_summary(content_brief),
     }
 
 
@@ -108,7 +111,9 @@ def _build_system_prompt(base_prompt: str, *, max_chars: int, variant_count: int
         "- Output plain-text X drafts only.\n"
         f"- Return exactly {variant_count} distinct variants.\n"
         f"- Keep every variant at or under {max_chars} characters.\n"
-        "- Include the landing URL exactly once in each variant."
+        "- Include the landing URL exactly once in each variant.\n"
+        "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
+        "- Attribute the insight to the source context instead of claiming certainty."
     )
 
 
@@ -125,8 +130,37 @@ def _build_user_prompt(
         f"- Variant count: {variant_count}\n"
         f"- Max characters per variant: {max_chars}\n"
         f"- Landing URL: {landing_url}\n"
-        "- Keep the tone concise and traffic-oriented."
+        "- Keep the tone concise and traffic-oriented.\n"
+        "- Mention the source context when it helps credibility.\n"
+        "- Avoid language that sounds like financial advice."
     )
+
+
+def _source_url(content_brief: ContentBrief) -> str | None:
+    source_item = content_brief.source_item
+    if source_item is None:
+        return None
+    enrichment = source_item.article_enrichment
+    if enrichment is not None and enrichment.article_url:
+        return enrichment.article_url
+    return source_item.source_url
+
+
+def _source_name(content_brief: ContentBrief) -> str | None:
+    source_item = content_brief.source_item
+    if source_item is None:
+        return None
+    enrichment = source_item.article_enrichment
+    if enrichment is not None and enrichment.source_name:
+        return enrichment.source_name
+    return source_item.source_key
+
+
+def _article_summary(content_brief: ContentBrief) -> str | None:
+    source_item = content_brief.source_item
+    if source_item is None or source_item.article_enrichment is None:
+        return content_brief.summary
+    return source_item.article_enrichment.regenerated_summary or content_brief.summary
 
 
 def _validate_variants(

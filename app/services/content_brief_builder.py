@@ -35,17 +35,47 @@ class ContentBriefBuilder:
         if source_item.id is None:
             raise ValueError("source item must be persisted before building a content brief")
 
+        source_summary = _preferred_summary(source_item)
+        source_tags = _preferred_tags(source_item, match_candidate)
+        key_points = _preferred_key_points(source_item, source_summary)
+
         return ContentBriefData(
             account_id=account_id,
             source_item_id=source_item.id,
             source_title=source_item.title,
-            source_summary=source_item.summary,
-            key_points=_build_key_points(source_item.title, source_item.summary),
-            tags=_build_tags(source_tags, match_candidate),
-            angle=_select_angle(source_item.title, source_item.summary),
+            source_summary=source_summary,
+            key_points=key_points,
+            tags=source_tags,
+            angle=_select_angle(source_item.title, source_summary),
             landing_url=landing_decision.landing_url,
             language="en",
         )
+
+
+def _preferred_summary(source_item: SourceItem) -> str | None:
+    enrichment = source_item.article_enrichment
+    if enrichment and enrichment.regenerated_summary:
+        return enrichment.regenerated_summary
+    return source_item.summary
+
+
+def _preferred_key_points(source_item: SourceItem, source_summary: str | None) -> tuple[str, ...]:
+    enrichment = source_item.article_enrichment
+    if enrichment and enrichment.regenerated_key_points:
+        return tuple(enrichment.regenerated_key_points[:3])
+    return _build_key_points(source_item.title, source_summary)
+
+
+def _preferred_tags(
+    source_item: SourceItem,
+    match_candidate: AccountMatchCandidate,
+) -> tuple[str, ...]:
+    enrichment = source_item.article_enrichment
+    if enrichment and enrichment.tags:
+        return tuple(enrichment.tags[:5])
+
+    source_tags = extract_source_tags(source_item.raw_payload or {})
+    return _build_tags(source_tags, match_candidate)
 
 
 def _build_key_points(title: str, summary: str | None) -> tuple[str, ...]:
