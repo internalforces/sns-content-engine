@@ -844,6 +844,17 @@ def test_publish_job_repository_lists_approved_drafts_without_active_jobs(sessio
             created_at=datetime(2026, 3, 17, 10, 0, tzinfo=timezone.utc),
         )
         _create_publish_job_for_draft(session, active_job_draft, idempotency_key="active-job-for-draft")
+        failed_job_draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 17, 10, 30, tzinfo=timezone.utc),
+        )
+        failed_job = _create_publish_job_for_draft(
+            session,
+            failed_job_draft,
+            idempotency_key="failed-job-for-draft",
+        )
+        PublishJobRepository(session).transition_state(failed_job, PublishJobState.FAILED, last_error="boom")
         _create_draft_variant(
             session,
             draft_state=DraftVariantState.PENDING_REVIEW,
@@ -860,6 +871,31 @@ def test_publish_job_repository_lists_approved_drafts_without_active_jobs(sessio
         drafts = PublishJobRepository(session).list_approved_without_active_job("ai_tools_daily", "x")
 
     assert [draft.id for draft in drafts] == [eligible.id]
+
+
+def test_publish_job_repository_claim_due_job_is_atomic(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        job_id = job.id
+
+    with session_scope(session_factory) as session:
+        claimed_job = PublishJobRepository(session).claim_due_job(
+            job_id,
+            as_of=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            claimed_at=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+        )
+        assert claimed_job is not None
+        assert claimed_job.state is PublishJobState.PUBLISHING
+        assert claimed_job.attempt_count == 1
+
+    with session_scope(session_factory) as session:
+        claimed_again = PublishJobRepository(session).claim_due_job(
+            job_id,
+            as_of=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+            claimed_at=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+        )
+
+    assert claimed_again is None
 
 
 def test_session_scope_rolls_back_when_an_exception_occurs(session_factory) -> None:

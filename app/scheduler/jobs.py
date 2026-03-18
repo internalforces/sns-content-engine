@@ -130,6 +130,10 @@ class PublishDueResult:
         return sum(outcome.status == "failed" for outcome in self.outcomes)
 
     @property
+    def dry_run_count(self) -> int:
+        return sum(outcome.status == "dry_run" for outcome in self.outcomes)
+
+    @property
     def skipped_count(self) -> int:
         return sum(outcome.status == "skipped" for outcome in self.outcomes)
 
@@ -257,11 +261,15 @@ def publish_due_jobs(
     session_factory=None,
     executor: PublishExecutor | None = None,
     now: datetime | None = None,
+    dry_run: bool | None = None,
 ) -> PublishDueResult:
     """Execute due scheduled publish jobs with a swappable executor."""
 
     normalized_now = _normalize_datetime(now or datetime.now(timezone.utc))
     resolved_executor = executor or FakePublishExecutor()
+    resolved_dry_run = dry_run if dry_run is not None else executor is None
+    if not resolved_dry_run and executor is None:
+        raise ValueError("stateful publish execution requires an explicit executor")
     owned_engine, resolved_session_factory = _resolve_session_factory(
         database_url=database_url,
         session_factory=session_factory,
@@ -282,6 +290,7 @@ def publish_due_jobs(
                     session_factory=resolved_session_factory,
                     executor=resolved_executor,
                     now=normalized_now,
+                    dry_run=resolved_dry_run,
                 )
             )
     finally:
@@ -289,7 +298,7 @@ def publish_due_jobs(
 
     return PublishDueResult(
         outcomes=tuple(outcomes),
-        dry_run=isinstance(resolved_executor, FakePublishExecutor),
+        dry_run=resolved_dry_run,
     )
 
 
@@ -299,20 +308,34 @@ def _process_due_job(
     session_factory,
     executor: PublishExecutor,
     now: datetime,
+    dry_run: bool,
 ) -> PublishDueOutcome:
     with session_scope(session_factory) as session:
         jobs = PublishJobRepository(session)
         logs = PublishLogRepository(session)
-        job = jobs.get(publish_job_id)
+        if dry_run:
+            job = jobs.get(publish_job_id)
+        else:
+            job = jobs.claim_due_job(
+                publish_job_id,
+                as_of=now,
+                claimed_at=now,
+            )
         if job is None:
+            current_job = jobs.get(publish_job_id)
             return PublishDueOutcome(
                 publish_job_id=publish_job_id,
                 status="skipped",
-                state=PublishJobState.CANCELLED,
-                message="publish job no longer exists",
+                state=current_job.state if current_job is not None else PublishJobState.CANCELLED,
+                message="publish job is no longer claimable",
+                external_post_id=current_job.external_post_id if current_job is not None else None,
             )
 
-        if job.state is not PublishJobState.SCHEDULED or job.scheduled_for is None or job.scheduled_for > now:
+        if dry_run and (
+            job.state is not PublishJobState.SCHEDULED
+            or job.scheduled_for is None
+            or job.scheduled_for > now
+        ):
             return PublishDueOutcome(
                 publish_job_id=publish_job_id,
                 status="skipped",
@@ -322,16 +345,24 @@ def _process_due_job(
             )
 
         try:
-            jobs.transition_state(job, PublishJobState.PUBLISHING, occurred_at=now)
-            logs.record(
-                publish_job=job,
-                event_type="publishing",
-                message=f"publishing job {job.id} with idempotency key {job.idempotency_key}",
-                payload={"idempotency_key": job.idempotency_key, "attempt_count": job.attempt_count},
-            )
-
+            if not dry_run:
+                jobs.ensure_publishable(job)
+                logs.record(
+                    publish_job=job,
+                    event_type="publishing",
+                    message=f"publishing job {job.id} with idempotency key {job.idempotency_key}",
+                    payload={"idempotency_key": job.idempotency_key, "attempt_count": job.attempt_count},
+                )
             execution = executor.execute(job)
         except Exception as exc:
+            if dry_run:
+                return PublishDueOutcome(
+                    publish_job_id=job.id,
+                    status="failed",
+                    state=job.state,
+                    message=str(exc),
+                )
+
             jobs.transition_state(
                 job,
                 PublishJobState.FAILED,
@@ -349,6 +380,36 @@ def _process_due_job(
                 status="failed",
                 state=job.state,
                 message=str(exc),
+            )
+
+        if dry_run:
+            return PublishDueOutcome(
+                publish_job_id=job.id,
+                status="dry_run",
+                state=job.state,
+                message="dry-run only; no state changes were applied",
+                external_post_id=execution.external_post_id,
+            )
+
+        if execution.dry_run:
+            dry_run_error = "stateful publish execution requires a non-dry-run executor result"
+            jobs.transition_state(
+                job,
+                PublishJobState.FAILED,
+                last_error=dry_run_error,
+                occurred_at=now,
+            )
+            logs.record(
+                publish_job=job,
+                event_type="failed",
+                message=f"publish job {job.id} failed: {dry_run_error}",
+                payload={"error_message": dry_run_error, "attempt_count": job.attempt_count},
+            )
+            return PublishDueOutcome(
+                publish_job_id=job.id,
+                status="failed",
+                state=job.state,
+                message=dry_run_error,
             )
 
         jobs.transition_state(

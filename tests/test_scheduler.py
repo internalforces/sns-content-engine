@@ -11,7 +11,7 @@ import pytest
 
 from app.config import ScheduleConfig
 from app.scheduler import (
-    FakePublishExecutor,
+    PublishExecutionResult,
     SlotPlanner,
     SlotPlanningRequest,
     backfill_publish_jobs,
@@ -27,7 +27,6 @@ from app.storage import (
     PublishJobRepository,
     PublishJobState,
     PublishLogRepository,
-    ReviewActionRepository,
     SourceItem,
     SourceItemRepository,
     create_all_tables,
@@ -228,7 +227,36 @@ def test_backfill_skips_channels_with_no_approved_drafts(session_factory, config
     assert finance_outcome.skipped_slot_count == 1
 
 
-def test_publish_due_jobs_marks_jobs_published_with_fake_executor(session_factory) -> None:
+def test_backfill_does_not_reschedule_failed_jobs(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="failed-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        PublishJobRepository(session).transition_state(job, PublishJobState.FAILED, last_error="boom")
+
+    result = backfill_publish_jobs(
+        config_dir=config_dir,
+        session_factory=session_factory,
+        now=datetime(2026, 3, 18, 8, 30, tzinfo=timezone.utc),
+    )
+
+    ai_outcome = next(outcome for outcome in result.outcomes if outcome.account_key == "ai_tools_daily")
+    assert ai_outcome.created_count == 0
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].state is PublishJobState.FAILED
+
+
+def test_publish_due_jobs_dry_run_leaves_jobs_unchanged(session_factory) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
         job = PublishJobRepository(session).add(
@@ -247,7 +275,8 @@ def test_publish_due_jobs_marks_jobs_published_with_fake_executor(session_factor
     )
 
     assert result.dry_run is True
-    assert result.published_count == 1
+    assert result.dry_run_count == 1
+    assert result.published_count == 0
     assert result.failed_count == 0
 
     with session_scope(session_factory) as session:
@@ -255,8 +284,49 @@ def test_publish_due_jobs_marks_jobs_published_with_fake_executor(session_factor
         logs = PublishLogRepository(session).list_for_job(job_id)
 
     assert stored_job is not None
+    assert stored_job.state is PublishJobState.SCHEDULED
+    assert stored_job.external_post_id is None
+    assert stored_job.attempt_count == 0
+    assert [log.event_type for log in logs] == []
+
+
+def test_publish_due_jobs_marks_jobs_published_with_stateful_executor(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="stateful-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    class StatefulExecutor:
+        def execute(self, job: PublishJob) -> PublishExecutionResult:
+            return PublishExecutionResult(
+                external_post_id=f"tweet:{job.id}",
+                dry_run=False,
+            )
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        executor=StatefulExecutor(),
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.dry_run is False
+    assert result.published_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        logs = PublishLogRepository(session).list_for_job(job_id)
+
+    assert stored_job is not None
     assert stored_job.state is PublishJobState.PUBLISHED
-    assert stored_job.external_post_id == f"dry-run:{job_id}"
+    assert stored_job.external_post_id == f"tweet:{job_id}"
     assert stored_job.attempt_count == 1
     assert [log.event_type for log in logs] == ["publishing", "published"]
 
@@ -282,16 +352,20 @@ def test_publish_due_jobs_fail_independently_per_job(session_factory) -> None:
             )
         )
 
-    class MixedExecutor(FakePublishExecutor):
-        def execute(self, job: PublishJob):
+    class MixedExecutor:
+        def execute(self, job: PublishJob) -> PublishExecutionResult:
             if job.id == failing_job.id:
                 raise RuntimeError("boom")
-            return super().execute(job)
+            return PublishExecutionResult(
+                external_post_id=f"tweet:{job.id}",
+                dry_run=False,
+            )
 
     result = publish_due_jobs(
         session_factory=session_factory,
         executor=MixedExecutor(),
         now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
     )
 
     assert result.processed_count == 2
@@ -311,7 +385,7 @@ def test_publish_due_jobs_fail_independently_per_job(session_factory) -> None:
 
     assert stored_passing_job is not None
     assert stored_passing_job.state is PublishJobState.PUBLISHED
-    assert stored_passing_job.external_post_id == f"dry-run:{passing_job.id}"
+    assert stored_passing_job.external_post_id == f"tweet:{passing_job.id}"
     assert [log.event_type for log in passing_logs] == ["publishing", "published"]
 
 

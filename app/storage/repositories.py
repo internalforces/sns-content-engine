@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -347,6 +347,7 @@ class PublishJobRepository:
         PublishJobState.PUBLISHING,
         PublishJobState.PUBLISHED,
     )
+    _backfill_blocking_states = _active_states + (PublishJobState.FAILED,)
     _allowed_transitions: dict[PublishJobState, tuple[PublishJobState, ...]] = {
         PublishJobState.SCHEDULED: (
             PublishJobState.PUBLISHING,
@@ -413,11 +414,11 @@ class PublishJobRepository:
         account_key: str,
         channel: str,
     ) -> list[DraftVariant]:
-        active_job_exists = (
+        blocking_job_exists = (
             select(PublishJob.id)
             .where(
                 PublishJob.draft_variant_id == DraftVariant.id,
-                PublishJob.state.in_(self._active_states),
+                PublishJob.state.in_(self._backfill_blocking_states),
             )
             .exists()
         )
@@ -428,7 +429,7 @@ class PublishJobRepository:
                 ContentBrief.account_key == account_key,
                 DraftVariant.channel == channel,
                 DraftVariant.state == DraftVariantState.APPROVED,
-                ~active_job_exists,
+                ~blocking_job_exists,
             )
             .order_by(
                 func.coalesce(DraftVariant.reviewed_at, DraftVariant.created_at),
@@ -437,6 +438,36 @@ class PublishJobRepository:
             )
         )
         return list(self.session.scalars(statement))
+
+    def claim_due_job(
+        self,
+        job_id: int,
+        *,
+        as_of: datetime,
+        claimed_at: datetime | None = None,
+    ) -> PublishJob | None:
+        event_time = claimed_at or datetime.now(timezone.utc)
+        statement = (
+            update(PublishJob)
+            .where(
+                PublishJob.id == job_id,
+                PublishJob.state == PublishJobState.SCHEDULED,
+                PublishJob.scheduled_for.is_not(None),
+                PublishJob.scheduled_for <= as_of,
+            )
+            .values(
+                state=PublishJobState.PUBLISHING,
+                attempt_count=PublishJob.attempt_count + 1,
+                last_error=None,
+                updated_at=event_time,
+            )
+        )
+        result = self.session.execute(statement)
+        if result.rowcount != 1:
+            return None
+
+        self.session.expire_all()
+        return self.get(job_id)
 
     def has_active_job_for_draft(self, draft_variant_id: int) -> bool:
         statement = select(PublishJob.id).where(
@@ -494,6 +525,9 @@ class PublishJobRepository:
             raise ManualApprovalRequiredError(
                 "publish jobs require an approved draft variant before scheduling or publishing"
             )
+
+    def ensure_publishable(self, job: PublishJob) -> None:
+        self._ensure_draft_is_approved(job)
 
     def _ensure_idempotency_key(self, job: PublishJob) -> None:
         existing_key = job.idempotency_key.strip() if getattr(job, "idempotency_key", "") else ""

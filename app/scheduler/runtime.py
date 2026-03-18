@@ -45,6 +45,7 @@ def build_scheduler_runtime(
         partial(
             publish_due_jobs,
             database_url=database_url,
+            dry_run=True,
         ),
         trigger=IntervalTrigger(seconds=publish_due_interval_seconds, timezone="UTC"),
         id="publish_due",

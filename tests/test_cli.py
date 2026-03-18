@@ -389,13 +389,13 @@ def test_scheduler_publish_due_command_reports_dry_run_summary(monkeypatch) -> N
     monkeypatch.setattr(
         cli_module,
         "publish_due_jobs",
-        lambda database_url=None: PublishDueResult(
+        lambda database_url=None, dry_run=True: PublishDueResult(
             outcomes=(
                 PublishDueOutcome(
                     publish_job_id=42,
-                    status="published",
-                    state=PublishJobState.PUBLISHED,
-                    message="published successfully",
+                    status="dry_run",
+                    state=PublishJobState.SCHEDULED,
+                    message="dry-run only; no state changes were applied",
                     external_post_id="dry-run:42",
                 ),
             ),
@@ -406,8 +406,8 @@ def test_scheduler_publish_due_command_reports_dry_run_summary(monkeypatch) -> N
     result = runner.invoke(app, ["scheduler", "publish-due"])
 
     assert result.exit_code == 0
-    assert "processed due jobs: 1 (published=1, failed=0, skipped=0)" in result.stdout
-    assert "executor mode: fake dry-run" in result.stdout
+    assert "processed due jobs: 1 (dry_run=1, failed=0, skipped=0)" in result.stdout
+    assert "executor mode: fake dry-run (no state changes)" in result.stdout
 
 
 def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) -> None:
@@ -431,6 +431,7 @@ def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) ->
     assert captured["publish_due_interval_seconds"] == 60
     assert captured["started"] is True
     assert "scheduler registered jobs: discover, backfill, publish_due" in result.stdout
+    assert "dry_run=true" in result.stdout
 
 
 def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:

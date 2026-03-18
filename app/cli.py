@@ -523,19 +523,22 @@ def scheduler_publish_due_command(
         ),
     ] = None,
 ) -> None:
-    """Execute due publish jobs with the M11 fake executor."""
+    """Simulate due publish jobs with the M11 fake executor."""
 
     try:
-        result = publish_due_jobs(database_url=database_url)
+        result = publish_due_jobs(
+            database_url=database_url,
+            dry_run=True,
+        )
     except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
         _exit_with_error(exc)
 
     typer.echo(
         f"processed due jobs: {result.processed_count} "
-        f"(published={result.published_count}, failed={result.failed_count}, skipped={result.skipped_count})"
+        f"(dry_run={result.dry_run_count}, failed={result.failed_count}, skipped={result.skipped_count})"
     )
     if result.dry_run:
-        typer.echo("executor mode: fake dry-run")
+        typer.echo("executor mode: fake dry-run (no state changes)")
 
 
 @scheduler_app.command("run")
@@ -601,7 +604,7 @@ def scheduler_run_command(
         "discover, backfill, publish_due "
         f"(discover={discover_interval_minutes}m, "
         f"backfill={backfill_interval_minutes}m, "
-        f"publish_due={publish_due_interval_seconds}s)"
+        f"publish_due={publish_due_interval_seconds}s, dry_run=true)"
     )
     try:
         scheduler.start()
