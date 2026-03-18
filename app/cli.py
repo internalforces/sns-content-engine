@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from app import __version__
+from app.config import ConfigError
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database
 from app.workflows import (
@@ -550,7 +551,7 @@ def scheduler_publish_due_command(
             database_url=database_url,
             dry_run=not live,
         )
-    except (DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
+    except (ConfigError, DatabaseSchemaError, ReviewQueueError, ValueError) as exc:
         _exit_with_error(exc)
 
     if result.dry_run:
