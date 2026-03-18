@@ -7,7 +7,7 @@ import pytest
 from app.config import AccountConfig, PromptProfileConfig
 from app.connectors.llm import DraftGenerationRequest, FakeLLMProvider
 from app.services import DraftGenerationError, XDraftGenerator
-from app.storage import ContentBrief
+from app.storage import ArticleEnrichment, ContentBrief, SourceItem
 
 
 def test_fake_llm_provider_is_deterministic_and_respects_request_constraints() -> None:
@@ -65,7 +65,7 @@ def test_fake_llm_provider_uses_guide_cta_for_guide_landings() -> None:
         system_prompt="Keep posts practical for workflow operators.",
         user_prompt="Write about useful AI workflow patterns and make the click feel like a guide.",
         landing_url="https://odtoolbase.com/guides/ai-agent-workflows-small-teams",
-        max_chars=160,
+        max_chars=200,
         variant_count=3,
         title="Useful AI workflow patterns",
         key_points=("Useful AI workflow patterns", "Tight review loops", "Better scheduling"),
@@ -92,8 +92,8 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
         account_key="ai_tools_daily",
         account=_build_account_config(max_chars=120),
         prompt_profile=PromptProfileConfig(
-            system_template="System for {{ account_key }} on {{ channel }}",
-            user_template="Write about {{ title }} with {{ landing_url }}",
+            system_template="System for {{ account_key }} on {{ channel }} via {{ source_name }}",
+            user_template="Write about {{ title }} with {{ landing_url }} using {{ source_url }}",
         ),
         variant_count=2,
     )
@@ -103,9 +103,11 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
         "Second X draft https://gilgop.cloud/ai-tools",
     )
     assert provider.request is not None
-    assert "System for ai_tools_daily on x" in provider.request.system_prompt
-    assert "Write about Useful AI workflow patterns with https://gilgop.cloud/ai-tools" in provider.request.user_prompt
+    assert "System for ai_tools_daily on x via Finance Feed" in provider.request.system_prompt
+    assert "Write about Useful AI workflow patterns with https://gilgop.cloud/ai-tools using https://example.com/articles/1" in provider.request.user_prompt
     assert "Return exactly 2 distinct variants." in provider.request.system_prompt
+    assert "Do not give investment advice" in provider.request.system_prompt
+    assert "Avoid language that sounds like financial advice." in provider.request.user_prompt
     assert provider.request.max_chars == 120
 
 
@@ -184,8 +186,23 @@ def _build_account_config(*, max_chars: int) -> AccountConfig:
 
 
 def _build_content_brief() -> ContentBrief:
+    source_item = SourceItem(
+        id=1,
+        source_key="finance_rss",
+        external_id="entry-1",
+        source_url="https://example.com/articles/1",
+        title="Useful AI workflow patterns",
+        summary="A concise guide for operators.",
+    )
+    source_item.article_enrichment = ArticleEnrichment(
+        source_item_id=1,
+        source_name="Finance Feed",
+        article_url="https://example.com/articles/1",
+        regenerated_summary="A concise guide for operators.",
+    )
     return ContentBrief(
         source_item_id=1,
+        source_item=source_item,
         account_key="ai_tools_daily",
         title="Useful AI workflow patterns",
         summary="A concise guide for operators.",

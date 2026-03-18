@@ -72,6 +72,37 @@ class SourceItemState(str, Enum):
     REJECTED = "rejected"
 
 
+class PipelineStage(str, Enum):
+    """Tracked pipeline stages for article enrichment and local run history."""
+
+    RSS_DISCOVERED = "rss_discovered"
+    SAVED = "saved"
+    HTML_FETCH = "html_fetch"
+    ARTICLE_EXTRACT = "article_extract"
+    SUMMARY_REGENERATE = "summary_regenerate"
+    BRIEF_BUILD = "brief_build"
+    DRAFT_GENERATE = "draft_generate"
+    PENDING_REVIEW = "pending_review"
+
+
+class StageExecutionStatus(str, Enum):
+    """Execution status for one tracked pipeline stage."""
+
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class PipelineRunStatus(str, Enum):
+    """Lifecycle status for a local pipeline execution."""
+
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
 class DraftVariantState(str, Enum):
     """Lifecycle states for generated draft variants."""
 
@@ -153,6 +184,11 @@ class SourceItem(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    article_enrichment: Mapped["ArticleEnrichment | None"] = relationship(
+        back_populates="source_item",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     @validates("source_url", "title", "summary")
     def _populate_dedupe_fields(self, key: str, value: str | None) -> str | None:
@@ -203,6 +239,188 @@ class SourceItemRecentFingerprintClaim(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
 
     source_item: Mapped[SourceItem | None] = relationship(back_populates="recent_fingerprint_claim")
+
+
+class ArticleEnrichment(Base):
+    """Persisted article-level enrichment data for a discovered source item."""
+
+    __tablename__ = "article_enrichments"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_item_id",
+            name="uq_article_enrichments_source_item_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_item_id: Mapped[int] = mapped_column(
+        ForeignKey("source_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    article_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    discovered_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    extracted_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    summarized_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    html_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    article_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regenerated_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regenerated_key_points: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    company_names: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    tickers: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    markets: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    classification: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    rss_discovered_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.SUCCEEDED,
+        nullable=False,
+    )
+    saved_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.SUCCEEDED,
+        nullable=False,
+    )
+    html_fetch_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    article_extract_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    summary_regenerate_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    brief_build_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    draft_generate_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    review_status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    last_stage: Mapped[PipelineStage] = mapped_column(
+        SqlEnum(PipelineStage, native_enum=False, length=32),
+        default=PipelineStage.SAVED,
+        nullable=False,
+    )
+    failure_stage: Mapped[PipelineStage | None] = mapped_column(
+        SqlEnum(PipelineStage, native_enum=False, length=32),
+        nullable=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    source_item: Mapped[SourceItem] = relationship(back_populates="article_enrichment")
+
+
+class PipelineRun(Base):
+    """Stored execution summary for one local one-shot pipeline run."""
+
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    trigger_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="manual_local")
+    status: Mapped[PipelineRunStatus] = mapped_column(
+        SqlEnum(PipelineRunStatus, native_enum=False, length=32),
+        default=PipelineRunStatus.RUNNING,
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    discovered_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    saved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    enriched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    summarized_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    brief_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    draft_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latest_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    latest_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    stage_runs: Mapped[list["PipelineRunStage"]] = relationship(
+        back_populates="pipeline_run",
+        cascade="all, delete-orphan",
+    )
+
+
+class PipelineRunStage(Base):
+    """Per-stage execution summary attached to a pipeline run."""
+
+    __tablename__ = "pipeline_run_stages"
+    __table_args__ = (
+        UniqueConstraint(
+            "pipeline_run_id",
+            "stage",
+            name="uq_pipeline_run_stages_pipeline_run_id_stage",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pipeline_run_id: Mapped[int] = mapped_column(
+        ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    stage: Mapped[PipelineStage] = mapped_column(
+        SqlEnum(PipelineStage, native_enum=False, length=32),
+        nullable=False,
+    )
+    status: Mapped[StageExecutionStatus] = mapped_column(
+        SqlEnum(StageExecutionStatus, native_enum=False, length=32),
+        default=StageExecutionStatus.PENDING,
+        nullable=False,
+    )
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    latest_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    latest_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime(), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    pipeline_run: Mapped[PipelineRun] = relationship(back_populates="stage_runs")
 
 
 class ContentBrief(Base):

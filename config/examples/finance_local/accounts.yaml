@@ -1,0 +1,31 @@
+accounts:
+  finance_insights_daily:
+    topic: "Finance market insights"
+    source_sets:
+      - finance_primary
+    prompt_profile: finance_insight_default
+    landing:
+      fallback_url: https://example.com/finance-hub
+      rules: []
+    matching:
+      include_keywords:
+        - market
+        - policy
+        - earnings
+        - macro
+      exclude_keywords:
+        - coupon
+        - casino
+      source_tags:
+        - markets
+        - policy
+        - macro
+      strict_topic_guard: true
+    validation:
+      profile: finance_strict
+    channels:
+      x:
+        schedule:
+          cron: "0 9 * * *"
+        render:
+          max_chars: 280

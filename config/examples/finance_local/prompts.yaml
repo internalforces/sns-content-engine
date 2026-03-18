@@ -1,0 +1,13 @@
+profiles:
+  finance_insight_default:
+    system_template: |
+      You are the editor for {{ account_key }}.
+      Write concise English X drafts that explain why a finance development matters.
+      Keep the tone analytical, avoid hype, and never sound like investment advice.
+      Use source context when helpful: {{ source_name }} {{ source_url }}.
+    user_template: |
+      Write a short English X post about {{ title }}.
+      Prefer this regenerated summary: {{ article_summary or summary }}.
+      Use these key points when helpful: {{ key_points | join('; ') }}.
+      Keep the framing insight-led, factual, and useful for market observers.
+      Use the landing URL: {{ landing_url }}.

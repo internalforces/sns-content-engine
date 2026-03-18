@@ -6,11 +6,15 @@ from pathlib import Path
 from textwrap import dedent
 
 from app.storage import (
+    ArticleEnrichment,
+    ArticleEnrichmentRepository,
     ContentBrief,
     ContentBriefRepository,
+    PipelineStage,
     SourceItem,
     SourceItemRepository,
     SourceItemState,
+    StageExecutionStatus,
     create_all_tables,
     create_database_engine,
     create_session_factory,
@@ -168,6 +172,84 @@ def test_build_content_briefs_creates_briefs_for_all_tied_top_matches(tmp_path: 
         "automation_alpha",
         "automation_beta",
     }
+
+
+def test_build_content_briefs_prefers_regenerated_summary_and_key_points(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          finance_insights_daily:
+            topic: "Finance market insights"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/finance
+              rules: []
+            matching:
+              include_keywords:
+                - market
+              source_tags:
+                - markets
+              strict_topic_guard: true
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-enriched",
+                source_url="https://example.com/posts/markets",
+                title="Market outlook resets after policy meeting",
+                summary="Old RSS summary that should be replaced.",
+                raw_payload={"tags": ["markets"]},
+                state=SourceItemState.INGESTED,
+            )
+        )
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                source_name="Finance Feed",
+                article_url="https://example.com/posts/markets",
+                regenerated_summary="Updated article summary built from the extracted body.",
+                regenerated_key_points=[
+                    "Policy comments shifted market expectations",
+                    "Bond yields eased after the meeting",
+                    "Banks stayed in focus for credit signals",
+                ],
+                tags=["markets", "policy"],
+                html_fetch_status=StageExecutionStatus.SUCCEEDED,
+                article_extract_status=StageExecutionStatus.SUCCEEDED,
+                summary_regenerate_status=StageExecutionStatus.SUCCEEDED,
+                last_stage=PipelineStage.SUMMARY_REGENERATE,
+            )
+        )
+        source_item_id = source_item.id
+
+    result = build_content_briefs(tmp_path, session_factory=session_factory)
+
+    assert result.processed_source_item_ids == (source_item_id,)
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_brief = ContentBriefRepository(session).list()[0]
+
+    assert stored_brief.summary == "Updated article summary built from the extracted body."
+    assert stored_brief.key_points == [
+        "Policy comments shifted market expectations",
+        "Bond yields eased after the meeting",
+        "Banks stayed in focus for credit signals",
+    ]
+    assert stored_brief.tags == ["markets", "policy"]
+
 
 
 def test_build_content_briefs_records_no_match_without_changing_source_state(tmp_path: Path) -> None:

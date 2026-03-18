@@ -1,0 +1,9 @@
+sources:
+  finance_macro_rss:
+    type: rss
+    url: https://example.com/finance/feed.xml
+    duplicate_window_days: 14
+source_sets:
+  finance_primary:
+    sources:
+      - finance_macro_rss

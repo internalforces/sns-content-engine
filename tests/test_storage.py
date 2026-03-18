@@ -11,6 +11,8 @@ from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 from app.storage import (
+    ArticleEnrichment,
+    ArticleEnrichmentRepository,
     ContentBrief,
     ContentBriefRepository,
     DatabaseSchemaError,
@@ -19,12 +21,19 @@ from app.storage import (
     DraftVariantState,
     InvalidStateTransitionError,
     ManualApprovalRequiredError,
+    PipelineStage,
+    PipelineRun,
+    PipelineRunRepository,
+    PipelineRunStage,
+    PipelineRunStageRepository,
+    PipelineRunStatus,
     PublishJob,
     PublishJobRepository,
     PublishJobState,
     PublishLogRepository,
     ReviewActionRepository,
     ReviewActionType,
+    StageExecutionStatus,
     SourceItem,
     SourceItemRepository,
     SourceItemState,
@@ -61,8 +70,11 @@ def test_create_all_creates_expected_tables(database_url: str) -> None:
         engine.dispose()
 
     assert tables == {
+        "article_enrichments",
         "content_briefs",
         "draft_variants",
+        "pipeline_runs",
+        "pipeline_run_stages",
         "publish_jobs",
         "publish_logs",
         "review_actions",
@@ -103,6 +115,176 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
     assert stored_item.normalized_title == "useful ai tool"
     assert len(stored_item.normalized_title_hash) == 64
     assert len(stored_item.dedupe_fingerprint) == 64
+
+
+def test_article_enrichment_can_be_inserted_and_read(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="finance_rss",
+                external_id="entry-article-1",
+                source_url="https://example.com/markets/1",
+                title="Markets digest",
+                summary="Morning summary",
+            )
+        )
+        enrichment = ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                source_name="Example Finance",
+                article_url="https://example.com/markets/1",
+                published_at=datetime(2026, 3, 18, 8, 30, tzinfo=timezone.utc),
+                html_content="<html><body>Stocks rose after the central bank update.</body></html>",
+                article_text="Stocks rose after the central bank update.",
+                regenerated_summary="Markets rose after a central bank update.",
+                regenerated_key_points=[
+                    "Stocks rose after the update",
+                    "Investors focused on central bank comments",
+                ],
+                tags=["markets", "policy"],
+                company_names=["Federal Reserve"],
+                tickers=["SPY"],
+                markets=["US"],
+                classification="macro",
+                html_fetch_status=StageExecutionStatus.SUCCEEDED,
+                article_extract_status=StageExecutionStatus.SUCCEEDED,
+                summary_regenerate_status=StageExecutionStatus.SUCCEEDED,
+                last_stage=PipelineStage.SUMMARY_REGENERATE,
+                metadata_json={"rss_description": "Ignore this in favor of regenerated summary"},
+            )
+        )
+        enrichment_id = enrichment.id
+
+    with session_scope(session_factory) as session:
+        stored = ArticleEnrichmentRepository(session).get(enrichment_id)
+
+    assert stored is not None
+    assert stored.source_name == "Example Finance"
+    assert stored.article_url == "https://example.com/markets/1"
+    assert stored.regenerated_summary == "Markets rose after a central bank update."
+    assert stored.regenerated_key_points == [
+        "Stocks rose after the update",
+        "Investors focused on central bank comments",
+    ]
+    assert stored.classification == "macro"
+    assert stored.html_fetch_status is StageExecutionStatus.SUCCEEDED
+    assert stored.summary_regenerate_status is StageExecutionStatus.SUCCEEDED
+    assert stored.last_stage is PipelineStage.SUMMARY_REGENERATE
+    assert stored.metadata_json == {"rss_description": "Ignore this in favor of regenerated summary"}
+
+
+def test_article_enrichment_get_or_create_is_idempotent(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="finance_rss",
+                external_id="entry-article-2",
+                source_url="https://example.com/markets/2",
+                title="Second markets digest",
+            )
+        )
+        repository = ArticleEnrichmentRepository(session)
+        first, was_created = repository.get_or_create(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                article_url="https://example.com/markets/2",
+                source_name="Example Finance",
+            )
+        )
+        second, was_created_again = repository.get_or_create(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                article_url="https://example.com/markets/2?duplicate=1",
+                source_name="Changed source name",
+            )
+        )
+
+    assert was_created is True
+    assert was_created_again is False
+    assert second.id == first.id
+    assert second.article_url == "https://example.com/markets/2"
+
+
+def test_pipeline_run_and_stage_summaries_can_be_inserted_and_read(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        run = PipelineRunRepository(session).add(
+            PipelineRun(
+                workflow_name="run_local_finance",
+                trigger_mode="manual_local",
+                status=PipelineRunStatus.PARTIAL,
+                completed_at=datetime(2026, 3, 18, 9, 15, tzinfo=timezone.utc),
+                source_count=2,
+                discovered_count=8,
+                saved_count=5,
+                enriched_count=4,
+                summarized_count=3,
+                brief_count=3,
+                draft_count=3,
+                failure_count=1,
+                latest_error_code="extract_failed",
+                latest_error_message="기사 본문을 읽지 못했어요",
+                summary_json={"notes": ["one article failed extraction"]},
+            )
+        )
+        PipelineRunStageRepository(session).add(
+            PipelineRunStage(
+                pipeline_run_id=run.id,
+                stage=PipelineStage.ARTICLE_EXTRACT,
+                status=StageExecutionStatus.FAILED,
+                item_count=5,
+                success_count=4,
+                failure_count=1,
+                latest_error_code="extract_failed",
+                latest_error_message="기사 본문을 읽지 못했어요",
+                summary_json={"failed_item_ids": [12]},
+            )
+        )
+        run_id = run.id
+
+    with session_scope(session_factory) as session:
+        stored_run = PipelineRunRepository(session).get(run_id)
+        stored_stage_rows = PipelineRunStageRepository(session).list_for_run(run_id)
+
+    assert stored_run is not None
+    assert stored_run.workflow_name == "run_local_finance"
+    assert stored_run.status is PipelineRunStatus.PARTIAL
+    assert stored_run.failure_count == 1
+    assert stored_run.latest_error_message == "기사 본문을 읽지 못했어요"
+    assert len(stored_stage_rows) == 1
+    assert stored_stage_rows[0].stage is PipelineStage.ARTICLE_EXTRACT
+    assert stored_stage_rows[0].status is StageExecutionStatus.FAILED
+    assert stored_stage_rows[0].summary_json == {"failed_item_ids": [12]}
+
+
+def test_pipeline_run_stage_get_or_create_is_idempotent(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        run = PipelineRunRepository(session).add(
+            PipelineRun(workflow_name="run_local_finance")
+        )
+        repository = PipelineRunStageRepository(session)
+        first, was_created = repository.get_or_create(
+            PipelineRunStage(
+                pipeline_run_id=run.id,
+                stage=PipelineStage.HTML_FETCH,
+                status=StageExecutionStatus.SUCCEEDED,
+                item_count=3,
+                success_count=3,
+            )
+        )
+        second, was_created_again = repository.get_or_create(
+            PipelineRunStage(
+                pipeline_run_id=run.id,
+                stage=PipelineStage.HTML_FETCH,
+                status=StageExecutionStatus.FAILED,
+                item_count=9,
+                failure_count=9,
+            )
+        )
+
+    assert was_created is True
+    assert was_created_again is False
+    assert second.id == first.id
+    assert second.status is StageExecutionStatus.SUCCEEDED
 
 
 def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
@@ -941,6 +1123,46 @@ def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
             )
             connection.exec_driver_sql(
                 """
+                CREATE TABLE article_enrichments (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    source_name VARCHAR(255),
+                    article_url VARCHAR(2048) NOT NULL,
+                    published_at DATETIME,
+                    discovered_at DATETIME NOT NULL,
+                    fetched_at DATETIME,
+                    extracted_at DATETIME,
+                    summarized_at DATETIME,
+                    html_content TEXT,
+                    article_text TEXT,
+                    regenerated_summary TEXT,
+                    regenerated_key_points JSON NOT NULL,
+                    tags JSON NOT NULL,
+                    company_names JSON NOT NULL,
+                    tickers JSON NOT NULL,
+                    markets JSON NOT NULL,
+                    classification VARCHAR(50),
+                    rss_discovered_status VARCHAR(32) NOT NULL,
+                    saved_status VARCHAR(32) NOT NULL,
+                    html_fetch_status VARCHAR(32) NOT NULL,
+                    article_extract_status VARCHAR(32) NOT NULL,
+                    summary_regenerate_status VARCHAR(32) NOT NULL,
+                    brief_build_status VARCHAR(32) NOT NULL,
+                    draft_generate_status VARCHAR(32) NOT NULL,
+                    review_status VARCHAR(32) NOT NULL,
+                    last_stage VARCHAR(32) NOT NULL,
+                    failure_stage VARCHAR(32),
+                    failure_code VARCHAR(100),
+                    failure_message TEXT,
+                    metadata_json JSON,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_article_enrichments_source_item_id UNIQUE (source_item_id)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
                 CREATE TABLE content_briefs (
                     id INTEGER PRIMARY KEY,
                     source_item_id INTEGER NOT NULL,
@@ -1121,6 +1343,92 @@ def test_bootstrap_database_detects_missing_publish_job_active_unique_index(data
                     created_at DATETIME NOT NULL,
                     CONSTRAINT uq_source_item_recent_fingerprint_claims_dedupe_fingerprint UNIQUE (dedupe_fingerprint),
                     CONSTRAINT uq_source_item_recent_fingerprint_claims_source_item_id UNIQUE (source_item_id)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE pipeline_runs (
+                    id INTEGER PRIMARY KEY,
+                    workflow_name VARCHAR(100) NOT NULL,
+                    trigger_mode VARCHAR(50) NOT NULL,
+                    status VARCHAR(32) NOT NULL,
+                    started_at DATETIME NOT NULL,
+                    completed_at DATETIME,
+                    source_count INTEGER NOT NULL,
+                    discovered_count INTEGER NOT NULL,
+                    saved_count INTEGER NOT NULL,
+                    enriched_count INTEGER NOT NULL,
+                    summarized_count INTEGER NOT NULL,
+                    brief_count INTEGER NOT NULL,
+                    draft_count INTEGER NOT NULL,
+                    failure_count INTEGER NOT NULL,
+                    latest_error_code VARCHAR(100),
+                    latest_error_message TEXT,
+                    summary_json JSON,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE pipeline_run_stages (
+                    id INTEGER PRIMARY KEY,
+                    pipeline_run_id INTEGER NOT NULL,
+                    stage VARCHAR(32) NOT NULL,
+                    status VARCHAR(32) NOT NULL,
+                    item_count INTEGER NOT NULL,
+                    success_count INTEGER NOT NULL,
+                    failure_count INTEGER NOT NULL,
+                    started_at DATETIME,
+                    completed_at DATETIME,
+                    latest_error_code VARCHAR(100),
+                    latest_error_message TEXT,
+                    summary_json JSON,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_pipeline_run_stages_pipeline_run_id_stage UNIQUE (pipeline_run_id, stage)
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE article_enrichments (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    source_name VARCHAR(255),
+                    article_url VARCHAR(2048) NOT NULL,
+                    published_at DATETIME,
+                    discovered_at DATETIME NOT NULL,
+                    fetched_at DATETIME,
+                    extracted_at DATETIME,
+                    summarized_at DATETIME,
+                    html_content TEXT,
+                    article_text TEXT,
+                    regenerated_summary TEXT,
+                    regenerated_key_points JSON NOT NULL,
+                    tags JSON NOT NULL,
+                    company_names JSON NOT NULL,
+                    tickers JSON NOT NULL,
+                    markets JSON NOT NULL,
+                    classification VARCHAR(50),
+                    rss_discovered_status VARCHAR(32) NOT NULL,
+                    saved_status VARCHAR(32) NOT NULL,
+                    html_fetch_status VARCHAR(32) NOT NULL,
+                    article_extract_status VARCHAR(32) NOT NULL,
+                    summary_regenerate_status VARCHAR(32) NOT NULL,
+                    brief_build_status VARCHAR(32) NOT NULL,
+                    draft_generate_status VARCHAR(32) NOT NULL,
+                    review_status VARCHAR(32) NOT NULL,
+                    last_stage VARCHAR(32) NOT NULL,
+                    failure_stage VARCHAR(32),
+                    failure_code VARCHAR(100),
+                    failure_message TEXT,
+                    metadata_json JSON,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_article_enrichments_source_item_id UNIQUE (source_item_id)
                 )
                 """
             )

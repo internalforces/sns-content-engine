@@ -149,8 +149,11 @@ def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
     engine = create_engine(database_url)
     try:
         assert set(inspect(engine).get_table_names()) == {
+            "article_enrichments",
             "content_briefs",
             "draft_variants",
+            "pipeline_runs",
+            "pipeline_run_stages",
             "publish_jobs",
             "publish_logs",
             "review_actions",
@@ -323,6 +326,106 @@ def test_build_briefs_command_surfaces_schema_errors_cleanly(monkeypatch) -> Non
 
     assert result.exit_code == 1
     assert "database schema is outdated" in result.output
+
+
+def test_history_runs_command_outputs_recent_runs(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "list_pipeline_runs",
+        lambda database_url=None, limit=20: type(
+            "RunsResult",
+            (),
+            {
+                "runs": (
+                    type(
+                        "RunRow",
+                        (),
+                        {
+                            "run_id": 5,
+                            "status": "partial",
+                            "discovered_count": 4,
+                            "saved_count": 3,
+                            "enriched_count": 2,
+                            "brief_count": 2,
+                            "draft_count": 6,
+                            "failure_count": 1,
+                        },
+                    )(),
+                )
+            },
+        )(),
+    )
+
+    result = runner.invoke(app, ["history", "runs"])
+
+    assert result.exit_code == 0
+    assert "run_id=5 status=partial discovered=4 saved=3 enriched=2 briefs=2 drafts=6 failures=1" in result.stdout
+
+
+
+def test_history_failures_command_outputs_readable_failures(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "list_pipeline_failures",
+        lambda database_url=None, limit=20: type(
+            "FailuresResult",
+            (),
+            {
+                "failures": (
+                    type(
+                        "FailureRow",
+                        (),
+                        {
+                            "source_item_id": 9,
+                            "failure_stage": "html_fetch",
+                            "failure_code": "fetch_blocked",
+                            "failure_message": "사이트 접근이 차단되었어요",
+                        },
+                    )(),
+                )
+            },
+        )(),
+    )
+
+    result = runner.invoke(app, ["history", "failures"])
+
+    assert result.exit_code == 0
+    assert "source_item_id=9 stage=html_fetch code=fetch_blocked message=사이트 접근이 차단되었어요" in result.stdout
+
+
+def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
+    from app.storage import PipelineRunStatus
+
+    monkeypatch.setattr(
+        cli_module,
+        "run_local_pipeline",
+        lambda _config_dir, database_url=None: type(
+            "RunLocalResult",
+            (),
+            {
+                "pipeline_run_id": 77,
+                "status": PipelineRunStatus.PARTIAL,
+                "ingest_discovered_count": 6,
+                "ingest_saved_count": 4,
+                "enrichment_enriched_count": 3,
+                "brief_created_count": 3,
+                "draft_created_variant_count": 9,
+                "failure_count": 1,
+            },
+        )(),
+    )
+
+    result = runner.invoke(app, ["run-local"])
+
+    assert result.exit_code == 0
+    assert "pipeline run id: 77" in result.stdout
+    assert "status: partial" in result.stdout
+    assert "discovered: 6" in result.stdout
+    assert "saved: 4" in result.stdout
+    assert "enriched: 3" in result.stdout
+    assert "briefs created: 3" in result.stdout
+    assert "draft variants created: 9" in result.stdout
+    assert "failures: 1" in result.stdout
 
 
 def test_generate_drafts_command_reports_summary(monkeypatch) -> None:
