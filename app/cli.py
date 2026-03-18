@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from app import __version__
+from app.connectors.llm import DraftGenerationProviderError
 from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database
@@ -236,7 +237,7 @@ def generate_drafts_command(
             database_url=database_url,
             variant_count=variant_count,
         )
-    except DatabaseSchemaError as exc:
+    except (DatabaseSchemaError, DraftGenerationProviderError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 

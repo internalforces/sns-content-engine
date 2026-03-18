@@ -48,6 +48,15 @@ sns-content-engine/
 python -m pip install -e ".[dev]"
 ```
 
+3. Optional: enable real OpenAI draft generation. If `OPENAI_API_KEY` is not set, `generate-drafts` uses the built-in fake provider for safe local workflows.
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+export OPENAI_MODEL="gpt-5.4-mini"
+export OPENAI_REASONING_EFFORT="none"
+export OPENAI_TIMEOUT_SECONDS="30"
+```
+
 ## CLI Usage
 
 Run the CLI through the console script:
@@ -94,7 +103,7 @@ The `ingest` command runs discovery, applies canonical URL / title / fingerprint
 
 The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review.
+The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review. It automatically uses OpenAI when `OPENAI_API_KEY` is present; otherwise it falls back to the deterministic fake provider.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
 
@@ -155,6 +164,8 @@ Operational notes:
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
+- Draft generation uses OpenAI automatically when `OPENAI_API_KEY` is set. Runtime controls are `OPENAI_MODEL` (default `gpt-5.4-mini`), `OPENAI_REASONING_EFFORT` (default `none`), and `OPENAI_TIMEOUT_SECONDS` (default `30`).
+- If OpenAI draft generation is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
 - Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
 
