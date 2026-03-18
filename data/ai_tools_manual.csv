@@ -1,0 +1,3 @@
+external_id,url,title,summary,published_at,tags
+ai-manual-1,https://example.com/ai-tools/openai-workflows,OpenAI agent workflows for small teams,"A practical walkthrough of lightweight agent and automation patterns for content operations",2026-03-18T08:00:00+00:00,"ai,automation,agents"
+ai-manual-2,https://example.com/ai-tools/research-stack,AI research stack for repeatable content pipelines,"How to combine AI tools, prompt templates, and review steps into a reliable publishing workflow",2026-03-18T09:00:00+00:00,"ai,automation,workflows"

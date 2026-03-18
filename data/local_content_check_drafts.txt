@@ -1,0 +1,48 @@
+pending drafts: 6
+draft_id: 1
+account_key: ai_tools_daily
+channel: x
+variant_index: 0
+created_at: 2026-03-18T08:12:28.252273+00:00
+title: OpenAI agent workflows for small teams
+body: Practical takeaway: OpenAI agent workflows for small teams Cue: tools daily factual. A practical walkthrough of lightweight agent and automation patterns for content operations Read more: https://example.com/ai-agents
+
+draft_id: 2
+account_key: ai_tools_daily
+channel: x
+variant_index: 1
+created_at: 2026-03-18T08:12:28.253446+00:00
+title: OpenAI agent workflows for small teams
+body: Worth a look: OpenAI agent workflows for small teams Cue: tools daily factual. A practical walkthrough of lightweight agent and automation patterns for content operations See the full breakdown: https://example.com/ai-agents
+
+draft_id: 3
+account_key: ai_tools_daily
+channel: x
+variant_index: 2
+created_at: 2026-03-18T08:12:28.254482+00:00
+title: OpenAI agent workflows for small teams
+body: Quick insight: OpenAI agent workflows for small teams Cue: tools daily factual. A practical walkthrough of lightweight agent and automation patterns for content operations Get the details: https://example.com/ai-agents
+
+draft_id: 4
+account_key: ai_tools_daily
+channel: x
+variant_index: 0
+created_at: 2026-03-18T08:12:28.255966+00:00
+title: AI research stack for repeatable content pipelines
+body: Practical takeaway: AI research stack for repeatable content pipelines Cue: daily factual oriented. How to combine AI tools, prompt templates, and review steps into a reliable publishing workflow Read more: https://example.com/ai-agents
+
+draft_id: 5
+account_key: ai_tools_daily
+channel: x
+variant_index: 1
+created_at: 2026-03-18T08:12:28.256562+00:00
+title: AI research stack for repeatable content pipelines
+body: Worth a look: AI research stack for repeatable content pipelines Cue: daily factual oriented. How to combine AI tools, prompt templates, and review steps into a reliable publishing workflow See the full breakdown: https://example.com/ai-agents
+
+draft_id: 6
+account_key: ai_tools_daily
+channel: x
+variant_index: 2
+created_at: 2026-03-18T08:12:28.257121+00:00
+title: AI research stack for repeatable content pipelines
+body: Quick insight: AI research stack for repeatable content pipelines Cue: daily factual oriented. How to combine AI tools, prompt templates, and review steps into a reliable publishing workflow Get the details: https://example.com/ai-agents
