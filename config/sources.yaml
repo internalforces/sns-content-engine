@@ -1,25 +1,29 @@
 sources:
   ai_tools_rss:
     type: rss
-    url: https://example.com/ai/feed.xml
+    url: https://odtoolbase.com/feed.xml
+    duplicate_window_days: 14
 
   ai_tools_manual:
     type: manual_csv
     path: ../data/ai_tools_manual.csv
 
+  seo_tools_rss:
+    type: rss
+    url: https://odtoolbase.com/feed.xml
+    duplicate_window_days: 14
+
   seo_tools_manual:
     type: manual_csv
     path: ../data/seo_tools_manual.csv
 
-  seo_tools_rss:
-    type: rss
-    url: https://example.com/seo/feed.xml
-
 source_sets:
   ai_tools_primary:
     sources:
+      - ai_tools_rss
       - ai_tools_manual
 
   seo_tools_primary:
     sources:
+      - seo_tools_rss
       - seo_tools_manual

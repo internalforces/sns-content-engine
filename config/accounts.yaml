@@ -52,6 +52,7 @@ accounts:
           max_chars: 280
         publisher:
           credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+
   seo_tools_daily:
     topic: "SEO tools and search optimization"
     source_sets:
@@ -59,6 +60,7 @@ accounts:
     prompt_profile: seo_tools_default
     landing:
       fallback_url: https://odtoolbase.com/tools
+      rules: []
       validation:
         require_live_url: true
         allowed_url_prefixes:

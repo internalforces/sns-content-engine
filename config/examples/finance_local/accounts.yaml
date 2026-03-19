@@ -5,7 +5,7 @@ accounts:
       - finance_primary
     prompt_profile: finance_insight_default
     landing:
-      fallback_url: https://example.com/finance-hub
+      fallback_url: https://odtoolbase.com/finance-hub
       rules: []
     matching:
       include_keywords:
