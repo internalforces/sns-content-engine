@@ -1,0 +1,65 @@
+# providers.yaml — AI provider routing configuration
+#
+# This file controls which AI providers and models are used for each pipeline
+# step. It is OPTIONAL: when absent the system falls back to environment-variable
+# auto-detection (OPENAI_API_KEY → OpenAI, ANTHROPIC_API_KEY → Anthropic, etc.).
+#
+# Routes are tried in ascending priority order. If the first provider fails
+# (API error, timeout, etc.) the system automatically falls back to the next
+# route. Each provider is only active when its API key / credentials are present
+# in the environment — routes whose credentials are missing are skipped silently.
+#
+# Step keys:
+#   draft_generate       — Content brief → X/social draft variants
+#   metadata_generate    — Article → tags, SEO description, thumbnail prompt
+#   image_prompt_generate — Article → image generation prompt
+#   tts_synthesize       — Text → spoken audio
+#
+# Provider identifiers:
+#   openai               — Requires OPENAI_API_KEY
+#   anthropic            — Requires ANTHROPIC_API_KEY
+#   elevenlabs           — Requires ELEVENLABS_API_KEY
+#   google               — Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_TTS_CREDENTIALS_JSON
+#   fake                 — No credentials needed (deterministic stub, for testing)
+
+routes:
+  # ── LLM: draft generation ────────────────────────────────────────────────
+  - step: draft_generate
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    priority: 1
+    # Uncomment to try OpenAI as fallback:
+    # - step: draft_generate
+    #   provider: openai
+    #   model: gpt-5.4-mini
+    #   priority: 2
+
+  # ── LLM: metadata generation ─────────────────────────────────────────────
+  - step: metadata_generate
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    priority: 1
+
+  # ── TTS: speech synthesis ────────────────────────────────────────────────
+  - step: tts_synthesize
+    provider: elevenlabs
+    model: eleven_multilingual_v2
+    priority: 1
+    params:
+      voice_id: ""          # Set ELEVENLABS_VOICE_ID or override here
+
+  - step: tts_synthesize
+    provider: google
+    model: en-US-Neural2-D
+    priority: 2
+
+  # ── Fallback: fake providers for local dev without credentials ───────────
+  # Uncomment the entries below to run entirely offline without API keys:
+  #
+  # - step: draft_generate
+  #   provider: fake
+  #   priority: 99
+  #
+  # - step: metadata_generate
+  #   provider: fake
+  #   priority: 99

@@ -13,6 +13,12 @@ from app.services.draft_validation import (
 from app.services.landing_resolution import LandingResolutionError, LandingResolver
 from app.services.prompt_renderer import PromptRenderer, PromptRenderingError, RenderedPrompt
 from app.services.summary_regenerator import RegeneratedSummary, SummaryRegenerationError, SummaryRegenerator
+from app.services.metadata_generator import (
+    MetadataGenerationError,
+    MetadataGenerationInput,
+    MetadataGenerationResult,
+    MetadataGenerator,
+)
 from app.services.x_draft_generator import DraftGenerationError, XDraftGenerator
 
 __all__ = [
@@ -24,6 +30,10 @@ __all__ = [
     "ContentBriefBuilder",
     "DraftGenerationError",
     "HtmlFetcherError",
+    "MetadataGenerationError",
+    "MetadataGenerationInput",
+    "MetadataGenerationResult",
+    "MetadataGenerator",
     "HtmlFetchResult",
     "DraftValidationIssue",
     "DraftValidationResult",

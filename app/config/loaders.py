@@ -12,7 +12,7 @@ from yaml.resolver import BaseResolver
 from pydantic import BaseModel, ValidationError
 
 from app.config.errors import ConfigLoadError, ConfigValidationError
-from app.config.schemas import AccountsFileConfig, PromptsFileConfig, SourcesFileConfig
+from app.config.schemas import AIProvidersConfig, AccountsFileConfig, PromptsFileConfig, SourcesFileConfig
 
 ConfigModel = TypeVar("ConfigModel", bound=BaseModel)
 
@@ -63,6 +63,19 @@ def load_sources_config(path: Path) -> SourcesFileConfig:
     """Load and validate sources.yaml."""
 
     return _load_config_file(path, SourcesFileConfig)
+
+
+def load_providers_config(path: Path) -> AIProvidersConfig:
+    """Load and validate providers.yaml.
+
+    Returns an empty ``AIProvidersConfig`` (no routes) when the file does not
+    exist, so callers can treat the file as optional and fall back to
+    environment-variable-based route detection.
+    """
+
+    if not path.exists():
+        return AIProvidersConfig()
+    return _load_config_file(path, AIProvidersConfig)
 
 
 def _load_config_file(path: Path, model_type: type[ConfigModel]) -> ConfigModel:
