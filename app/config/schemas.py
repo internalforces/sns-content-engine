@@ -317,7 +317,24 @@ class SourceSetConfig(FrozenConfigModel):
 class BaseSourceConfig(FrozenConfigModel):
     """Shared source configuration fields."""
 
+    policy_mode: Literal["discovery_only", "reusable", "restricted"] = "reusable"
+    allow_full_text_fetch: bool = True
+    allow_llm_rewrite: bool = True
+    require_attribution: bool = False
+    notes: str | None = None
     duplicate_window_days: int = Field(default=30, ge=0)
+
+    @field_validator("policy_mode", mode="before")
+    @classmethod
+    def validate_policy_mode(cls, value: str) -> str:
+        return _normalize_non_empty_string(value, label="policy_mode")
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def validate_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty_string(value, label="notes")
 
 
 class RssSourceConfig(BaseSourceConfig):
