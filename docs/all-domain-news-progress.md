@@ -15,9 +15,9 @@ Keep updates short, factual, and current.
 - Current milestone: `phase_1_foundation`
 - Current task: `01_source_policy_schema`
 - Active status: `in_progress`
-- Last updated: `2026-04-05 20:52 KST`
+- Last updated: `2026-04-05 20:54 KST`
 - Active branch: `codex/task-01-source-policy-schema`
-- Latest task commit: `none`
+- Latest task commit: `5b1db83 Add source policy fields to source config`
 
 ## Scope For Current Task
 - Goal: `Add source policy metadata to config schemas with backward-compatible defaults`
@@ -56,6 +56,7 @@ Status values:
 - `2026-04-05 20:48 KST` Created or switched branch `codex/task-01-source-policy-schema`
 - `2026-04-05 20:49 KST` Added source policy fields to `BaseSourceConfig` with backward-compatible defaults and string normalization
 - `2026-04-05 20:50 KST` Added focused config tests for default policy values, explicit overrides, and invalid policy mode handling
+- `2026-04-05 20:54 KST` Created commit `5b1db83` with message `Add source policy fields to source config`
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -70,4 +71,4 @@ Status values:
 
 ## Completion Summary
 - `Task 01 complete: source configs now support policy metadata with explicit defaults, and focused config tests cover defaults, overrides, and invalid values`
-- Commit: `none`
+- Commit: `5b1db83 Add source policy fields to source config`
