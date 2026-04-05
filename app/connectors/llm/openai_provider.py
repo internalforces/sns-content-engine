@@ -7,6 +7,7 @@ import os
 from collections.abc import Mapping
 from typing import Protocol
 
+from app.connectors.llm._env_helpers import optional_env, require_env, resolve_float_env
 from app.connectors.llm.base import (
     DraftGenerationProviderError,
     DraftGenerationRequest,
@@ -67,21 +68,26 @@ class OpenAIDraftGenerationProvider:
         """Build a provider from environment variables."""
 
         resolved_environment = os.environ if environment is None else environment
-        api_key = _resolve_required_env_var(
-            resolved_environment,
-            "OPENAI_API_KEY",
-        )
-        model = _resolve_optional_env_var(
+        _ec = DraftGenerationProviderError
+        api_key = require_env(resolved_environment, "OPENAI_API_KEY", error_cls=_ec)
+        model = optional_env(
             resolved_environment,
             "OPENAI_MODEL",
             default=DEFAULT_OPENAI_MODEL,
+            error_cls=_ec,
         )
-        reasoning_effort = _resolve_optional_env_var(
+        reasoning_effort = optional_env(
             resolved_environment,
             "OPENAI_REASONING_EFFORT",
             default=DEFAULT_OPENAI_REASONING_EFFORT,
+            error_cls=_ec,
         )
-        timeout_seconds = _resolve_timeout_seconds(resolved_environment)
+        timeout_seconds = resolve_float_env(
+            resolved_environment,
+            "OPENAI_TIMEOUT_SECONDS",
+            default=DEFAULT_OPENAI_TIMEOUT_SECONDS,
+            error_cls=_ec,
+        )
         resolved_client_factory = client_factory or _build_default_openai_responses_client
         client = resolved_client_factory(api_key=api_key, timeout_seconds=timeout_seconds)
         return cls(
@@ -227,55 +233,3 @@ def _extract_output_text(response: object) -> str | None:
     return None
 
 
-def _resolve_required_env_var(
-    environment: Mapping[str, str],
-    name: str,
-) -> str:
-    if name not in environment:
-        raise DraftGenerationProviderError(f"{name} is required")
-
-    raw_value = environment[name]
-    value = raw_value.strip()
-    if not value:
-        raise DraftGenerationProviderError(f"{name} is set but empty")
-    return value
-
-
-def _resolve_optional_env_var(
-    environment: Mapping[str, str],
-    name: str,
-    *,
-    default: str,
-) -> str:
-    if name not in environment:
-        return default
-
-    raw_value = environment[name]
-    value = raw_value.strip()
-    if not value:
-        raise DraftGenerationProviderError(f"{name} is set but empty")
-    return value
-
-
-def _resolve_timeout_seconds(environment: Mapping[str, str]) -> float:
-    raw_value = environment.get("OPENAI_TIMEOUT_SECONDS")
-    if raw_value is None:
-        return DEFAULT_OPENAI_TIMEOUT_SECONDS
-
-    normalized = raw_value.strip()
-    if not normalized:
-        raise DraftGenerationProviderError("OPENAI_TIMEOUT_SECONDS is set but empty")
-
-    try:
-        timeout_seconds = float(normalized)
-    except ValueError as exc:
-        raise DraftGenerationProviderError(
-            "OPENAI_TIMEOUT_SECONDS must be a positive number"
-        ) from exc
-
-    if timeout_seconds <= 0:
-        raise DraftGenerationProviderError(
-            "OPENAI_TIMEOUT_SECONDS must be a positive number"
-        )
-
-    return timeout_seconds

@@ -216,6 +216,51 @@ class AccountValidationConfig(FrozenConfigModel):
     profile: Literal["standard", "finance_strict"] = "standard"
 
 
+class AccountAIConfig(FrozenConfigModel):
+    """Per-account AI provider override (optional section in accounts.yaml).
+
+    When specified, the named provider is promoted to the highest priority
+    for all applicable step keys belonging to that category (llm or tts).
+    This allows premium accounts to use a more powerful model, or a specific
+    account to use a different TTS voice, without touching the global config.
+
+    Example (accounts.yaml)::
+
+        accounts:
+          premium_account:
+            ...
+            ai:
+              llm_provider: anthropic
+              llm_model: claude-opus-4-6
+    """
+
+    llm_provider: str | None = None
+    """Preferred LLM provider for this account. Promoted to priority 0."""
+
+    llm_model: str | None = None
+    """Model override for the preferred LLM provider."""
+
+    tts_provider: str | None = None
+    """Preferred TTS provider for this account. Promoted to priority 0."""
+
+    tts_model: str | None = None
+    """Model override for the preferred TTS provider."""
+
+    @field_validator("llm_provider", "tts_provider", mode="before")
+    @classmethod
+    def validate_optional_provider(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty_string(value, label="ai provider")
+
+    @field_validator("llm_model", "tts_model", mode="before")
+    @classmethod
+    def validate_optional_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty_string(value, label="ai model")
+
+
 class AccountConfig(FrozenConfigModel):
     """Account-level content engine settings."""
 
@@ -226,6 +271,7 @@ class AccountConfig(FrozenConfigModel):
     matching: AccountMatchingConfig = Field(default_factory=AccountMatchingConfig)
     validation: AccountValidationConfig = Field(default_factory=AccountValidationConfig)
     channels: Mapping[str, ChannelConfig] = Field(min_length=1)
+    ai: AccountAIConfig = Field(default_factory=AccountAIConfig)
 
     @field_validator("topic", "prompt_profile")
     @classmethod
@@ -346,3 +392,94 @@ class SourcesFileConfig(FrozenConfigModel):
         cls, value: Mapping[str, SourceSetConfig]
     ) -> Mapping[str, SourceSetConfig]:
         return _validate_mapping_keys(value, label="source set")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 6 — Config-driven AI provider control
+# --------------------------------------------------------------------------- #
+
+
+class RouteConfig(FrozenConfigModel):
+    """Single provider route entry in providers.yaml.
+
+    Each entry declares one provider for one pipeline step, along with its
+    model and execution priority. Multiple entries for the same step are tried
+    in ascending priority order with automatic fallback.
+
+    Example (providers.yaml)::
+
+        routes:
+          - step: draft_generate
+            provider: anthropic
+            model: claude-haiku-4-5-20251001
+            priority: 1
+          - step: draft_generate
+            provider: openai
+            model: gpt-5.4-mini
+            priority: 2
+    """
+
+    step: str
+    """Pipeline step key (e.g. "draft_generate", "tts_synthesize")."""
+
+    provider: str
+    """Provider identifier (e.g. "openai", "anthropic", "elevenlabs", "google")."""
+
+    model: str | None = None
+    """Optional model override. Uses the provider's built-in default when None."""
+
+    priority: int = Field(default=1, ge=1)
+    """Execution order within a step. Lower value = tried first."""
+
+    enabled: bool = True
+    """When False this route is loaded but excluded from resolution."""
+
+    params: Mapping[str, str] = Field(default_factory=dict)
+    """Extra provider-specific parameters (e.g. voice_id for ElevenLabs)."""
+
+    @field_validator("step", "provider")
+    @classmethod
+    def validate_identifiers(cls, value: str) -> str:
+        return _normalize_non_empty_string(value, label="route field")
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_non_empty_string(value, label="model")
+
+    @field_validator("params")
+    @classmethod
+    def validate_params_keys(cls, value: Mapping[str, str]) -> Mapping[str, str]:
+        return _validate_mapping_keys(value, label="route param")
+
+
+class AIProvidersConfig(FrozenConfigModel):
+    """Top-level schema for the optional providers.yaml configuration file.
+
+    This file provides config-driven control over which AI providers and models
+    are used for each pipeline step. When absent, the system falls back to
+    environment-variable-based auto-detection (existing behaviour).
+
+    Example (config/providers.yaml)::
+
+        routes:
+          - step: draft_generate
+            provider: anthropic
+            model: claude-haiku-4-5-20251001
+            priority: 1
+          - step: draft_generate
+            provider: openai
+            model: gpt-5.4-mini
+            priority: 2
+          - step: metadata_generate
+            provider: anthropic
+            model: claude-haiku-4-5-20251001
+            priority: 1
+          - step: tts_synthesize
+            provider: elevenlabs
+            priority: 1
+    """
+
+    routes: tuple[RouteConfig, ...] = Field(default_factory=tuple)
