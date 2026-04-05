@@ -14,6 +14,7 @@ from app.config import (
     ConfigValidationError,
     ManualCsvSourceConfig,
     RssSourceConfig,
+    load_sources_config,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -286,12 +287,147 @@ def test_validation_config_loads_successfully(tmp_path: Path) -> None:
     assert channel.validation.recent_duplicate_window_days == 14
 
 
-def test_sources_default_duplicate_window_days_to_thirty() -> None:
-    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
-    source = registry.get_source("ai_tools_rss")
+def test_sources_default_duplicate_window_days_to_thirty(tmp_path: Path) -> None:
+    _write_valid_sources_yaml(tmp_path)
+    sources_config = load_sources_config(tmp_path / "sources.yaml")
+    source = sources_config.sources["ai_tools_rss"]
 
     assert isinstance(source, RssSourceConfig)
+    assert source.policy_mode == "reusable"
+    assert source.allow_full_text_fetch is True
+    assert source.allow_llm_rewrite is True
+    assert source.require_attribution is False
+    assert source.notes is None
     assert source.duplicate_window_days == 30
+
+
+def test_sources_load_policy_overrides_for_supported_variants(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            policy_mode: discovery_only
+            allow_full_text_fetch: false
+            allow_llm_rewrite: false
+            require_attribution: true
+            notes: "Aggregator feed for discovery only"
+          ai_tools_sitemap:
+            type: sitemap
+            url: https://example.com/sitemap.xml
+            policy_mode: restricted
+            require_attribution: true
+          ai_tools_seed:
+            type: manual_csv
+            path: data/manual/ai_tools.csv
+            policy_mode: reusable
+            allow_full_text_fetch: true
+            allow_llm_rewrite: true
+            require_attribution: false
+            notes: "Operator-curated reusable seeds"
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+              - ai_tools_sitemap
+              - ai_tools_seed
+        """,
+    )
+
+    registry = ConfigRegistry.from_directory(tmp_path)
+    rss_source = registry.get_source("ai_tools_rss")
+    sitemap_source = registry.get_source("ai_tools_sitemap")
+    manual_source = registry.get_source("ai_tools_seed")
+
+    assert isinstance(rss_source, RssSourceConfig)
+    assert rss_source.policy_mode == "discovery_only"
+    assert rss_source.allow_full_text_fetch is False
+    assert rss_source.allow_llm_rewrite is False
+    assert rss_source.require_attribution is True
+    assert rss_source.notes == "Aggregator feed for discovery only"
+
+    assert sitemap_source.policy_mode == "restricted"
+    assert sitemap_source.allow_full_text_fetch is True
+    assert sitemap_source.allow_llm_rewrite is True
+    assert sitemap_source.require_attribution is True
+    assert sitemap_source.notes is None
+
+    assert isinstance(manual_source, ManualCsvSourceConfig)
+    assert manual_source.policy_mode == "reusable"
+    assert manual_source.allow_full_text_fetch is True
+    assert manual_source.allow_llm_rewrite is True
+    assert manual_source.require_attribution is False
+    assert manual_source.notes == "Operator-curated reusable seeds"
+
+
+def test_invalid_source_policy_mode_raises_validation_error(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            policy_mode: "   "
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    message = str(exc_info.value)
+    assert "sources.ai_tools_rss.rss.policy_mode" in message
+    assert "must not be empty" in message
 
 
 def test_negative_duplicate_window_days_raise_validation_error(tmp_path: Path) -> None:
