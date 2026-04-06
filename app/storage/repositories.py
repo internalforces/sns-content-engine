@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.storage.models import (
     SourceItem,
     SourceItemRecentFingerprintClaim,
     SourceItemState,
+    StageExecutionStatus,
 )
 
 
@@ -112,6 +113,12 @@ class SourceItemRepository:
 
     def list(self) -> list[SourceItem]:
         return list(self.session.scalars(select(SourceItem).order_by(SourceItem.id)))
+
+    def list_by_ids(self, item_ids: Sequence[int]) -> list[SourceItem]:
+        if not item_ids:
+            return []
+        statement = select(SourceItem).where(SourceItem.id.in_(tuple(item_ids))).order_by(SourceItem.id)
+        return list(self.session.scalars(statement))
 
     def delete(self, item: SourceItem) -> None:
         self.session.delete(item)
@@ -209,6 +216,21 @@ class ArticleEnrichmentRepository:
         statement = (
             select(ArticleEnrichment)
             .where(ArticleEnrichment.failure_code.is_not(None))
+            .order_by(ArticleEnrichment.updated_at.desc(), ArticleEnrichment.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(statement))
+
+    def list_policy_skipped(self, *, limit: int = 50) -> list[ArticleEnrichment]:
+        statement = (
+            select(ArticleEnrichment)
+            .where(
+                ArticleEnrichment.policy_decision_reason.is_not(None),
+                or_(
+                    ArticleEnrichment.html_fetch_status == StageExecutionStatus.SKIPPED,
+                    ArticleEnrichment.summary_regenerate_status == StageExecutionStatus.SKIPPED,
+                ),
+            )
             .order_by(ArticleEnrichment.updated_at.desc(), ArticleEnrichment.id.desc())
             .limit(limit)
         )

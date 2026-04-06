@@ -5,6 +5,9 @@ The future first screen should be able to show:
 - the latest local run timestamp
 - overall run status
 - counts for discovered items, saved items, enriched items, summaries created, briefs created, drafts created, and failures
+- policy-mode counts for the items processed in the run
+- skipped-by-policy count and attribution-required count
+- rewrite provider names used during draft generation when available
 - a short list of the latest failure messages
 
 Current connection status:
@@ -48,6 +51,8 @@ The future failure screen should be able to show:
 - human-readable failure message
 - pipeline stage
 - related source/article title
+- source policy mode and attribution requirement
+- intentional policy skips as a separate list from technical failures
 - last attempted run
 
 Current connection status:

@@ -109,8 +109,14 @@ class _RoutedDraftGenerationProvider:
         self._environment = environment
         self._client_factory = client_factory
         self._codex_wrapper_client_factory = codex_wrapper_client_factory
+        self.last_provider_name: str | None = None
 
     def generate_variants(self, request: DraftGenerationRequest) -> tuple[str, ...]:
+        def _execute(provider: object, route: Route) -> tuple[str, ...]:
+            result = provider.generate_variants(request)
+            self.last_provider_name = route.provider
+            return result
+
         return execute_with_fallback(
             step_key=StepKey.DRAFT_GENERATE,
             routes=self._routes,
@@ -120,7 +126,7 @@ class _RoutedDraftGenerationProvider:
                 self._client_factory,
                 self._codex_wrapper_client_factory,
             ),
-            execute=lambda provider, _route: provider.generate_variants(request),
+            execute=_execute,
         )
 
 

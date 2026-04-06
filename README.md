@@ -66,6 +66,11 @@ export OPENAI_TIMEOUT_SECONDS="30"
 These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
 Keep the bundled GDELT example in a dedicated discovery-only source set until policy-aware enrichment skips are enabled; it is intended for recent-news discovery, not direct full-text reuse.
 
+## Operator Guides
+
+- [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
+- [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
+
 ## CLI Usage
 
 Run the CLI through the console script:
@@ -124,7 +129,7 @@ The `review` command group lists `pending_review` drafts and supports approve, r
 
 The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
 
-The `history runs` and `history failures` commands expose UI-friendly summaries from persisted `pipeline_runs` and article-enrichment failures so a future local homepage can read the same data model.
+The `history runs` and `history failures` commands expose UI-friendly summaries from persisted `pipeline_runs` and article-enrichment history so a future local homepage can read the same data model. Run history now includes policy-aware counts and rewrite-provider names when available, and failure history includes source-policy metadata alongside ordinary failures for future UI/API consumers.
 
 The `healthcheck` command is a strict readiness check. It validates both config loading and database schema readiness, prints key=value status lines, and exits non-zero if either check fails.
 
