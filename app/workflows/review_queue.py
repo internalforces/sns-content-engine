@@ -245,7 +245,12 @@ def resolve_reviewer_identity(reviewer: str | None = None) -> str:
 
 def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.PENDING_REVIEW, action="approve")
-    _validate_draft_for_review(session, draft, config_dir=config_dir)
+    _validate_draft_for_review(
+        session,
+        draft,
+        config_dir=config_dir,
+        validation_label="approval",
+    )
 
     drafts = DraftVariantRepository(session)
     before_state = draft.state
@@ -332,7 +337,13 @@ def _schedule_draft(
     scheduled_for: datetime,
 ) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.APPROVED, action="schedule")
-    _validate_draft_for_review(session, draft, config_dir=config_dir)
+    _validate_draft_for_review(
+        session,
+        draft,
+        config_dir=config_dir,
+        validation_label="schedule",
+        enforce_policy_requirements=True,
+    )
 
     publish_jobs = PublishJobRepository(session)
     if publish_jobs.has_active_job_for_draft(draft.id):
@@ -370,7 +381,14 @@ def _schedule_draft(
     )
 
 
-def _validate_draft_for_review(session, draft, *, config_dir: Path | str) -> None:
+def _validate_draft_for_review(
+    session,
+    draft,
+    *,
+    config_dir: Path | str,
+    validation_label: str,
+    enforce_policy_requirements: bool = False,
+) -> None:
     content_brief = draft.content_brief
     if content_brief is None:
         raise ReviewQueueError(f"draft {draft.id} is missing its content brief")
@@ -406,12 +424,14 @@ def _validate_draft_for_review(session, draft, *, config_dir: Path | str) -> Non
         recent_drafts=recent_drafts,
         draft_id=draft.id,
         now=now,
+        draft=draft,
+        enforce_policy_requirements=enforce_policy_requirements,
     )
     if validation.is_valid:
         return
 
     messages = "; ".join(f"{issue.code}: {issue.message}" for issue in validation.errors)
-    raise DraftValidationFailedError(f"draft {draft.id} failed validation: {messages}")
+    raise DraftValidationFailedError(f"draft {draft.id} failed {validation_label} validation: {messages}")
 
 
 def _run_review_action(

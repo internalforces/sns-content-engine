@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `10_domain_sensitivity_guardrails`
+- Current task: `11_review_scheduling_validation`
 - Active status: `done`
-- Last updated: `2026-04-06 13:46 KST`
-- Active branch: `codex/task-10-domain-sensitivity-guardrails`
-- Latest task commit: `Add domain sensitivity guardrails for high-risk topics`
+- Last updated: `2026-04-06 14:25 KST`
+- Active branch: `codex/task-11-review-scheduling-validation`
+- Latest task commit: `Block policy-violating drafts from scheduling`
 
 ## Scope For Current Task
-- Goal: `Add lightweight domain-sensitivity guardrails so higher-risk topics get more cautious prompt and validation behavior without changing the review-first flow`
-- In scope: `Rule-based sensitivity detection, prompt-generation guardrails, and focused validator/test coverage for sensitive vs neutral topics`
-- Out of scope: `Heavyweight classifiers, review queue UX changes, and publish-policy enforcement`
+- Goal: `Block scheduling of drafts that violate attribution, restricted-source reuse, or minimum provenance requirements`
+- In scope: `Draft-validator policy checks, review-queue scheduling integration, and focused schedule/validation coverage`
+- Out of scope: `Review UI redesign, publish-time connector policy enforcement, and new provenance storage fields`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -37,7 +37,7 @@ Keep updates short, factual, and current.
 | 08 | All-domain prompt profiles | done | 2026-04-06 13:07 KST | Added neutral all-domain prompt profiles, sample-account selection, and attribution-aware prompt context coverage |
 | 09 | Provenance visibility | done | 2026-04-06 13:23 KST | Snapshotted source origin and policy metadata onto stored drafts for review visibility |
 | 10 | Domain sensitivity guardrails | done | 2026-04-06 13:46 KST | Added shared sensitivity detection plus prompt and validation guardrails for high-risk topics |
-| 11 | Review scheduling validation | pending | - | |
+| 11 | Review scheduling validation | done | 2026-04-06 14:25 KST | Added schedule-time blockers for required attribution, restricted-source full-text reuse, and missing draft provenance |
 | 12 | History query expansion and operator docs | pending | - | |
 
 Status values:
@@ -48,13 +48,10 @@ Status values:
 
 ## Changed Files For Active Task
 - `app/services/draft_validation.py`
-- `app/services/prompt_renderer.py`
-- `app/services/x_draft_generator.py`
-- `config/prompts.yaml`
+- `app/workflows/review_queue.py`
 - `docs/all-domain-news-progress.md`
 - `tests/test_draft_validation.py`
-- `tests/test_prompt_renderer.py`
-- `tests/test_x_draft_generator.py`
+- `tests/test_review_queue_workflow.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -109,6 +106,11 @@ Status values:
 - `2026-04-06 13:45 KST` Added a shared rule-based domain-sensitivity helper for politics, finance, health, and crime-or-disaster topics; wired the new context into all-domain prompt templates and X draft generation
 - `2026-04-06 13:45 KST` Added validator warnings for high-risk domains plus blocking phrase checks for finance and health claim language; updated focused renderer, generator, and validator tests
 - `2026-04-06 13:46 KST` Completed task `10` after focused prompt, generator, validator, draft-workflow, and config regression tests passed
+- `2026-04-06 14:19 KST` Started task `11`. Scope: `policy-aware scheduling blockers for attribution, restricted-source reuse, and missing provenance`
+- `2026-04-06 14:19 KST` Created or switched branch `codex/task-11-review-scheduling-validation`
+- `2026-04-06 14:23 KST` Added schedule-only draft validation rules for missing attribution, missing provenance snapshots, and restricted-source full-text reuse while leaving approval semantics unchanged
+- `2026-04-06 14:24 KST` Updated review-queue fixtures and validator coverage so policy-compliant scheduling still succeeds while blocked cases fail with readable error codes
+- `2026-04-06 14:25 KST` Completed task `11` after targeted validator/review-queue tests and CLI regression coverage passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -132,12 +134,14 @@ Status values:
 - `2026-04-06 13:22 KST` `./.venv/bin/pytest tests/test_storage.py tests/test_generate_drafts_workflow.py tests/test_x_draft_generator.py -q` -> `passed (62 passed)`
 - `2026-04-06 13:45 KST` `./.venv/bin/pytest tests/test_prompt_renderer.py tests/test_x_draft_generator.py tests/test_draft_validation.py -q` -> `passed (31 passed)`
 - `2026-04-06 13:45 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py::test_registry_loads_sample_config_directory tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (12 passed)`
+- `2026-04-06 14:23 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_review_queue_workflow.py -q` -> `passed (36 passed)`
+- `2026-04-06 14:24 KST` `./.venv/bin/pytest tests/test_cli.py -q` -> `passed (32 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `UI or review-queue surfacing of high-risk warnings remains deferred; this task keeps the signal in prompt context and draft validation only`
+- `Task 12 remains next: expand policy-aware history queries and add operator-facing all-domain safety docs`
 
 ## Completion Summary
-- `Task 10 complete: added shared rule-based sensitivity detection for politics, finance, health, and crime-or-disaster topics; threaded the signal into all-domain prompt context; flagged high-risk drafts during validation; and blocked explicit finance/health claim language with focused regressions`
+- `Task 11 complete: scheduling now blocks drafts that miss required source attribution, lack reviewer-facing provenance snapshots, or show fetched full-text reuse from restricted sources, with focused validator, review-queue, and CLI regressions passing`
