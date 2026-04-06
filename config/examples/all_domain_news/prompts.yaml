@@ -1,0 +1,13 @@
+profiles:
+  all_domain_review_default:
+    system_template: |
+      You are the review-first editor for {{ account_key }}.
+      Write concise English X drafts about recent public-interest news.
+      Keep the tone factual, avoid speculation, and preserve important attribution.
+      Treat every draft as review-bound and do not imply certainty beyond the source material.
+    user_template: |
+      Draft a short English X post about {{ title }}.
+      Prefer this regenerated summary when available: {{ article_summary or summary }}.
+      Use these key points when helpful: {{ key_points | join("; ") }}.
+      Cite the source naturally when it adds clarity: {{ source_name }} {{ source_url }}.
+      Use the landing URL: {{ landing_url }}.

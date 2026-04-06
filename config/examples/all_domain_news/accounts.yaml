@@ -1,0 +1,36 @@
+accounts:
+  all_domain_news_daily:
+    topic: "All-domain latest news"
+    source_sets:
+      - all_domain_primary
+    prompt_profile: all_domain_review_default
+    landing:
+      fallback_url: https://newsroom.example.com/daily-brief
+      rules: []
+    matching:
+      include_keywords:
+        - policy
+        - launch
+        - update
+        - report
+        - statement
+      exclude_keywords:
+        - coupon
+        - giveaway
+        - rumor
+      source_tags:
+        - official
+        - newsroom
+        - wikinews
+      strict_topic_guard: false
+    validation:
+      profile: standard
+    channels:
+      x:
+        schedule:
+          cron: "0 9 * * *"
+        render:
+          max_chars: 280
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 2

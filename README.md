@@ -57,6 +57,14 @@ export OPENAI_REASONING_EFFORT="none"
 export OPENAI_TIMEOUT_SECONDS="30"
 ```
 
+## Example Config Sets
+
+- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`.
+- `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
+- `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a commented future GDELT placeholder.
+
+These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
+
 ## CLI Usage
 
 Run the CLI through the console script:
