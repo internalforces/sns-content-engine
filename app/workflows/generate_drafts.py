@@ -9,6 +9,7 @@ from pathlib import Path
 from app.config import ConfigRegistry
 from app.connectors.llm import DraftGenerationProvider, resolve_draft_generation_provider
 from app.services import XDraftGenerator
+from app.services.x_draft_generator import build_draft_provenance_snapshot
 from app.storage import (
     ContentBriefRepository,
     DraftVariant,
@@ -156,6 +157,7 @@ def generate_drafts(
                 )
                 created_draft_ids: list[int] = []
                 created_any = False
+                provenance = build_draft_provenance_snapshot(brief)
                 for index, body in enumerate(generated_bodies):
                     stored_draft, was_created = drafts.get_or_create(
                         DraftVariant(
@@ -163,6 +165,11 @@ def generate_drafts(
                             channel="x",
                             variant_index=index,
                             body=body,
+                            source_name=provenance.source_name,
+                            source_url=provenance.source_url,
+                            article_url=provenance.article_url,
+                            source_published_at=provenance.published_at,
+                            source_policy_mode=provenance.policy_mode,
                         )
                     )
                     if was_created:

@@ -690,6 +690,37 @@ def test_draft_variant_state_transitions_are_enforced(session_factory) -> None:
             )
 
 
+def test_draft_variant_can_store_provenance_snapshot(session_factory) -> None:
+    published_at = datetime(2026, 3, 18, 9, 45, tzinfo=timezone.utc)
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief_for_draft(session)
+        draft = DraftVariantRepository(session).add(
+            DraftVariant(
+                content_brief_id=brief.id,
+                channel="x",
+                variant_index=0,
+                body="Stored draft text",
+                source_name="AI Tools Daily",
+                source_url="https://example.com/posts/draft/source",
+                article_url="https://example.com/articles/draft-source",
+                source_published_at=published_at,
+                source_policy_mode=SourcePolicyMode.RESTRICTED,
+            )
+        )
+        draft_id = draft.id
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft_id)
+
+    assert stored_draft is not None
+    assert stored_draft.source_name == "AI Tools Daily"
+    assert stored_draft.source_url == "https://example.com/posts/draft/source"
+    assert stored_draft.article_url == "https://example.com/articles/draft-source"
+    assert stored_draft.source_published_at == published_at
+    assert stored_draft.source_policy_mode is SourcePolicyMode.RESTRICTED
+
+
 def test_draft_variant_get_or_create_is_idempotent(session_factory) -> None:
     with session_scope(session_factory) as session:
         brief = _create_content_brief_for_draft(session)
@@ -700,6 +731,11 @@ def test_draft_variant_get_or_create_is_idempotent(session_factory) -> None:
                 channel="x",
                 variant_index=0,
                 body="Stored draft text",
+                source_name="Original Source",
+                source_url="https://example.com/original",
+                article_url="https://example.com/articles/original",
+                source_published_at=datetime(2026, 3, 18, 9, 45, tzinfo=timezone.utc),
+                source_policy_mode=SourcePolicyMode.RESTRICTED,
             )
         )
         second_draft, was_created_again = repository.get_or_create(
@@ -708,6 +744,11 @@ def test_draft_variant_get_or_create_is_idempotent(session_factory) -> None:
                 channel="x",
                 variant_index=0,
                 body="Changed draft text should not replace the original row",
+                source_name="Changed Source",
+                source_url="https://example.com/changed",
+                article_url="https://example.com/articles/changed",
+                source_published_at=datetime(2026, 3, 19, 9, 45, tzinfo=timezone.utc),
+                source_policy_mode=SourcePolicyMode.REUSABLE,
             )
         )
 
@@ -715,6 +756,11 @@ def test_draft_variant_get_or_create_is_idempotent(session_factory) -> None:
     assert was_created_again is False
     assert second_draft.id == first_draft.id
     assert second_draft.body == "Stored draft text"
+    assert second_draft.source_name == "Original Source"
+    assert second_draft.source_url == "https://example.com/original"
+    assert second_draft.article_url == "https://example.com/articles/original"
+    assert second_draft.source_published_at == datetime(2026, 3, 18, 9, 45, tzinfo=timezone.utc)
+    assert second_draft.source_policy_mode is SourcePolicyMode.RESTRICTED
 
 
 def test_draft_variant_get_or_create_recovers_from_integrity_error() -> None:
@@ -1217,6 +1263,11 @@ def test_bootstrap_database_rejects_outdated_schema(database_url: str) -> None:
                     channel VARCHAR(50) NOT NULL,
                     variant_index INTEGER NOT NULL,
                     body TEXT NOT NULL,
+                    source_name VARCHAR(255),
+                    source_url VARCHAR(2048),
+                    article_url VARCHAR(2048),
+                    source_published_at DATETIME,
+                    source_policy_mode VARCHAR(32),
                     state VARCHAR(32) NOT NULL,
                     rejection_reason TEXT,
                     reviewed_at DATETIME,
@@ -1400,6 +1451,11 @@ def test_bootstrap_database_detects_missing_draft_variant_unique_constraint(data
                     channel VARCHAR(50) NOT NULL,
                     variant_index INTEGER NOT NULL,
                     body TEXT NOT NULL,
+                    source_name VARCHAR(255),
+                    source_url VARCHAR(2048),
+                    article_url VARCHAR(2048),
+                    source_published_at DATETIME,
+                    source_policy_mode VARCHAR(32),
                     state VARCHAR(32) NOT NULL,
                     rejection_reason TEXT,
                     reviewed_at DATETIME,
@@ -1414,6 +1470,42 @@ def test_bootstrap_database_detects_missing_draft_variant_unique_constraint(data
     with pytest.raises(
         DatabaseSchemaError,
         match="draft_variants: missing unique constraints uq_draft_variants_content_brief_id_channel_variant_index",
+    ):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_draft_variant_provenance_columns(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE draft_variants")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE draft_variants (
+                    id INTEGER PRIMARY KEY,
+                    content_brief_id INTEGER NOT NULL,
+                    channel VARCHAR(50) NOT NULL,
+                    variant_index INTEGER NOT NULL,
+                    body TEXT NOT NULL,
+                    state VARCHAR(32) NOT NULL,
+                    rejection_reason TEXT,
+                    reviewed_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_draft_variants_content_brief_id_channel_variant_index UNIQUE (content_brief_id, channel, variant_index)
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match=(
+            "draft_variants: missing columns article_url, source_name, source_policy_mode, "
+            "source_published_at, source_url"
+        ),
     ):
         bootstrap_database(database_url)
 
