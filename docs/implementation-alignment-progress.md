@@ -13,22 +13,22 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_runtime_and_docs_parity`
-- Current task: `01_provider_config_runtime_wiring`
-- Active status: `done`
-- Last updated: `2026-04-06 15:13 KST`
-- Active branch: `codex/task-01-provider-config-runtime-wiring`
-- Latest task commit: `ff622aa` (`Wire providers config into draft workflow resolution`)
+- Current task: `02_policy_aware_history_cli_parity`
+- Active status: `in_progress`
+- Last updated: `2026-04-06 15:19 KST`
+- Active branch: `codex/task-02-history-cli-parity`
+- Latest task commit: `n/a`
 
 ## Scope For Current Task
-- Goal: `Make runtime draft-generation behavior honor providers.yaml so docs and implementation agree`
-- In scope: `Workflow/provider resolution wiring, focused workflow/resolver coverage, and compatibility with env-only fallback`
-- Out of scope: `New provider types, scheduler redesign, broad CLI redesign, and unrelated prompt/profile changes`
+- Goal: `Expose policy-aware run and failure history details in the operator CLI so the terminal view matches the query layer`
+- In scope: `history runs/failures output shape, focused CLI coverage, and clear visibility for policy skips`
+- Out of scope: `New history storage fields, UI work, scheduler changes, and unrelated doc refreshes`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- |
 | 01 | Provider config runtime wiring | done | 2026-04-06 15:13 KST | Live draft workflows now load optional `providers.yaml` and still fall back to env-only resolution |
-| 02 | Policy-aware history CLI parity | pending | 2026-04-06 15:02 KST | Query helpers expose richer fields than the current CLI prints |
+| 02 | Policy-aware history CLI parity | in_progress | 2026-04-06 15:19 KST | Updating `history runs` and `history failures` so policy-aware query fields are visible to operators |
 | 03 | README and operator wording refresh | pending | 2026-04-06 15:02 KST | Several docs still describe pre-alignment behavior |
 | 04 | Progress metadata cleanup | pending | 2026-04-06 15:02 KST | Progress log commit metadata should be refreshed after alignment work lands |
 
@@ -39,9 +39,6 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/workflows/generate_drafts.py`
-- `tests/test_generate_drafts_workflow.py`
-- `tests/test_run_local_pipeline_workflow.py`
 - `docs/implementation-alignment-progress.md`
 
 ## Progress Log
@@ -52,6 +49,8 @@ Status values:
 - `2026-04-06 15:11 KST` Wired `generate_drafts()` to load optional `providers.yaml` before resolving the runtime draft provider
 - `2026-04-06 15:11 KST` Added workflow-level tests for config-driven provider routing and a broader `run_local_pipeline()` regression slice
 - `2026-04-06 15:13 KST` Task `01` verified and implementation committed as `ff622aa` (`Wire providers config into draft workflow resolution`)
+- `2026-04-06 15:19 KST` Started Task `02` on branch `codex/task-02-history-cli-parity`
+- `2026-04-06 15:19 KST` Intended scope: surface policy-aware summary fields and policy skips in CLI history output without changing storage/query contracts
 
 ## Test Log
 - `2026-04-06 15:02 KST` `./.venv/bin/pytest -q` -> `passed (362 passed)` while auditing current repository state before defining alignment tasks
@@ -62,7 +61,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 02 remains next: decide whether policy-aware history fields belong in default CLI output or behind a dedicated detail mode`
+- `Pending: confirm whether the default CLI output can stay compact while still exposing all policy-aware fields operators need`
 
 ## Completion Summary
 - `Task 01 complete: live draft-generation workflows now honor optional providers.yaml routing, env-only fallback remains intact, and workflow-level tests cover both direct and broader run-local paths`
