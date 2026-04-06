@@ -14,10 +14,10 @@ Keep updates short, factual, and current.
 ## Current Status
 - Current milestone: `phase_1_backend_ready_operator_api`
 - Current task: `01_fastapi_application_wiring_and_read_only_history`
-- Active status: `in_progress`
-- Last updated: `2026-04-06 16:05 KST`
+- Active status: `done`
+- Last updated: `2026-04-06 16:08 KST`
 - Active branch: `codex/task-01-fastapi-readonly-history`
-- Latest task commit: `none`
+- Latest task commit: `9996312`
 
 ## Scope For Current Task
 - Goal: `Add a real FastAPI app entrypoint for health and readable run/failure history JSON`
@@ -27,7 +27,7 @@ Keep updates short, factual, and current.
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- |
-| 01 | FastAPI application wiring and read-only history | in_progress | 2026-04-06 15:57 KST | Implementing minimal FastAPI app wiring with read-only health and run/failure JSON routes |
+| 01 | FastAPI application wiring and read-only history | done | 2026-04-06 16:08 KST | FastAPI app entrypoint now exposes read-only `/health`, `/runs`, and `/failures` JSON routes with focused API tests |
 | 02 | Article and pending-review read endpoints | pending | 2026-04-06 15:53 KST | Intended to expose stored article/enrichment and review-list data for UI use |
 | 03 | Review action API parity | pending | 2026-04-06 15:53 KST | Planned API wrappers for approve/reject/edit/schedule using existing review validation |
 | 04 | SQLite migration baseline | pending | 2026-04-06 15:53 KST | Planned explicit upgrade path so schema evolution does not require DB recreation |
@@ -56,6 +56,7 @@ Status values:
 - `2026-04-06 16:01 KST` Added `app.api.create_app()` plus `/health`, `/runs`, and `/failures` routes that delegate to `run_healthcheck`, `list_pipeline_runs`, and `list_pipeline_failures`
 - `2026-04-06 16:03 KST` Switched `app.workflows` package exports to lazy resolution so submodule imports for API/history routes do not eagerly load unrelated workflow dependencies
 - `2026-04-06 16:05 KST` Added focused API tests covering health readiness JSON plus run and failure history payloads against a temporary SQLite database
+- `2026-04-06 16:08 KST` Created commit `9996312` with message `Add FastAPI app with health and history routes`
 
 ## Test Log
 - `2026-04-06 15:53 KST` `git diff --check` -> `passed`
@@ -71,4 +72,4 @@ Status values:
 - `If Task 02 starts next, reuse the same API app shape and add article/pending-review serializers without introducing new business-logic layers`
 
 ## Completion Summary
-- `Roadmap docs created: the next implementation stage now has dedicated todo, prompt-pack, and progress-tracking documents in the same format as the recent roadmap sets`
+- `Task 01 complete: the repository now has a concrete FastAPI app export, stable read-only health and history JSON endpoints, focused API coverage, and lazy workflow package exports that keep history-route imports lightweight`
