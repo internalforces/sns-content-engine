@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `08_all_domain_prompt_profiles`
+- Current task: `09_provenance_visibility`
 - Active status: `done`
-- Last updated: `2026-04-06 13:07 KST`
-- Active branch: `codex/task-08-all-domain-prompt-profiles`
-- Latest task commit: `Add all-domain prompt profiles`
+- Last updated: `2026-04-06 13:23 KST`
+- Active branch: `codex/task-09-provenance-visibility`
+- Latest task commit: `Persist draft provenance snapshots`
 
 ## Scope For Current Task
-- Goal: `Add neutral all-domain prompt profiles and only the prompt-render context needed to support attribution-aware review-first drafting`
-- In scope: `Bundled all-domain prompt profile updates, sample-account prompt selection, and focused renderer/config coverage`
-- Out of scope: `Draft storage provenance changes, review workflow changes, and domain-sensitivity policy logic beyond prompt wording`
+- Goal: `Persist and expose draft provenance snapshots so reviewers can understand source origin and policy context without log inspection`
+- In scope: `DraftVariant provenance fields, draft-generation snapshot wiring, and focused storage/workflow/generator coverage`
+- Out of scope: `Review queue UX redesign, policy enforcement changes, and domain-sensitivity logic`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -35,7 +35,7 @@ Keep updates short, factual, and current.
 | 06 | Codex-Wrapper provider | done | 2026-04-06 12:43 KST | Added an OpenAI-compatible draft provider, export wiring, and workflow compatibility coverage |
 | 07 | Provider routing support | done | 2026-04-06 12:56 KST | Wired codex_wrapper into route registry and draft resolver, updated sample config, and verified mixed fallback coverage |
 | 08 | All-domain prompt profiles | done | 2026-04-06 13:07 KST | Added neutral all-domain prompt profiles, sample-account selection, and attribution-aware prompt context coverage |
-| 09 | Provenance visibility | pending | - | |
+| 09 | Provenance visibility | done | 2026-04-06 13:23 KST | Snapshotted source origin and policy metadata onto stored drafts for review visibility |
 | 10 | Domain sensitivity guardrails | pending | - | |
 | 11 | Review scheduling validation | pending | - | |
 | 12 | History query expansion and operator docs | pending | - | |
@@ -48,13 +48,12 @@ Status values:
 
 ## Changed Files For Active Task
 - `app/services/x_draft_generator.py`
-- `config/examples/all_domain_news/accounts.yaml`
-- `config/examples/all_domain_news/prompts.yaml`
-- `config/prompts.yaml`
+- `app/storage/bootstrap.py`
+- `app/storage/models.py`
+- `app/workflows/generate_drafts.py`
 - `docs/all-domain-news-progress.md`
-- `tests/test_config.py`
-- `tests/test_prompt_renderer.py`
-- `tests/test_x_draft_generator.py`
+- `tests/test_generate_drafts_workflow.py`
+- `tests/test_storage.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -99,6 +98,11 @@ Status values:
 - `2026-04-06 13:05 KST` Added neutral all-domain prompt profiles to the bundled prompt configs, kept a review-first compatibility profile in the example path, and pointed the sample all-domain account at `all_domain_factual_x_post`
 - `2026-04-06 13:05 KST` Extended X draft prompt rendering with source `policy_mode` and `require_attribution` so attribution-aware templates can stay data-driven; added focused renderer, generator, and config assertions
 - `2026-04-06 13:07 KST` Completed task `08` after targeted prompt, draft, and config regression tests passed
+- `2026-04-06 13:17 KST` Started task `09`. Scope: `draft provenance snapshots for source origin and policy visibility`
+- `2026-04-06 13:17 KST` Created or switched branch `codex/task-09-provenance-visibility`
+- `2026-04-06 13:20 KST` Added draft-level provenance snapshot fields for source name, URLs, published timestamp, and policy mode; wired draft generation to persist a consistent snapshot derived from the content brief source item
+- `2026-04-06 13:21 KST` Added focused workflow and storage coverage for persisted provenance snapshots plus schema-drift detection of the new draft columns
+- `2026-04-06 13:23 KST` Completed task `09` after targeted provenance tests and broader draft/storage regression tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -118,6 +122,8 @@ Status values:
 - `2026-04-06 12:55 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_codex_wrapper_provider.py -q` -> `passed (20 passed)`
 - `2026-04-06 13:06 KST` `./.venv/bin/pytest tests/test_prompt_renderer.py tests/test_x_draft_generator.py tests/test_config.py::test_registry_loads_sample_config_directory tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (13 passed)`
 - `2026-04-06 13:06 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py -q` -> `passed (31 passed)`
+- `2026-04-06 13:21 KST` `./.venv/bin/pytest tests/test_storage.py::test_draft_variant_can_store_provenance_snapshot tests/test_storage.py::test_draft_variant_get_or_create_is_idempotent tests/test_storage.py::test_bootstrap_database_detects_missing_draft_variant_provenance_columns tests/test_generate_drafts_workflow.py::test_generate_drafts_persists_source_and_policy_provenance_on_drafts -q` -> `passed (4 passed)`
+- `2026-04-06 13:22 KST` `./.venv/bin/pytest tests/test_storage.py tests/test_generate_drafts_workflow.py tests/test_x_draft_generator.py -q` -> `passed (62 passed)`
 
 ## Blockers
 - `None currently`
@@ -126,4 +132,4 @@ Status values:
 - `None currently`
 
 ## Completion Summary
-- `Task 08 complete: added neutral all-domain prompt profiles to the bundled configs, switched the sample all-domain account to a factual review-first profile, exposed attribution-aware prompt metadata in X draft rendering, and verified prompt/config compatibility with focused regressions`
+- `Task 09 complete: stored draft-level provenance snapshots for source name, source URL, article URL, published timestamp, and source policy mode; kept prompt rendering aligned through a shared provenance helper; and verified persistence plus schema validation with focused regressions`

@@ -97,6 +97,7 @@ _REQUIRED_TABLE_COLUMNS = {
         "updated_at",
     },
     "draft_variants": {
+        "article_url",
         "body",
         "channel",
         "content_brief_id",
@@ -104,6 +105,10 @@ _REQUIRED_TABLE_COLUMNS = {
         "id",
         "rejection_reason",
         "reviewed_at",
+        "source_name",
+        "source_policy_mode",
+        "source_published_at",
+        "source_url",
         "state",
         "updated_at",
         "variant_index",

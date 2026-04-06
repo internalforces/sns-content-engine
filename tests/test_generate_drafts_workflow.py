@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import app.connectors.llm.openai_provider as openai_provider_module
+from datetime import datetime, timezone
 from pathlib import Path
 from textwrap import dedent
 
@@ -13,11 +14,13 @@ from app.connectors.llm import (
     DraftGenerationProviderError,
 )
 from app.storage import (
+    ArticleEnrichment,
     ContentBrief,
     ContentBriefRepository,
     DraftVariantRepository,
     DraftVariantState,
     SourceItem,
+    SourcePolicyMode,
     SourceItemRepository,
     create_all_tables,
     create_database_engine,
@@ -280,13 +283,58 @@ def test_generate_drafts_accepts_codex_wrapper_provider(tmp_path: Path) -> None:
     ]
 
 
+def test_generate_drafts_persists_source_and_policy_provenance_on_drafts(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    source_published_at = datetime(2026, 3, 18, 8, 30, tzinfo=timezone.utc)
+    article_published_at = datetime(2026, 3, 18, 9, 45, tzinfo=timezone.utc)
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(
+            session,
+            account_key="ai_tools_daily",
+            policy_mode=SourcePolicyMode.RESTRICTED,
+            source_published_at=source_published_at,
+            article_url="https://example.com/articles/ai-tools-canonical",
+            article_source_name="AI Tools Daily",
+            article_published_at=article_published_at,
+        )
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "x",
+        )
+
+    assert len(stored_drafts) == 3
+    assert all(draft.source_name == "AI Tools Daily" for draft in stored_drafts)
+    assert all(draft.source_url == "https://example.com/ai_tools_daily/post" for draft in stored_drafts)
+    assert all(draft.article_url == "https://example.com/articles/ai-tools-canonical" for draft in stored_drafts)
+    assert all(draft.source_published_at == article_published_at for draft in stored_drafts)
+    assert all(draft.source_policy_mode is SourcePolicyMode.RESTRICTED for draft in stored_drafts)
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'drafts.db'}")
     create_all_tables(engine)
     return create_session_factory(engine)
 
 
-def _create_content_brief(session, *, account_key: str) -> ContentBrief:
+def _create_content_brief(
+    session,
+    *,
+    account_key: str,
+    policy_mode: SourcePolicyMode = SourcePolicyMode.REUSABLE,
+    source_published_at: datetime | None = None,
+    article_url: str | None = None,
+    article_source_name: str | None = None,
+    article_published_at: datetime | None = None,
+) -> ContentBrief:
     title = f"Useful AI workflow patterns for {account_key}"
     summary = f"A concise guide for operators working on {account_key}."
     source_item = SourceItemRepository(session).add(
@@ -296,8 +344,18 @@ def _create_content_brief(session, *, account_key: str) -> ContentBrief:
             source_url=f"https://example.com/{account_key}/post",
             title=title,
             summary=summary,
+            published_at=source_published_at,
+            policy_mode=policy_mode,
         )
     )
+    if article_url is not None or article_source_name is not None or article_published_at is not None:
+        source_item.article_enrichment = ArticleEnrichment(
+            source_item_id=source_item.id,
+            source_name=article_source_name,
+            article_url=article_url or source_item.source_url,
+            published_at=article_published_at,
+            regenerated_summary=summary,
+        )
     return ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,

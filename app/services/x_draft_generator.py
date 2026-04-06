@@ -4,17 +4,30 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
 
 from app.config import AccountConfig, PromptProfileConfig
 from app.connectors.llm import DraftGenerationProvider, DraftGenerationRequest
 from app.services.prompt_renderer import PromptRenderer
-from app.storage import ContentBrief
+from app.storage import ContentBrief, SourcePolicyMode
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
 class DraftGenerationError(ValueError):
     """Raised when generated draft variants fail validation."""
+
+
+@dataclass(frozen=True, slots=True)
+class DraftProvenanceSnapshot:
+    """Stored source and policy provenance for a generated draft."""
+
+    source_name: str | None
+    source_url: str | None
+    article_url: str | None
+    published_at: datetime | None
+    policy_mode: SourcePolicyMode | None
 
 
 class XDraftGenerator:
@@ -86,6 +99,7 @@ def _build_render_context(
     channel: str,
     max_chars: int,
 ) -> Mapping[str, object]:
+    provenance = build_draft_provenance_snapshot(content_brief)
     return {
         "account_key": account_key,
         "topic": account.topic,
@@ -98,10 +112,10 @@ def _build_render_context(
         "angle": content_brief.angle,
         "landing_url": content_brief.landing_url,
         "language": content_brief.language,
-        "source_url": _source_url(content_brief),
-        "source_name": _source_name(content_brief),
+        "source_url": provenance.article_url or provenance.source_url,
+        "source_name": provenance.source_name,
         "article_summary": _article_summary(content_brief),
-        "policy_mode": _policy_mode(content_brief),
+        "policy_mode": provenance.policy_mode.value if provenance.policy_mode is not None else None,
         "require_attribution": _require_attribution(content_brief),
     }
 
@@ -138,24 +152,25 @@ def _build_user_prompt(
     )
 
 
-def _source_url(content_brief: ContentBrief) -> str | None:
+def build_draft_provenance_snapshot(content_brief: ContentBrief) -> DraftProvenanceSnapshot:
     source_item = content_brief.source_item
     if source_item is None:
-        return None
-    enrichment = source_item.article_enrichment
-    if enrichment is not None and enrichment.article_url:
-        return enrichment.article_url
-    return source_item.source_url
+        return DraftProvenanceSnapshot(
+            source_name=None,
+            source_url=None,
+            article_url=None,
+            published_at=None,
+            policy_mode=None,
+        )
 
-
-def _source_name(content_brief: ContentBrief) -> str | None:
-    source_item = content_brief.source_item
-    if source_item is None:
-        return None
     enrichment = source_item.article_enrichment
-    if enrichment is not None and enrichment.source_name:
-        return enrichment.source_name
-    return source_item.source_key
+    return DraftProvenanceSnapshot(
+        source_name=_source_name(source_item.source_key, enrichment.source_name if enrichment else None),
+        source_url=source_item.source_url,
+        article_url=enrichment.article_url if enrichment is not None else None,
+        published_at=(enrichment.published_at if enrichment and enrichment.published_at else source_item.published_at),
+        policy_mode=source_item.policy_mode,
+    )
 
 
 def _article_summary(content_brief: ContentBrief) -> str | None:
@@ -165,11 +180,10 @@ def _article_summary(content_brief: ContentBrief) -> str | None:
     return source_item.article_enrichment.regenerated_summary or content_brief.summary
 
 
-def _policy_mode(content_brief: ContentBrief) -> str | None:
-    source_item = content_brief.source_item
-    if source_item is None:
-        return None
-    return source_item.policy_mode.value
+def _source_name(source_key: str, enrichment_source_name: str | None) -> str:
+    if enrichment_source_name:
+        return enrichment_source_name
+    return source_key
 
 
 def _require_attribution(content_brief: ContentBrief) -> bool:

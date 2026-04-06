@@ -503,6 +503,14 @@ class DraftVariant(Base):
     channel: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     variant_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    source_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    article_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    source_published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    source_policy_mode: Mapped[SourcePolicyMode | None] = mapped_column(
+        SqlEnum(SourcePolicyMode, native_enum=False, length=32),
+        nullable=True,
+    )
     state: Mapped[DraftVariantState] = mapped_column(
         SqlEnum(DraftVariantState, native_enum=False, length=32),
         default=DraftVariantState.PENDING_REVIEW,
