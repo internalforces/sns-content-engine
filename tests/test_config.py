@@ -73,6 +73,15 @@ def test_registry_loads_sample_config_directory() -> None:
     assert registry.get_prompt_profile("seo_tools_default").system_template.startswith(
         "You are the growth editor"
     )
+    assert registry.get_prompt_profile("all_domain_general_news_summary").system_template.startswith(
+        "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile("all_domain_factual_x_post").system_template.startswith(
+        "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile(
+        "all_domain_attribution_first_short_post"
+    ).system_template.startswith("You are the attribution-first editor")
     assert registry.get_source_set("ai_tools_primary").sources == (
         "ai_tools_rss",
         "ai_tools_manual",
@@ -94,7 +103,7 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     wikinews_source = registry.get_source("wikinews_attribution_friendly")
 
     assert account.topic == "All-domain latest news"
-    assert account.prompt_profile == "all_domain_review_default"
+    assert account.prompt_profile == "all_domain_factual_x_post"
     assert list(account.source_sets) == ["all_domain_primary"]
     assert str(account.landing.fallback_url) == "https://newsroom.example.com/daily-brief"
     assert account.matching.include_keywords == ("policy", "launch", "update", "report", "statement")
@@ -130,6 +139,15 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert registry.get_prompt_profile("all_domain_review_default").system_template.startswith(
         "You are the review-first editor"
     )
+    assert registry.get_prompt_profile("all_domain_general_news_summary").system_template.startswith(
+        "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile("all_domain_factual_x_post").system_template.startswith(
+        "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile(
+        "all_domain_attribution_first_short_post"
+    ).system_template.startswith("You are the attribution-first editor")
     assert registry.get_source_set("public_reusable").sources == ("official_updates_reusable",)
     assert registry.get_source_set("corporate_reusable").sources == ("corporate_ir_reusable",)
     assert registry.get_source_set("attribution_friendly_reusable").sources == (

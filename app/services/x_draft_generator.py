@@ -101,6 +101,8 @@ def _build_render_context(
         "source_url": _source_url(content_brief),
         "source_name": _source_name(content_brief),
         "article_summary": _article_summary(content_brief),
+        "policy_mode": _policy_mode(content_brief),
+        "require_attribution": _require_attribution(content_brief),
     }
 
 
@@ -161,6 +163,20 @@ def _article_summary(content_brief: ContentBrief) -> str | None:
     if source_item is None or source_item.article_enrichment is None:
         return content_brief.summary
     return source_item.article_enrichment.regenerated_summary or content_brief.summary
+
+
+def _policy_mode(content_brief: ContentBrief) -> str | None:
+    source_item = content_brief.source_item
+    if source_item is None:
+        return None
+    return source_item.policy_mode.value
+
+
+def _require_attribution(content_brief: ContentBrief) -> bool:
+    source_item = content_brief.source_item
+    if source_item is None:
+        return False
+    return source_item.require_attribution
 
 
 def _validate_variants(

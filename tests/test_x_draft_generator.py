@@ -7,7 +7,7 @@ import pytest
 from app.config import AccountConfig, PromptProfileConfig
 from app.connectors.llm import DraftGenerationRequest, FakeLLMProvider
 from app.services import DraftGenerationError, XDraftGenerator
-from app.storage import ArticleEnrichment, ContentBrief, SourceItem
+from app.storage import ArticleEnrichment, ContentBrief, SourceItem, SourcePolicyMode
 
 
 def test_fake_llm_provider_is_deterministic_and_respects_request_constraints() -> None:
@@ -92,8 +92,14 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
         account_key="ai_tools_daily",
         account=_build_account_config(max_chars=120),
         prompt_profile=PromptProfileConfig(
-            system_template="System for {{ account_key }} on {{ channel }} via {{ source_name }}",
-            user_template="Write about {{ title }} with {{ landing_url }} using {{ source_url }}",
+            system_template=(
+                "System for {{ account_key }} on {{ channel }} via {{ source_name }} "
+                "{{ policy_mode }} {% if require_attribution %}required{% else %}optional{% endif %}"
+            ),
+            user_template=(
+                "Write about {{ title }} with {{ landing_url }} using {{ source_url }} "
+                "and {{ article_summary }}"
+            ),
         ),
         variant_count=2,
     )
@@ -103,8 +109,15 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
         "Second X draft https://gilgop.cloud/ai-tools",
     )
     assert provider.request is not None
-    assert "System for ai_tools_daily on x via Finance Feed" in provider.request.system_prompt
-    assert "Write about Useful AI workflow patterns with https://gilgop.cloud/ai-tools using https://example.com/articles/1" in provider.request.user_prompt
+    assert (
+        "System for ai_tools_daily on x via Finance Feed restricted required"
+        in provider.request.system_prompt
+    )
+    assert (
+        "Write about Useful AI workflow patterns with https://gilgop.cloud/ai-tools "
+        "using https://example.com/articles/1 and A concise guide for operators."
+        in provider.request.user_prompt
+    )
     assert "Return exactly 2 distinct variants." in provider.request.system_prompt
     assert "Do not give investment advice" in provider.request.system_prompt
     assert "Avoid language that sounds like financial advice." in provider.request.user_prompt
@@ -193,6 +206,8 @@ def _build_content_brief() -> ContentBrief:
         source_url="https://example.com/articles/1",
         title="Useful AI workflow patterns",
         summary="A concise guide for operators.",
+        policy_mode=SourcePolicyMode.RESTRICTED,
+        require_attribution=True,
     )
     source_item.article_enrichment = ArticleEnrichment(
         source_item_id=1,
