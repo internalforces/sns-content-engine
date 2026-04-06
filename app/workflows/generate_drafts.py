@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.config import ConfigRegistry
+from app.config import ConfigRegistry, load_providers_config
 from app.connectors.llm import DraftGenerationProvider, resolve_draft_generation_provider
 from app.services import XDraftGenerator
 from app.services.x_draft_generator import build_draft_provenance_snapshot
@@ -95,8 +95,12 @@ def generate_drafts(
     if variant_count not in (2, 3):
         raise ValueError("variant_count must be 2 or 3")
 
-    registry = ConfigRegistry.from_directory(Path(config_dir))
-    provider = llm_provider or resolve_draft_generation_provider()
+    config_path = Path(config_dir).resolve()
+    registry = ConfigRegistry.from_directory(config_path)
+    providers_config = load_providers_config(config_path / "providers.yaml")
+    provider = llm_provider or resolve_draft_generation_provider(
+        providers_config=providers_config
+    )
 
     owned_engine = None
     if session_factory is None:

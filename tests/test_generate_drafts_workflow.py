@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import app.connectors.llm.openai_provider as openai_provider_module
+import app.connectors.llm.codex_wrapper_provider as codex_wrapper_provider_module
 from datetime import datetime, timezone
 from pathlib import Path
 from textwrap import dedent
@@ -217,7 +218,84 @@ def test_generate_drafts_uses_openai_provider_when_api_key_is_present(
         "OpenAI second draft https://gilgop.cloud/ai-tools",
         "OpenAI third draft https://gilgop.cloud/ai-tools",
     ]
+    assert result.provider_names == ("openai",)
     assert recording_client.payloads[0]["model"] == "gpt-5.4-mini"
+
+
+def test_generate_drafts_honors_providers_yaml_routing_when_present(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    _write_file(
+        tmp_path / "providers.yaml",
+        """
+        routes:
+          - step: draft_generate
+            provider: codex_wrapper
+            model: gpt-5.4-mini
+            priority: 1
+          - step: draft_generate
+            provider: openai
+            model: gpt-5.4-mini
+            priority: 2
+        """,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("CODEX_WRAPPER_API_KEY", "cw-test")
+    monkeypatch.setenv("CODEX_WRAPPER_BASE_URL", "https://codex-wrapper.example")
+    openai_client = _RecordingOpenAIClient(
+        _StubOpenAIResponse(
+            '{"variants":['
+            '"OpenAI first draft https://gilgop.cloud/ai-tools",'
+            '"OpenAI second draft https://gilgop.cloud/ai-tools",'
+            '"OpenAI third draft https://gilgop.cloud/ai-tools"'
+            "]}"
+        )
+    )
+    codex_client = _RecordingCodexWrapperClient(
+        _StubCodexWrapperResponse(
+            '{"variants":['
+            '"Codex first draft https://gilgop.cloud/ai-tools",'
+            '"Codex second draft https://gilgop.cloud/ai-tools",'
+            '"Codex third draft https://gilgop.cloud/ai-tools"'
+            "]}"
+        )
+    )
+    monkeypatch.setattr(
+        openai_provider_module,
+        "_build_default_openai_responses_client",
+        lambda **_: openai_client,
+    )
+    monkeypatch.setattr(
+        codex_wrapper_provider_module,
+        "_build_default_codex_wrapper_chat_client",
+        lambda **_: codex_client,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+    assert result.provider_names == ("codex_wrapper",)
+    assert openai_client.payloads == []
+    assert codex_client.payloads[0]["model"] == "gpt-5.4-mini"
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "x",
+        )
+
+    assert [draft.body for draft in stored_drafts] == [
+        "Codex first draft https://gilgop.cloud/ai-tools",
+        "Codex second draft https://gilgop.cloud/ai-tools",
+        "Codex third draft https://gilgop.cloud/ai-tools",
+    ]
 
 
 def test_generate_drafts_aborts_when_openai_provider_fails(monkeypatch, tmp_path: Path) -> None:
