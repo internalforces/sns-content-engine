@@ -63,6 +63,10 @@ class EnrichArticlesResult:
     def existing_count(self) -> int:
         return sum(outcome.status == "existing" for outcome in self.outcomes)
 
+    @property
+    def skipped_count(self) -> int:
+        return sum(outcome.status == "skipped" for outcome in self.outcomes)
+
     def failure_counts_by_stage(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for outcome in self.outcomes:
@@ -132,6 +136,31 @@ def enrich_articles(
                         )
                     )
                     continue
+                if _is_existing_policy_skip(enrichment):
+                    outcomes.append(
+                        EnrichArticleOutcome(
+                            source_item_id=source_item.id,
+                            status="skipped",
+                            article_enrichment_id=enrichment.id,
+                        )
+                    )
+                    continue
+
+                if not source_item.allow_full_text_fetch:
+                    _mark_policy_skip(
+                        enrichment,
+                        stage=PipelineStage.HTML_FETCH,
+                        reason=_policy_fetch_skip_reason(source_item),
+                    )
+                    outcomes.append(
+                        EnrichArticleOutcome(
+                            source_item_id=source_item.id,
+                            status="skipped",
+                            article_enrichment_id=enrichment.id,
+                        )
+                    )
+                    session.flush()
+                    continue
 
                 try:
                     fetch_result = fetcher.fetch(source_item.source_url)
@@ -153,6 +182,22 @@ def enrich_articles(
                         **extract_result.metadata,
                     }
 
+                    if not source_item.allow_llm_rewrite:
+                        _mark_policy_skip(
+                            enrichment,
+                            stage=PipelineStage.SUMMARY_REGENERATE,
+                            reason=_policy_rewrite_skip_reason(source_item),
+                        )
+                        outcomes.append(
+                            EnrichArticleOutcome(
+                                source_item_id=source_item.id,
+                                status="skipped",
+                                article_enrichment_id=enrichment.id,
+                            )
+                        )
+                        session.flush()
+                        continue
+
                     summary = regenerator.regenerate(
                         title=extract_result.title or source_item.title,
                         article_text=extract_result.article_text,
@@ -163,6 +208,7 @@ def enrich_articles(
                     enrichment.summary_regenerate_status = StageExecutionStatus.SUCCEEDED
                     enrichment.summarized_at = event_time
                     enrichment.last_stage = PipelineStage.SUMMARY_REGENERATE
+                    enrichment.policy_decision_reason = None
                     enrichment.failure_stage = None
                     enrichment.failure_code = None
                     enrichment.failure_message = None
@@ -249,6 +295,65 @@ def _mark_failure(
         enrichment.article_extract_status = StageExecutionStatus.FAILED
     elif stage is PipelineStage.SUMMARY_REGENERATE:
         enrichment.summary_regenerate_status = StageExecutionStatus.FAILED
+
+
+def _mark_policy_skip(
+    enrichment: ArticleEnrichment,
+    *,
+    stage: PipelineStage,
+    reason: str,
+) -> None:
+    enrichment.policy_decision_reason = reason
+    enrichment.failure_stage = None
+    enrichment.failure_code = None
+    enrichment.failure_message = None
+    enrichment.last_stage = stage
+
+    if stage is PipelineStage.HTML_FETCH:
+        enrichment.fetched_at = None
+        enrichment.extracted_at = None
+        enrichment.summarized_at = None
+        enrichment.html_content = None
+        enrichment.article_text = None
+        enrichment.regenerated_summary = None
+        enrichment.regenerated_key_points = []
+        enrichment.html_fetch_status = StageExecutionStatus.SKIPPED
+        enrichment.article_extract_status = StageExecutionStatus.SKIPPED
+        enrichment.summary_regenerate_status = StageExecutionStatus.SKIPPED
+        return
+
+    if stage is PipelineStage.SUMMARY_REGENERATE:
+        enrichment.summarized_at = None
+        enrichment.regenerated_summary = None
+        enrichment.regenerated_key_points = []
+        enrichment.summary_regenerate_status = StageExecutionStatus.SKIPPED
+        return
+
+    raise ValueError(f"unsupported policy skip stage: {stage.value}")
+
+
+def _is_existing_policy_skip(enrichment: ArticleEnrichment) -> bool:
+    return (
+        enrichment.policy_decision_reason is not None
+        and (
+            enrichment.html_fetch_status is StageExecutionStatus.SKIPPED
+            or enrichment.summary_regenerate_status is StageExecutionStatus.SKIPPED
+        )
+    )
+
+
+def _policy_fetch_skip_reason(source_item) -> str:
+    return (
+        "Source policy blocks full-text fetch for this item "
+        f"(mode={source_item.policy_mode.value})."
+    )
+
+
+def _policy_rewrite_skip_reason(source_item) -> str:
+    return (
+        "Source policy allows fetch but blocks rewrite for this item "
+        f"(mode={source_item.policy_mode.value})."
+    )
 
 
 def _resolve_source_name(source_item) -> str:

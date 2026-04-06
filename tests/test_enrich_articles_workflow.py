@@ -9,6 +9,7 @@ from app.storage import (
     ArticleEnrichment,
     ArticleEnrichmentRepository,
     PipelineStage,
+    SourcePolicyMode,
     SourceItem,
     SourceItemRepository,
     SourceItemState,
@@ -81,6 +82,16 @@ class _BlockedFetcher:
         raise HtmlFetcherError(code="fetch_blocked", message="사이트 접근이 차단되었어요")
 
 
+class _ExplodingFetcher:
+    def fetch(self, article_url: str):
+        raise AssertionError(f"fetch should not run for {article_url}")
+
+
+class _ExplodingRegenerator:
+    def regenerate(self, *, title: str, article_text: str, rss_description: str | None = None):
+        raise AssertionError("summary regeneration should not run")
+
+
 def test_enrich_articles_creates_enrichment_records_and_summaries(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     with session_scope(session_factory) as session:
@@ -108,6 +119,7 @@ def test_enrich_articles_creates_enrichment_records_and_summaries(tmp_path: Path
     assert result.processed_source_item_ids == (source_item_id,)
     assert result.enriched_count == 1
     assert result.failed_count == 0
+    assert result.skipped_count == 0
 
     with session_scope(session_factory) as session:
         enrichment = ArticleEnrichmentRepository(session).get_by_source_item_id(source_item_id)
@@ -121,6 +133,101 @@ def test_enrich_articles_creates_enrichment_records_and_summaries(tmp_path: Path
     assert enrichment.summary_regenerate_status is StageExecutionStatus.SUCCEEDED
     assert enrichment.last_stage is PipelineStage.SUMMARY_REGENERATE
     assert enrichment.failure_code is None
+    assert enrichment.policy_decision_reason is None
+
+
+def test_enrich_articles_skips_blocked_full_text_fetch_without_recording_failure(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="restricted_feed",
+                external_id="entry-allow-no-fetch",
+                source_url="https://example.com/articles/restricted-1",
+                title="Restricted feed item",
+                policy_mode=SourcePolicyMode.RESTRICTED,
+                allow_full_text_fetch=False,
+                allow_llm_rewrite=False,
+                state=SourceItemState.INGESTED,
+            )
+        )
+        source_item_id = source_item.id
+
+    result = enrich_articles(
+        session_factory=session_factory,
+        html_fetcher=_ExplodingFetcher(),
+        article_extractor=_FakeExtractor(),
+        summary_regenerator=_ExplodingRegenerator(),
+    )
+
+    assert result.skipped_count == 1
+    assert result.failed_count == 0
+    assert result.outcomes[0].status == "skipped"
+
+    with session_scope(session_factory) as session:
+        enrichment = ArticleEnrichmentRepository(session).get_by_source_item_id(source_item_id)
+
+    assert enrichment is not None
+    assert enrichment.policy_decision_reason == (
+        "Source policy blocks full-text fetch for this item (mode=restricted)."
+    )
+    assert enrichment.html_fetch_status is StageExecutionStatus.SKIPPED
+    assert enrichment.article_extract_status is StageExecutionStatus.SKIPPED
+    assert enrichment.summary_regenerate_status is StageExecutionStatus.SKIPPED
+    assert enrichment.last_stage is PipelineStage.HTML_FETCH
+    assert enrichment.failure_stage is None
+    assert enrichment.failure_code is None
+    assert enrichment.failure_message is None
+    assert enrichment.article_text is None
+    assert enrichment.regenerated_summary is None
+
+
+def test_enrich_articles_skips_rewrite_when_policy_blocks_llm_rewrite(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="restricted_feed",
+                external_id="entry-allow-fetch-no-rewrite",
+                source_url="https://example.com/articles/restricted-2",
+                title="Restricted rewrite item",
+                summary="Feed summary still available",
+                policy_mode=SourcePolicyMode.RESTRICTED,
+                allow_full_text_fetch=True,
+                allow_llm_rewrite=False,
+                state=SourceItemState.INGESTED,
+            )
+        )
+        source_item_id = source_item.id
+
+    result = enrich_articles(
+        session_factory=session_factory,
+        html_fetcher=_FakeFetcher({"https://example.com/articles/restricted-2": "<html>ok</html>"}),
+        article_extractor=_FakeExtractor(),
+        summary_regenerator=_ExplodingRegenerator(),
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.skipped_count == 1
+    assert result.failed_count == 0
+    assert result.outcomes[0].status == "skipped"
+
+    with session_scope(session_factory) as session:
+        enrichment = ArticleEnrichmentRepository(session).get_by_source_item_id(source_item_id)
+
+    assert enrichment is not None
+    assert enrichment.policy_decision_reason == (
+        "Source policy allows fetch but blocks rewrite for this item (mode=restricted)."
+    )
+    assert enrichment.html_fetch_status is StageExecutionStatus.SUCCEEDED
+    assert enrichment.article_extract_status is StageExecutionStatus.SUCCEEDED
+    assert enrichment.summary_regenerate_status is StageExecutionStatus.SKIPPED
+    assert enrichment.last_stage is PipelineStage.SUMMARY_REGENERATE
+    assert enrichment.failure_stage is None
+    assert enrichment.failure_code is None
+    assert enrichment.failure_message is None
+    assert enrichment.article_text is not None
+    assert enrichment.regenerated_summary is None
 
 
 def test_enrich_articles_persists_readable_failures(tmp_path: Path) -> None:
@@ -145,6 +252,7 @@ def test_enrich_articles_persists_readable_failures(tmp_path: Path) -> None:
     )
 
     assert result.failed_count == 1
+    assert result.skipped_count == 0
     assert result.outcomes[0].failure_code == "fetch_blocked"
 
     with session_scope(session_factory) as session:
@@ -193,6 +301,7 @@ def test_enrich_articles_skips_existing_completed_enrichment(tmp_path: Path) -> 
     )
 
     assert result.existing_count == 1
+    assert result.skipped_count == 0
     assert result.outcomes[0].status == "existing"
 
 
