@@ -48,7 +48,7 @@ sns-content-engine/
 python -m pip install -e ".[dev]"
 ```
 
-3. Optional: enable real OpenAI draft generation. If `OPENAI_API_KEY` is not set, `generate-drafts` uses the built-in fake provider for safe local workflows.
+3. Optional: enable live draft generation. If `<config-dir>/providers.yaml` is present, `generate-drafts` and `run-local` use its `draft_generate` route chain at runtime. If the file is absent, draft generation falls back to environment-based auto-detection in this order: OpenAI, Anthropic, then Codex-Wrapper. If no supported provider credentials are present, local workflows use the built-in fake provider for safety.
 
 ```bash
 export OPENAI_API_KEY="your_api_key_here"
@@ -57,6 +57,8 @@ export OPENAI_REASONING_EFFORT="none"
 export OPENAI_TIMEOUT_SECONDS="30"
 ```
 
+For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
+
 ## Example Config Sets
 
 - `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`.
@@ -64,7 +66,7 @@ export OPENAI_TIMEOUT_SECONDS="30"
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 
 These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
-Keep the bundled GDELT example in a dedicated discovery-only source set until policy-aware enrichment skips are enabled; it is intended for recent-news discovery, not direct full-text reuse.
+Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-aware enrichment skips are now recorded when later steps block full-text fetch or rewrite, so the sample is intended for recent-news discovery rather than direct full-text reuse.
 
 ## Operator Guides
 
@@ -123,13 +125,13 @@ The `ingest` command runs discovery, applies canonical URL / title / fingerprint
 
 The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review. It automatically uses OpenAI when `OPENAI_API_KEY` is present; otherwise it falls back to the deterministic fake provider.
+The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review. When `<config-dir>/providers.yaml` is present, it uses the configured `draft_generate` route chain and model overrides at runtime. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
 
-The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
+The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, uses the same draft-provider resolution path as `generate-drafts`, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
 
-The `history runs` and `history failures` commands expose UI-friendly summaries from persisted `pipeline_runs` and article-enrichment history so a future local homepage can read the same data model. Run history now includes policy-aware counts and rewrite-provider names when available, and failure history includes source-policy metadata alongside ordinary failures for future UI/API consumers.
+The `history runs` and `history failures` commands expose operator-readable summaries from persisted `pipeline_runs` and article-enrichment history while still matching the future UI/API data model. Run history includes policy-aware counts and rewrite-provider names when available, and failure history prints both ordinary `type=failure` rows and intentional `type=policy_skip` rows with source-policy metadata.
 
 The `healthcheck` command is a strict readiness check. It validates both config loading and database schema readiness, prints key=value status lines, and exits non-zero if either check fails.
 
@@ -191,8 +193,9 @@ Operational notes:
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
-- Draft generation uses OpenAI automatically when `OPENAI_API_KEY` is set. Runtime controls are `OPENAI_MODEL` (default `gpt-5.4-mini`), `OPENAI_REASONING_EFFORT` (default `none`), and `OPENAI_TIMEOUT_SECONDS` (default `30`).
-- If OpenAI draft generation is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
+- Draft generation checks `<config-dir>/providers.yaml` first when present. Without it, environment-based auto-detection tries OpenAI, Anthropic, then Codex-Wrapper; if no supported credentials are configured, local workflows fall back to the deterministic fake provider.
+- Provider credentials still come from environment variables only. `providers.yaml` selects route order and optional model overrides; it does not store secrets.
+- If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
 - Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
 
