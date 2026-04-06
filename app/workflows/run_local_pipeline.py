@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.storage import (
     PipelineRunStageRepository,
     PipelineRunStatus,
     PipelineStage,
+    SourceItemRepository,
     StageExecutionStatus,
     create_database_engine,
     create_session_factory,
@@ -205,6 +207,11 @@ def run_local_pipeline(
             completed_at=_normalize_now(None),
         )
 
+        policy_history_summary = _build_policy_history_summary(
+            session_factory,
+            source_item_ids=enrichment_result.processed_source_item_ids,
+            skipped_count=enrichment_result.skipped_count,
+        )
         total_failures = ingest_result.failure_count + enrichment_result.failed_count
         final_status = PipelineRunStatus.PARTIAL if total_failures else PipelineRunStatus.SUCCEEDED
         _finish_pipeline_run(
@@ -227,6 +234,10 @@ def run_local_pipeline(
                 "enrichment_existing_count": enrichment_result.existing_count,
                 "brief_existing_count": brief_result.existing_count,
                 "draft_existing_count": drafts_result.existing_count,
+                "policy_mode_counts": policy_history_summary["policy_mode_counts"],
+                "attribution_required_count": policy_history_summary["attribution_required_count"],
+                "policy_skipped_count": policy_history_summary["policy_skipped_count"],
+                "rewrite_providers": list(drafts_result.provider_names),
             },
         )
 
@@ -331,6 +342,25 @@ def _finish_pipeline_run(
         pipeline_run.latest_error_message = latest_error_message
         pipeline_run.summary_json = summary_json
         session.flush()
+
+
+def _build_policy_history_summary(
+    session_factory,
+    *,
+    source_item_ids: tuple[int, ...],
+    skipped_count: int,
+) -> dict[str, object]:
+    with session_scope(session_factory) as session:
+        repository = SourceItemRepository(session)
+        source_items = repository.list_by_ids(source_item_ids)
+
+    policy_mode_counts = Counter(item.policy_mode.value for item in source_items)
+    attribution_required_count = sum(item.require_attribution for item in source_items)
+    return {
+        "policy_mode_counts": dict(sorted(policy_mode_counts.items())),
+        "attribution_required_count": attribution_required_count,
+        "policy_skipped_count": skipped_count,
+    }
 
 
 def _normalize_now(now: datetime | None) -> datetime:

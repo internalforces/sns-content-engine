@@ -37,6 +37,7 @@ class GenerateDraftsResult:
 
     processed_content_brief_ids: tuple[int, ...]
     outcomes: tuple[GenerateDraftOutcome, ...]
+    provider_names: tuple[str, ...] = ()
 
     @property
     def processed_count(self) -> int:
@@ -114,6 +115,7 @@ def generate_drafts(
             generator = XDraftGenerator(provider)
             stored_briefs = briefs.list()
             outcomes: list[GenerateDraftOutcome] = []
+            used_provider_names: set[str] = set()
 
             for brief in stored_briefs:
                 existing_drafts = drafts.list_by_content_brief_and_channel(brief.id, "x")
@@ -155,6 +157,9 @@ def generate_drafts(
                     prompt_profile=prompt_profile,
                     variant_count=variant_count,
                 )
+                provider_name = _resolve_provider_name(provider)
+                if provider_name is not None:
+                    used_provider_names.add(provider_name)
                 created_draft_ids: list[int] = []
                 created_any = False
                 provenance = build_draft_provenance_snapshot(brief)
@@ -191,8 +196,26 @@ def generate_drafts(
     return GenerateDraftsResult(
         processed_content_brief_ids=tuple(brief.id for brief in stored_briefs),
         outcomes=tuple(outcomes),
+        provider_names=tuple(sorted(used_provider_names)),
     )
 
 
 def _resolve_bound_engine(session_factory):
     return getattr(session_factory, "kw", {}).get("bind")
+
+
+def _resolve_provider_name(provider: DraftGenerationProvider) -> str | None:
+    routed_provider_name = getattr(provider, "last_provider_name", None)
+    if isinstance(routed_provider_name, str) and routed_provider_name.strip():
+        return routed_provider_name.strip()
+
+    provider_name = provider.__class__.__name__
+    if provider_name == "OpenAIDraftGenerationProvider":
+        return "openai"
+    if provider_name == "AnthropicDraftGenerationProvider":
+        return "anthropic"
+    if provider_name == "CodexWrapperDraftGenerationProvider":
+        return "codex_wrapper"
+    if provider_name == "FakeLLMProvider":
+        return "fake"
+    return None
