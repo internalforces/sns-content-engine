@@ -15,9 +15,9 @@ Keep updates short, factual, and current.
 - Current milestone: `phase_1_foundation`
 - Current task: `12_history_query_expansion_and_operator_docs`
 - Active status: `done`
-- Last updated: `2026-04-06 14:46 KST`
+- Last updated: `2026-04-06 15:36 KST`
 - Active branch: `codex/task-12-history-query-expansion-operator-docs`
-- Latest task commit: `ff47c93 Expand policy-aware history queries and add operator guide`
+- Latest task commit: `45eaf49 Finalize Task 12 progress log`
 
 ## Scope For Current Task
 - Goal: `Expose policy-aware history fields for future UI/API use and document safe all-domain operator guidance`
@@ -121,7 +121,7 @@ Status values:
 - `2026-04-06 14:42 KST` Extended run and failure history helpers with policy-mode metadata, intentional policy-skip rows, and safe parsing of stored run-summary policy fields
 - `2026-04-06 14:43 KST` Wired draft-generation provider names and per-run policy counts into stored run summaries without changing the database schema
 - `2026-04-06 14:45 KST` Added `docs/all-domain-news-operator-guide.md`, linked it from `README.md`, and updated the UI data contract notes for policy-aware run and failure history fields
-- `2026-04-06 14:46 KST` Completed task `12` after focused history-query tests and broader draft/run-local/routing regressions passed; commit `ff47c93` recorded with message `Expand policy-aware history queries and add operator guide`
+- `2026-04-06 14:46 KST` Completed task `12` after focused history-query tests and broader draft/run-local/routing regressions passed; runtime/docs implementation landed in `ff47c93` (`Expand policy-aware history queries and add operator guide`) and the task branch later finalized its tracker state in `45eaf49` (`Finalize Task 12 progress log`)
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -155,6 +155,7 @@ Status values:
 
 ## Follow-up
 - `Future CLI or API surfaces can render the new policy-aware history fields directly without additional storage changes`
+- `Implementation-alignment Task 03 later refreshed README and operator wording on `master` in `f86bc9c` (merged as `3327cb6`) without changing the Task 12 runtime behavior`
 
 ## Completion Summary
 - `Task 12 complete: history queries now expose policy-aware run metadata plus intentional policy skips, run-local summaries record policy counts and rewrite providers, and the repository includes a dedicated all-domain operator guide`

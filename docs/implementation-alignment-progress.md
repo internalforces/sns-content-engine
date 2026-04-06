@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_runtime_and_docs_parity`
-- Current task: `03_readme_and_operator_wording_refresh`
+- Current task: `04_progress_metadata_cleanup`
 - Active status: `done`
-- Last updated: `2026-04-06 15:33 KST`
-- Active branch: `codex/task-03-readme-operator-wording-refresh`
-- Latest task commit: `pending Task 04 metadata refresh after commit creation`
+- Last updated: `2026-04-06 15:39 KST`
+- Active branch: `codex/task-04-progress-metadata-cleanup`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 04 commit created after this tracker update`
 
 ## Scope For Current Task
-- Goal: `Refresh README and operator-facing docs so they describe the aligned provider-routing, history CLI, and policy-skip behavior accurately`
-- In scope: `README wording, all-domain operator guidance, and nearby factual doc updates tied directly to the aligned runtime behavior`
-- Out of scope: `Runtime refactors, new CLI features, broad historical doc rewrites, and unrelated roadmap expansion`
+- Goal: `Refresh stale progress metadata so the repository trackers match the merged alignment work and current git history`
+- In scope: `Latest commit references, active task/branch status, and short factual alignment notes in existing progress docs`
+- Out of scope: `Runtime changes, broad historical rewrites, and non-factual documentation edits`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -30,7 +30,7 @@ Keep updates short, factual, and current.
 | 01 | Provider config runtime wiring | done | 2026-04-06 15:13 KST | Live draft workflows now load optional `providers.yaml` and still fall back to env-only resolution |
 | 02 | Policy-aware history CLI parity | done | 2026-04-06 15:24 KST | CLI history output now exposes policy-aware run fields and intentional policy skips |
 | 03 | README and operator wording refresh | done | 2026-04-06 15:33 KST | README and all-domain operator docs now describe live provider routing, policy skips, and CLI history output accurately |
-| 04 | Progress metadata cleanup | pending | 2026-04-06 15:02 KST | Progress log commit metadata should be refreshed after alignment work lands |
+| 04 | Progress metadata cleanup | done | 2026-04-06 15:39 KST | Progress trackers now reflect Task 03 merge history and the true final Task 12 branch-head commit |
 
 Status values:
 - `pending`
@@ -39,8 +39,7 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `README.md`
-- `docs/all-domain-news-operator-guide.md`
+- `docs/all-domain-news-progress.md`
 - `docs/implementation-alignment-progress.md`
 
 ## Progress Log
@@ -62,6 +61,11 @@ Status values:
 - `2026-04-06 15:32 KST` Updated `README.md` so live draft-provider routing, env fallback behavior, history CLI output, and GDELT discovery wording match the current runtime path
 - `2026-04-06 15:32 KST` Updated `docs/all-domain-news-operator-guide.md` so operators can see the real history row types and how `providers.yaml` routing behaves at runtime
 - `2026-04-06 15:33 KST` Task `03` verified as a docs-only slice; no code-path tests were needed beyond `git diff --check`, and Task `04` will refresh the resulting commit metadata after commit creation
+- `2026-04-06 15:36 KST` Started Task `04` on branch `codex/task-04-progress-metadata-cleanup`
+- `2026-04-06 15:36 KST` Intended scope: refresh stale progress metadata and brief alignment notes so tracker docs match the merged Task `03` history on `master`
+- `2026-04-06 15:36 KST` Recorded Task `03`'s task-branch commit as `f86bc9c` and noted that it later merged to `master` as `3327cb6`
+- `2026-04-06 15:36 KST` Refreshed `docs/all-domain-news-progress.md` so Task `12` points at its true final task-branch HEAD `45eaf49` while preserving the earlier implementation commit `ff47c93`
+- `2026-04-06 15:39 KST` Task `04` verified as a docs-only metadata cleanup slice; this tracker records the self-reference limitation explicitly because the Task `04` commit SHA only exists after the commit is created
 
 ## Test Log
 - `2026-04-06 15:02 KST` `./.venv/bin/pytest -q` -> `passed (362 passed)` while auditing current repository state before defining alignment tasks
@@ -71,13 +75,13 @@ Status values:
 - `2026-04-06 15:23 KST` `./.venv/bin/pytest -q tests/test_cli.py` -> `passed (32 passed)`
 - `2026-04-06 15:23 KST` `./.venv/bin/pytest -q tests/test_history_queries.py tests/test_cli.py -k 'history'` -> `passed (5 passed)`
 - `2026-04-06 15:32 KST` `git diff --check` -> `passed`
+- `2026-04-06 15:39 KST` `git diff --check` -> `passed`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 04 remains next: refresh latest-commit metadata and other stale factual tracker fields after the latest alignment commits land`
-- `Task 04 should refresh latest-commit metadata once subsequent alignment commits have landed`
+- `None currently`
 
 ## Completion Summary
-- `Task 03 complete: README and all-domain operator docs now match the aligned provider-routing, policy-skip, and history CLI behavior without broad documentation rewrites`
+- `Task 04 complete: alignment progress docs now point at the merged Task 03 history and the true final Task 12 task-branch commit, with an explicit note about why the current task cannot embed its own SHA in the same commit`
