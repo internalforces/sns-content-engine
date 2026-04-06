@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `07_provider_routing_support`
+- Current task: `08_all_domain_prompt_profiles`
 - Active status: `done`
-- Last updated: `2026-04-06 12:56 KST`
-- Active branch: `codex/task-07-provider-routing-support`
-- Latest task commit: `Add codex_wrapper draft routing support`
+- Last updated: `2026-04-06 13:07 KST`
+- Active branch: `codex/task-08-all-domain-prompt-profiles`
+- Latest task commit: `Add all-domain prompt profiles`
 
 ## Scope For Current Task
-- Goal: `Allow config and environment-driven draft routing to resolve provider: codex_wrapper without disturbing existing fallback behavior`
-- In scope: `Route registry credential detection, draft resolver support, sample provider-config updates, and focused routing/resolver tests`
-- Out of scope: `Prompt-profile changes, new workflow behavior beyond provider resolution, and broader pipeline refactors`
+- Goal: `Add neutral all-domain prompt profiles and only the prompt-render context needed to support attribution-aware review-first drafting`
+- In scope: `Bundled all-domain prompt profile updates, sample-account prompt selection, and focused renderer/config coverage`
+- Out of scope: `Draft storage provenance changes, review workflow changes, and domain-sensitivity policy logic beyond prompt wording`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -34,7 +34,7 @@ Keep updates short, factual, and current.
 | 05 | Policy-aware enrichment gating | done | 2026-04-06 10:41 KST | Added intentional skip handling for blocked fetch/rewrite paths in enrichment with readable persisted reasons |
 | 06 | Codex-Wrapper provider | done | 2026-04-06 12:43 KST | Added an OpenAI-compatible draft provider, export wiring, and workflow compatibility coverage |
 | 07 | Provider routing support | done | 2026-04-06 12:56 KST | Wired codex_wrapper into route registry and draft resolver, updated sample config, and verified mixed fallback coverage |
-| 08 | All-domain prompt profiles | pending | - | |
+| 08 | All-domain prompt profiles | done | 2026-04-06 13:07 KST | Added neutral all-domain prompt profiles, sample-account selection, and attribution-aware prompt context coverage |
 | 09 | Provenance visibility | pending | - | |
 | 10 | Domain sensitivity guardrails | pending | - | |
 | 11 | Review scheduling validation | pending | - | |
@@ -47,12 +47,14 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/connectors/llm/resolver.py`
-- `app/connectors/routing/registry.py`
-- `config/providers.yaml`
+- `app/services/x_draft_generator.py`
+- `config/examples/all_domain_news/accounts.yaml`
+- `config/examples/all_domain_news/prompts.yaml`
+- `config/prompts.yaml`
 - `docs/all-domain-news-progress.md`
-- `tests/test_openai_llm_provider.py`
-- `tests/test_phase6_config_routing.py`
+- `tests/test_config.py`
+- `tests/test_prompt_renderer.py`
+- `tests/test_x_draft_generator.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -92,6 +94,11 @@ Status values:
 - `2026-04-06 12:55 KST` Added `codex_wrapper` support to the draft route resolver and route registry, keeping env auto-detection order stable while limiting wrapper auto-registration to draft generation
 - `2026-04-06 12:55 KST` Updated the bundled `config/providers.yaml` example to show `codex_wrapper` as the draft-generation route with Anthropic fallback and added focused routing/resolver tests
 - `2026-04-06 12:56 KST` Completed task `07` after routing/resolver tests and draft workflow/provider regression tests passed
+- `2026-04-06 13:03 KST` Started task `08`. Scope: `neutral all-domain prompt profiles, sample-account prompt selection, and focused prompt rendering coverage`
+- `2026-04-06 13:03 KST` Created or switched branch `codex/task-08-all-domain-prompt-profiles`
+- `2026-04-06 13:05 KST` Added neutral all-domain prompt profiles to the bundled prompt configs, kept a review-first compatibility profile in the example path, and pointed the sample all-domain account at `all_domain_factual_x_post`
+- `2026-04-06 13:05 KST` Extended X draft prompt rendering with source `policy_mode` and `require_attribution` so attribution-aware templates can stay data-driven; added focused renderer, generator, and config assertions
+- `2026-04-06 13:07 KST` Completed task `08` after targeted prompt, draft, and config regression tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -109,12 +116,14 @@ Status values:
 - `2026-04-06 12:43 KST` `./.venv/bin/pytest tests/test_openai_llm_provider.py tests/test_generate_drafts_workflow.py -q` -> `passed (20 passed)`
 - `2026-04-06 12:55 KST` `./.venv/bin/pytest tests/test_openai_llm_provider.py tests/test_phase6_config_routing.py -q` -> `passed (60 passed)`
 - `2026-04-06 12:55 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_codex_wrapper_provider.py -q` -> `passed (20 passed)`
+- `2026-04-06 13:06 KST` `./.venv/bin/pytest tests/test_prompt_renderer.py tests/test_x_draft_generator.py tests/test_config.py::test_registry_loads_sample_config_directory tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (13 passed)`
+- `2026-04-06 13:06 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py -q` -> `passed (31 passed)`
 
 ## Blockers
-- `Task 08 can now add all-domain prompt profiles using codex_wrapper in sample provider routing without extra resolver work`
+- `None currently`
 
 ## Follow-up
 - `None currently`
 
 ## Completion Summary
-- `Task 07 complete: added codex_wrapper credential-aware routing in the route registry and draft resolver, updated the bundled provider sample to prefer codex_wrapper for draft generation with Anthropic fallback, and verified both direct resolution and fallback behavior`
+- `Task 08 complete: added neutral all-domain prompt profiles to the bundled configs, switched the sample all-domain account to a factual review-first profile, exposed attribution-aware prompt metadata in X draft rendering, and verified prompt/config compatibility with focused regressions`

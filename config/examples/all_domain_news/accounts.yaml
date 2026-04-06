@@ -3,7 +3,7 @@ accounts:
     topic: "All-domain latest news"
     source_sets:
       - all_domain_primary
-    prompt_profile: all_domain_review_default
+    prompt_profile: all_domain_factual_x_post
     landing:
       fallback_url: https://newsroom.example.com/daily-brief
       rules: []

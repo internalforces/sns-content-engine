@@ -40,3 +40,36 @@ def test_prompt_renderer_rejects_missing_template_variables() -> None:
 
     with pytest.raises(PromptRenderingError, match="missing_value"):
         renderer.render(profile, context={"title": "Useful AI workflows"})
+
+
+def test_prompt_renderer_supports_source_policy_conditionals_and_fallbacks() -> None:
+    renderer = PromptRenderer()
+    profile = PromptProfileConfig(
+        system_template=(
+            "System {{ policy_mode }} "
+            "{% if require_attribution %}required{% else %}optional{% endif %} "
+            "{{ source_name or source_url or 'the source' }}"
+        ),
+        user_template="User {{ article_summary or summary }} -> {{ landing_url }}",
+    )
+
+    rendered = renderer.render(
+        profile,
+        context={
+            "policy_mode": "restricted",
+            "require_attribution": True,
+            "source_name": None,
+            "source_url": "https://example.com/articles/1",
+            "article_summary": None,
+            "summary": "Verified update from a public source.",
+            "landing_url": "https://newsroom.example.com/daily-brief",
+        },
+    )
+
+    assert rendered.system_prompt == (
+        "System restricted required https://example.com/articles/1"
+    )
+    assert (
+        rendered.user_prompt
+        == "User Verified update from a public source. -> https://newsroom.example.com/daily-brief"
+    )
