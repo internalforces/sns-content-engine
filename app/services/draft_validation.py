@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from app.config import AccountConfig
 from app.services.prompt_renderer import build_domain_sensitivity
 from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls, topic_keywords
-from app.storage import ContentBrief, DraftVariant, DraftVariantState
+from app.storage import ContentBrief, DraftVariant, DraftVariantState, SourcePolicyMode
 
 DraftValidationSeverity = Literal["error", "warning"]
 LandingUrlStatusFetcher = Callable[[str], int]
@@ -88,6 +88,8 @@ class DraftValidator:
         draft_id: int | None = None,
         now: datetime | None = None,
         landing_url_status_fetcher: LandingUrlStatusFetcher | None = None,
+        draft: DraftVariant | None = None,
+        enforce_policy_requirements: bool = False,
     ) -> DraftValidationResult:
         if channel not in account.channels:
             raise ValueError(f"account {account_key!r} does not define channel {channel!r}")
@@ -148,6 +150,14 @@ class DraftValidator:
                 account=account,
             )
         )
+        if enforce_policy_requirements:
+            issue_list.extend(
+                _validate_scheduling_policy_requirements(
+                    normalized_body,
+                    content_brief=content_brief,
+                    draft=draft,
+                )
+            )
 
         return DraftValidationResult(issues=tuple(issue_list))
 
@@ -538,6 +548,157 @@ def _validate_domain_sensitivity(
         )
 
     return tuple(issues)
+
+
+def _validate_scheduling_policy_requirements(
+    body: str,
+    *,
+    content_brief: ContentBrief,
+    draft: DraftVariant | None,
+) -> tuple[DraftValidationIssue, ...]:
+    if draft is None:
+        return (
+            DraftValidationIssue(
+                code="review_provenance_missing",
+                message="draft is missing stored provenance required for scheduling review",
+                severity="error",
+                metadata={"missing_fields": ("draft",)},
+            ),
+        )
+
+    issues: list[DraftValidationIssue] = []
+    issues.extend(_validate_schedule_provenance(draft))
+    issues.extend(
+        _validate_required_source_attribution(
+            body,
+            content_brief=content_brief,
+            draft=draft,
+        )
+    )
+    issues.extend(
+        _validate_restricted_source_full_text_reuse(
+            content_brief=content_brief,
+            draft=draft,
+        )
+    )
+    return tuple(issues)
+
+
+def _validate_schedule_provenance(draft: DraftVariant) -> tuple[DraftValidationIssue, ...]:
+    missing_fields: list[str] = []
+
+    if draft.source_policy_mode is None:
+        missing_fields.append("source_policy_mode")
+    if not draft.source_name:
+        missing_fields.append("source_name")
+    if not (draft.source_url or draft.article_url):
+        missing_fields.append("source_url_or_article_url")
+
+    if not missing_fields:
+        return ()
+
+    return (
+        DraftValidationIssue(
+            code="review_provenance_missing",
+            message=(
+                "draft is missing provenance required for safe scheduling review: "
+                + ", ".join(missing_fields)
+            ),
+            severity="error",
+            metadata={"missing_fields": tuple(missing_fields)},
+        ),
+    )
+
+
+def _validate_required_source_attribution(
+    body: str,
+    *,
+    content_brief: ContentBrief,
+    draft: DraftVariant,
+) -> tuple[DraftValidationIssue, ...]:
+    source_item = content_brief.source_item
+    if source_item is None or not source_item.require_attribution:
+        return ()
+
+    normalized_body = normalize_match_text(strip_urls(body))
+    attribution_candidates = _build_attribution_candidates(draft)
+    if attribution_candidates and any(
+        contains_phrase(candidate, normalized_body) for candidate in attribution_candidates
+    ):
+        return ()
+
+    readable_candidates = tuple(candidate for candidate in attribution_candidates if candidate)
+    candidate_hint = ", ".join(readable_candidates) if readable_candidates else "the source"
+    return (
+        DraftValidationIssue(
+            code="required_attribution_missing",
+            message=(
+                "draft requires explicit source attribution before scheduling; "
+                f"mention {candidate_hint}"
+            ),
+            severity="error",
+            metadata={"candidates": readable_candidates},
+        ),
+    )
+
+
+def _validate_restricted_source_full_text_reuse(
+    *,
+    content_brief: ContentBrief,
+    draft: DraftVariant,
+) -> tuple[DraftValidationIssue, ...]:
+    if draft.source_policy_mode is not SourcePolicyMode.RESTRICTED:
+        return ()
+
+    source_item = content_brief.source_item
+    enrichment = source_item.article_enrichment if source_item is not None else None
+    if enrichment is None:
+        return ()
+
+    if not (
+        enrichment.fetched_at is not None
+        or enrichment.extracted_at is not None
+        or enrichment.summarized_at is not None
+        or bool(enrichment.html_content)
+        or bool(enrichment.article_text)
+    ):
+        return ()
+
+    return (
+        DraftValidationIssue(
+            code="restricted_source_full_text_reuse",
+            message=(
+                "draft appears to reuse fetched full-text content from a restricted source "
+                "and cannot be scheduled"
+            ),
+            severity="error",
+            metadata={"policy_mode": draft.source_policy_mode.value},
+        ),
+    )
+
+
+def _build_attribution_candidates(draft: DraftVariant) -> tuple[str, ...]:
+    candidates: list[str] = []
+    if draft.source_name:
+        candidates.append(draft.source_name)
+
+    for url in (draft.article_url, draft.source_url):
+        hostname = _extract_hostname(url)
+        if hostname:
+            candidates.append(hostname)
+
+    return tuple(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _extract_hostname(url: str | None) -> str | None:
+    if not url:
+        return None
+
+    parsed = urlsplit(url)
+    hostname = parsed.hostname.casefold() if parsed.hostname else ""
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname or None
 
 
 def _normalize_body(value: str) -> str:

@@ -10,6 +10,7 @@ from textwrap import dedent
 import pytest
 
 from app.storage import (
+    ArticleEnrichment,
     ContentBrief,
     ContentBriefRepository,
     DraftVariant,
@@ -19,6 +20,7 @@ from app.storage import (
     ReviewActionRepository,
     ReviewActionType,
     SourceItem,
+    SourcePolicyMode,
     SourceItemRepository,
     create_all_tables,
     create_database_engine,
@@ -192,6 +194,63 @@ def test_schedule_draft_creates_publish_job_and_review_action(session_factory, c
     assert actions[0].draft_state_after is DraftVariantState.APPROVED
 
 
+def test_schedule_draft_rejects_missing_required_attribution(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            require_attribution=True,
+            body=_VALID_DRAFT_BODY,
+        )
+
+    with pytest.raises(DraftValidationFailedError, match="required_attribution_missing"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
+def test_schedule_draft_rejects_restricted_source_full_text_reuse(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            body="Useful AI automation workflows from AI Tools Daily https://gilgop.cloud/ai-tools",
+            policy_mode=SourcePolicyMode.RESTRICTED,
+            article_text="Fetched article text from a restricted source.",
+        )
+
+    with pytest.raises(DraftValidationFailedError, match="restricted_source_full_text_reuse"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
+def test_schedule_draft_rejects_missing_review_provenance(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            include_provenance=False,
+        )
+
+    with pytest.raises(DraftValidationFailedError, match="review_provenance_missing"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
 def test_approve_draft_rejects_invalid_body_against_config_rules(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session)
@@ -296,17 +355,40 @@ def _create_draft_variant(
     session,
     *,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
+    body: str = _VALID_DRAFT_BODY,
+    policy_mode: SourcePolicyMode = SourcePolicyMode.REUSABLE,
+    require_attribution: bool = False,
+    source_name: str | None = "AI Tools Daily",
+    source_url: str | None = None,
+    article_url: str | None = None,
+    source_published_at: datetime | None = None,
+    article_text: str | None = None,
+    include_provenance: bool = True,
 ) -> DraftVariant:
     source_id = next(_DRAFT_SOURCE_COUNTER)
+    resolved_source_url = source_url or f"https://example.com/review-draft/{source_id}"
+    resolved_article_url = article_url or resolved_source_url
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
             external_id=f"review-draft-{source_id}",
-            source_url=f"https://example.com/review-draft/{source_id}",
+            source_url=resolved_source_url,
             title=f"Review draft {source_id}",
             summary="Brief summary",
+            policy_mode=policy_mode,
+            require_attribution=require_attribution,
+            published_at=source_published_at or datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
         )
     )
+    if article_text is not None:
+        source_item.article_enrichment = ArticleEnrichment(
+            article_url=resolved_article_url,
+            source_name=source_name,
+            article_text=article_text,
+            fetched_at=datetime(2026, 3, 17, 12, 5, tzinfo=timezone.utc),
+            extracted_at=datetime(2026, 3, 17, 12, 6, tzinfo=timezone.utc),
+            regenerated_summary="Restricted source summary",
+        )
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item=source_item,
@@ -326,7 +408,12 @@ def _create_draft_variant(
             content_brief=brief,
             channel="x",
             variant_index=0,
-            body=_VALID_DRAFT_BODY,
+            body=body,
+            source_name=source_name if include_provenance else None,
+            source_url=resolved_source_url if include_provenance else None,
+            article_url=resolved_article_url if include_provenance else None,
+            source_published_at=source_item.published_at if include_provenance else None,
+            source_policy_mode=policy_mode if include_provenance else None,
         )
     )
     if draft_state is DraftVariantState.APPROVED:

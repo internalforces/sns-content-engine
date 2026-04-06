@@ -6,7 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 from app.config import AccountConfig
 from app.services import DraftValidator
-from app.storage import ContentBrief, DraftVariant, DraftVariantState
+from app.storage import (
+    ArticleEnrichment,
+    ContentBrief,
+    DraftVariant,
+    DraftVariantState,
+    SourceItem,
+    SourcePolicyMode,
+)
 
 
 def test_draft_validator_accepts_valid_draft_body() -> None:
@@ -18,6 +25,99 @@ def test_draft_validator_accepts_valid_draft_body() -> None:
         account_key="ai_tools_daily",
         account=_build_account_config(),
         channel="x",
+    )
+
+    assert result.is_valid is True
+    assert result.issues == ()
+
+
+def test_draft_validator_errors_when_schedule_requires_attribution_but_body_omits_it() -> None:
+    validator = DraftValidator()
+    content_brief = _build_content_brief(
+        require_attribution=True,
+        source_name="AI Tools Daily",
+    )
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        content_brief=content_brief,
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+        draft=_build_draft_variant(
+            body="Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+            source_name="AI Tools Daily",
+        ),
+        enforce_policy_requirements=True,
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"required_attribution_missing"}
+
+
+def test_draft_validator_errors_when_schedule_provenance_is_missing() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+        draft=_build_draft_variant(
+            source_name=None,
+            source_policy_mode=None,
+            source_url=None,
+            article_url=None,
+        ),
+        enforce_policy_requirements=True,
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"review_provenance_missing"}
+
+
+def test_draft_validator_errors_when_restricted_source_full_text_reuse_is_scheduled() -> None:
+    validator = DraftValidator()
+    content_brief = _build_content_brief(
+        source_policy_mode=SourcePolicyMode.RESTRICTED,
+        article_text="Fetched article text from a restricted source.",
+    )
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        content_brief=content_brief,
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+        draft=_build_draft_variant(
+            source_policy_mode=SourcePolicyMode.RESTRICTED,
+        ),
+        enforce_policy_requirements=True,
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"restricted_source_full_text_reuse"}
+
+
+def test_draft_validator_accepts_policy_compliant_schedule_requirements() -> None:
+    validator = DraftValidator()
+    content_brief = _build_content_brief(
+        require_attribution=True,
+        source_name="AI Tools Daily",
+    )
+
+    result = validator.validate(
+        "Useful AI automation workflows from AI Tools Daily https://gilgop.cloud/ai-tools",
+        content_brief=content_brief,
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+        draft=_build_draft_variant(
+            body="Useful AI automation workflows from AI Tools Daily https://gilgop.cloud/ai-tools",
+            source_name="AI Tools Daily",
+        ),
+        enforce_policy_requirements=True,
     )
 
     assert result.is_valid is True
@@ -396,9 +496,37 @@ def _build_content_brief(
     summary: str = "A concise guide for operators.",
     landing_url: str = "https://gilgop.cloud/ai-tools",
     tags: tuple[str, ...] = ("ai", "automation"),
+    source_policy_mode: SourcePolicyMode = SourcePolicyMode.REUSABLE,
+    require_attribution: bool = False,
+    source_name: str | None = None,
+    article_text: str | None = None,
 ) -> ContentBrief:
+    source_item = SourceItem(
+        id=1,
+        source_key="ai_tools_rss",
+        external_id="source-1",
+        source_url="https://example.com/articles/1",
+        title=title,
+        summary=summary,
+        policy_mode=source_policy_mode,
+        require_attribution=require_attribution,
+        published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
+    )
+    if source_name is not None or article_text is not None:
+        source_item.article_enrichment = ArticleEnrichment(
+            article_url="https://example.com/articles/1",
+            source_name=source_name,
+            article_text=article_text,
+            fetched_at=datetime(2026, 3, 17, 12, 5, tzinfo=timezone.utc) if article_text else None,
+            extracted_at=datetime(2026, 3, 17, 12, 6, tzinfo=timezone.utc) if article_text else None,
+            regenerated_summary="Restricted source summary"
+            if article_text
+            else None,
+        )
+
     return ContentBrief(
         source_item_id=1,
+        source_item=source_item,
         account_key=account_key,
         title=title,
         summary=summary,
@@ -410,6 +538,31 @@ def _build_content_brief(
         tags=list(tags),
         angle="practical_how_to",
         language="en",
+    )
+
+
+def _build_draft_variant(
+    *,
+    body: str = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+    source_name: str | None = "AI Tools Daily",
+    source_url: str | None = "https://example.com/articles/1",
+    article_url: str | None = "https://example.com/articles/1",
+    source_policy_mode: SourcePolicyMode | None = SourcePolicyMode.REUSABLE,
+) -> DraftVariant:
+    created_at = datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+    return DraftVariant(
+        id=101,
+        content_brief_id=1,
+        channel="x",
+        variant_index=0,
+        body=body,
+        source_name=source_name,
+        source_url=source_url,
+        article_url=article_url,
+        source_policy_mode=source_policy_mode,
+        state=DraftVariantState.PENDING_REVIEW,
+        created_at=created_at,
+        updated_at=created_at,
     )
 
 
