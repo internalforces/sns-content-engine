@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `04_gdelt_discovery_connector`
+- Current task: `05_policy_aware_enrichment_gating`
 - Active status: `done`
-- Last updated: `2026-04-06 10:28 KST`
-- Active branch: `codex/task-04-gdelt-discovery-connector`
-- Latest task commit: `Add GDELT discovery source connector`
+- Last updated: `2026-04-06 10:41 KST`
+- Active branch: `codex/task-05-policy-aware-enrichment-gating`
+- Latest task commit: `Add policy-aware enrichment skips`
 
 ## Scope For Current Task
-- Goal: `Add a discovery-only GDELT source connector that plugs into the existing normalized candidate flow`
-- In scope: `New gdelt source type and connector, registry wiring, sample config/docs updates, and focused connector/config coverage`
-- Out of scope: `Policy-aware enrichment gating, article fetching from discovered links, and provider routing changes`
+- Goal: `Make article enrichment intentionally skip policy-blocked fetch or rewrite work instead of recording ordinary failures`
+- In scope: `Policy-aware gating in enrich_articles, readable persisted policy skip reasons, and focused workflow regression coverage`
+- Out of scope: `Provider routing, review validation, history-query expansion, and broader pipeline redesign`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -31,7 +31,7 @@ Keep updates short, factual, and current.
 | 02 | Policy persistence | done | 2026-04-06 09:33 KST | Persisted source policy snapshots on source items and policy decision reasons on enrichments |
 | 03 | All-domain example config | done | 2026-04-06 10:00 KST | Added sample-only config set for reusable public, corporate, and attribution-friendly news sources with a commented GDELT placeholder |
 | 04 | GDELT discovery connector | done | 2026-04-06 10:28 KST | Added a discovery-only gdelt source type, request-normalizing connector, and safe sample docs |
-| 05 | Policy-aware enrichment gating | pending | - | |
+| 05 | Policy-aware enrichment gating | done | 2026-04-06 10:41 KST | Added intentional skip handling for blocked fetch/rewrite paths in enrichment with readable persisted reasons |
 | 06 | Codex-Wrapper provider | pending | - | |
 | 07 | Provider routing support | pending | - | |
 | 08 | All-domain prompt profiles | pending | - | |
@@ -47,18 +47,9 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `README.md`
-- `app/config/__init__.py`
-- `app/config/schemas.py`
-- `app/connectors/sources/__init__.py`
-- `app/connectors/sources/base.py`
-- `app/connectors/sources/gdelt.py`
-- `app/connectors/sources/registry.py`
-- `config/examples/all_domain_news/sources.yaml`
+- `app/workflows/enrich_articles.py`
 - `docs/all-domain-news-progress.md`
-- `tests/test_config.py`
-- `tests/test_discover_workflow.py`
-- `tests/test_source_connectors.py`
+- `tests/test_enrich_articles_workflow.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -83,6 +74,11 @@ Status values:
 - `2026-04-06 10:26 KST` Updated the all-domain example sources and README so the bundled GDELT sample stays in a dedicated discovery-only source set until policy-aware enrichment gating is implemented
 - `2026-04-06 10:28 KST` Added focused config, connector, and discover-workflow coverage for the new gdelt source type and request normalization path
 - `2026-04-06 10:28 KST` Completed task `04` after targeted gdelt tests and the broader config/source/discovery regression slice passed
+- `2026-04-06 10:37 KST` Started task `05`. Scope: `policy-aware enrichment skips for blocked fetch/rewrite paths with persisted readable reasons`
+- `2026-04-06 10:37 KST` Created or switched branch `codex/task-05-policy-aware-enrichment-gating`
+- `2026-04-06 10:39 KST` Updated `enrich_articles` to treat blocked full-text fetch and blocked rewrite as intentional skips, persisting readable policy reasons instead of failure codes
+- `2026-04-06 10:40 KST` Added focused workflow tests covering allowed enrichment, blocked full-text fetch, blocked rewrite, and existing completed enrichments
+- `2026-04-06 10:41 KST` Completed task `05` after targeted enrichment tests and a broader run-local regression slice passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -94,12 +90,14 @@ Status values:
 - `2026-04-06 10:00 KST` `./.venv/bin/pytest tests/test_config.py -q` -> `passed (21 passed)`
 - `2026-04-06 10:27 KST` `./.venv/bin/pytest tests/test_source_connectors.py::test_gdelt_connector_discovers_normalized_items_from_json tests/test_source_connectors.py::test_gdelt_connector_reports_invalid_json_as_parse_failure tests/test_source_connectors.py::test_gdelt_connector_allows_empty_article_lists tests/test_discover_workflow.py::test_discover_sources_runs_gdelt_connector_from_registry tests/test_config.py::test_gdelt_source_variant_loads_discovery_only_defaults tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (6 passed)`
 - `2026-04-06 10:27 KST` `./.venv/bin/pytest tests/test_source_connectors.py tests/test_discover_workflow.py tests/test_config.py -q` -> `passed (41 passed)`
+- `2026-04-06 10:40 KST` `./.venv/bin/pytest tests/test_enrich_articles_workflow.py -q` -> `passed (5 passed)`
+- `2026-04-06 10:40 KST` `./.venv/bin/pytest tests/test_enrich_articles_workflow.py tests/test_run_local_pipeline_workflow.py -q` -> `passed (6 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 05 should keep the gdelt sample in a discovery-only source set while adding policy-aware enrichment skips for blocked full-text fetches`
+- `Task 06 can build on the new skip behavior without changing manual review defaults or the current summary fallback path`
 
 ## Completion Summary
-- `Task 04 complete: added a discovery-only gdelt source type and connector, kept the bundled example isolated in its own discovery source set, and verified the new path with focused connector/config/workflow tests`
+- `Task 05 complete: enrichment now records policy-blocked fetch and rewrite paths as intentional skips with readable reasons, while reusable sources and existing completed enrichments keep their previous behavior`
