@@ -18,9 +18,14 @@
 - The enrich step intentionally skips an item when source policy blocks full-text fetch.
 - The enrich step also intentionally skips after fetch when policy allows article access but blocks LLM rewrite.
 - These are not connector or parser failures. They are expected policy decisions recorded so operators can explain why an item stopped.
-- Future UI or API layers can read:
-  - `list_pipeline_runs()` for `policy_mode_counts`, `policy_skipped_count`, `attribution_required_count`, and `rewrite_providers`
-  - `list_pipeline_failures()` for ordinary failures plus `policy_skips` carrying source policy metadata and readable skip reasons
+- `sns-engine history runs` shows the stored policy-aware counts and any rewrite providers used during draft generation.
+- `sns-engine history failures` now prints both ordinary `type=failure` rows and intentional `type=policy_skip` rows with source-policy metadata and readable skip reasons.
+
+## How draft provider routing works
+- If `<config-dir>/providers.yaml` exists, `generate-drafts` and `run-local` use its `draft_generate` route chain at runtime.
+- Credentials still come from environment variables only; the YAML file controls route order and optional model overrides.
+- If `providers.yaml` is absent, draft generation falls back to environment-based auto-detection in this order: OpenAI, Anthropic, then Codex-Wrapper.
+- `history runs` records the provider names that actually produced drafts during the run.
 
 ## What Codex-Wrapper is used for
 - Codex-Wrapper is the draft-generation rewrite layer for `generate_drafts` and `run_local`.
@@ -45,6 +50,6 @@ sns-engine review list --database-url sqlite:///data/sns_content_engine.db
 
 ## Operator checklist
 - Start from `config/examples/all_domain_news/`, then replace sample URLs with operator-approved sources.
-- Keep discovery-only sources in separate source sets until you explicitly want them included in discovery runs.
-- Treat `history failures` as technical failure output and use workflow/API access when you also need the stored `policy_skips` collection.
+- Keep discovery-only sources in separate source sets when you want discovery coverage without treating them as reusable full-text sources.
+- Read `history failures` as a mixed operator feed: `type=failure` rows are technical problems, and `type=policy_skip` rows are intentional policy decisions.
 - Schedule only drafts that keep provenance intact and satisfy attribution requirements.
