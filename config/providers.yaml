@@ -16,6 +16,7 @@
 #   tts_synthesize       — Text → spoken audio
 #
 # Provider identifiers:
+#   codex_wrapper        — Requires CODEX_WRAPPER_API_KEY + CODEX_WRAPPER_BASE_URL
 #   openai               — Requires OPENAI_API_KEY
 #   anthropic            — Requires ANTHROPIC_API_KEY
 #   elevenlabs           — Requires ELEVENLABS_API_KEY
@@ -25,14 +26,18 @@
 routes:
   # ── LLM: draft generation ────────────────────────────────────────────────
   - step: draft_generate
+    provider: codex_wrapper
+    model: gpt-5.4-mini
+    priority: 1
+  - step: draft_generate
     provider: anthropic
     model: claude-haiku-4-5-20251001
-    priority: 1
-    # Uncomment to try OpenAI as fallback:
+    priority: 2
+    # Uncomment to try OpenAI as an additional fallback:
     # - step: draft_generate
     #   provider: openai
     #   model: gpt-5.4-mini
-    #   priority: 2
+    #   priority: 3
 
   # ── LLM: metadata generation ─────────────────────────────────────────────
   - step: metadata_generate

@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 import pytest
 
+from app.config.schemas import AIProvidersConfig, RouteConfig
 from app.connectors.llm import (
+    CodexWrapperDraftGenerationProvider,
     DraftGenerationProviderError,
     FakeLLMProvider,
     OpenAIDraftGenerationProvider,
@@ -139,6 +141,71 @@ def test_resolver_rejects_blank_api_key() -> None:
         resolve_draft_generation_provider(environment={"OPENAI_API_KEY": "   "})
 
 
+def test_resolver_uses_codex_wrapper_provider_when_route_is_selected_from_config() -> None:
+    captured: dict[str, object] = {}
+    client = _RecordingCodexWrapperClient(
+        {"choices": [{"message": {"content": '{"variants":["one","two"]}'}}]}
+    )
+    providers_config = AIProvidersConfig(
+        routes=[
+            RouteConfig(
+                step="draft_generate",
+                provider="codex_wrapper",
+                model="wrapper-model",
+                priority=1,
+            ),
+        ]
+    )
+
+    def factory(*, api_key: str, base_url: str, timeout_seconds: float):
+        captured["api_key"] = api_key
+        captured["base_url"] = base_url
+        captured["timeout_seconds"] = timeout_seconds
+        return client
+
+    provider = resolve_draft_generation_provider(
+        environment={
+            "CODEX_WRAPPER_API_KEY": "cw-test",
+            "CODEX_WRAPPER_BASE_URL": "https://wrapper.example/v1/",
+        },
+        codex_wrapper_client_factory=factory,
+        providers_config=providers_config,
+    )
+
+    assert isinstance(provider, CodexWrapperDraftGenerationProvider)
+    assert provider.generate_variants(_build_request(variant_count=2)) == ("one", "two")
+    assert captured == {
+        "api_key": "cw-test",
+        "base_url": "https://wrapper.example/v1",
+        "timeout_seconds": 30.0,
+    }
+    assert client.payloads[0]["model"] == "wrapper-model"
+
+
+def test_resolver_falls_back_from_codex_wrapper_to_fake_provider() -> None:
+    client = _RecordingCodexWrapperClient(RuntimeError("wrapper unavailable"))
+    providers_config = AIProvidersConfig(
+        routes=[
+            RouteConfig(step="draft_generate", provider="codex_wrapper", priority=1),
+            RouteConfig(step="draft_generate", provider="fake", priority=2),
+        ]
+    )
+
+    provider = resolve_draft_generation_provider(
+        environment={
+            "CODEX_WRAPPER_API_KEY": "cw-test",
+            "CODEX_WRAPPER_BASE_URL": "https://wrapper.example/v1",
+        },
+        codex_wrapper_client_factory=lambda **_: client,
+        providers_config=providers_config,
+    )
+
+    variants = provider.generate_variants(_build_request(variant_count=2))
+
+    assert len(variants) == 2
+    assert client.payloads  # first route was attempted before falling back
+
+
 @dataclass
 class _StubOpenAIResponse:
     output_text: str
@@ -150,6 +217,18 @@ class _RecordingOpenAIClient:
         self.payloads: list[dict[str, object]] = []
 
     def create_response(self, *, payload) -> object:
+        self.payloads.append(payload)
+        if isinstance(self._response_or_exception, Exception):
+            raise self._response_or_exception
+        return self._response_or_exception
+
+
+class _RecordingCodexWrapperClient:
+    def __init__(self, response_or_exception: object) -> None:
+        self._response_or_exception = response_or_exception
+        self.payloads: list[dict[str, object]] = []
+
+    def create_completion(self, *, payload) -> object:
         self.payloads.append(payload)
         if isinstance(self._response_or_exception, Exception):
             raise self._response_or_exception

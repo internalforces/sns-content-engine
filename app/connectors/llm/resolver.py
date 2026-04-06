@@ -7,6 +7,10 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from app.connectors.llm.base import DraftGenerationProvider, DraftGenerationRequest
+from app.connectors.llm.codex_wrapper_provider import (
+    CodexWrapperChatCompletionsClientFactory,
+    CodexWrapperDraftGenerationProvider,
+)
 from app.connectors.llm.fake import FakeLLMProvider
 from app.connectors.llm.openai_provider import (
     OpenAIDraftGenerationProvider,
@@ -24,13 +28,15 @@ def resolve_draft_generation_provider(
     *,
     environment: Mapping[str, str] | None = None,
     client_factory: OpenAIResponsesClientFactory | None = None,
+    codex_wrapper_client_factory: CodexWrapperChatCompletionsClientFactory | None = None,
     providers_config: "AIProvidersConfig | None" = None,
 ) -> DraftGenerationProvider:
     """Resolve the runtime draft generation provider from environment.
 
     When multiple provider keys are present, returns a RoutedDraftGenerationProvider
-    that tries providers in priority order (OpenAI → Anthropic) and falls back
-    automatically on failure.
+    that tries providers in priority order (OpenAI → Anthropic → Codex-Wrapper
+    for env auto-detection, or config priority order when ``providers_config``
+    is supplied) and falls back automatically on failure.
 
     When no provider keys are present, returns FakeLLMProvider for local
     development and testing.
@@ -43,6 +49,8 @@ def resolve_draft_generation_provider(
     Args:
         environment:      Override for ``os.environ``.
         client_factory:   Optional OpenAI client factory (used in tests).
+        codex_wrapper_client_factory:
+                          Optional Codex-Wrapper chat client factory (used in tests).
         providers_config: When provided, routes are built from the config file
                           (Phase 6 config-driven routing). Falls back to
                           env-var auto-detection when ``None``.
@@ -63,12 +71,18 @@ def resolve_draft_generation_provider(
         return FakeLLMProvider()
 
     if len(routes) == 1:
-        return _build_single_provider(routes[0], resolved_environment, client_factory)
+        return _build_single_provider(
+            routes[0],
+            resolved_environment,
+            client_factory,
+            codex_wrapper_client_factory,
+        )
 
     return _RoutedDraftGenerationProvider(
         routes=routes,
         environment=resolved_environment,
         client_factory=client_factory,
+        codex_wrapper_client_factory=codex_wrapper_client_factory,
     )
 
 
@@ -89,17 +103,22 @@ class _RoutedDraftGenerationProvider:
         routes: list[Route],
         environment: Mapping[str, str],
         client_factory: OpenAIResponsesClientFactory | None,
+        codex_wrapper_client_factory: CodexWrapperChatCompletionsClientFactory | None,
     ) -> None:
         self._routes = routes
         self._environment = environment
         self._client_factory = client_factory
+        self._codex_wrapper_client_factory = codex_wrapper_client_factory
 
     def generate_variants(self, request: DraftGenerationRequest) -> tuple[str, ...]:
         return execute_with_fallback(
             step_key=StepKey.DRAFT_GENERATE,
             routes=self._routes,
             build_provider=lambda route: _build_single_provider(
-                route, self._environment, self._client_factory
+                route,
+                self._environment,
+                self._client_factory,
+                self._codex_wrapper_client_factory,
             ),
             execute=lambda provider, _route: provider.generate_variants(request),
         )
@@ -109,6 +128,7 @@ def _build_single_provider(
     route: Route,
     environment: Mapping[str, str],
     client_factory: OpenAIResponsesClientFactory | None,
+    codex_wrapper_client_factory: CodexWrapperChatCompletionsClientFactory | None,
 ) -> DraftGenerationProvider:
     """Instantiate the concrete provider for a given route."""
 
@@ -126,13 +146,24 @@ def _build_single_provider(
             environment=env_override,
         )
 
+    if route.provider == "codex_wrapper":
+        env_override = _with_model_override(
+            environment,
+            route.model,
+            "CODEX_WRAPPER_MODEL",
+        )
+        return CodexWrapperDraftGenerationProvider.from_environment(
+            environment=env_override,
+            client_factory=codex_wrapper_client_factory,
+        )
+
     if route.provider == "fake":
         return FakeLLMProvider()
 
     from app.connectors.llm.base import DraftGenerationProviderError
     raise DraftGenerationProviderError(
         f"Unknown LLM provider: {route.provider!r}. "
-        "Supported values: 'openai', 'anthropic', 'fake'."
+        "Supported values: 'openai', 'anthropic', 'codex_wrapper', 'fake'."
     )
 
 

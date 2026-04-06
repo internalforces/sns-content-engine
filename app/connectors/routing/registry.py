@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_OPENAI_LLM_MODEL = "gpt-5.4-mini"
 _DEFAULT_ANTHROPIC_LLM_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_CODEX_WRAPPER_LLM_MODEL = "gpt-5.4-mini"
 _DEFAULT_OPENAI_TTS_MODEL = "tts-1"
 _DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_multilingual_v2"
 _DEFAULT_GOOGLE_TTS_MODEL = "en-US-Standard-C"
@@ -66,6 +67,8 @@ class RouteRegistry:
         LLM routes (step_key = "draft_generate"):
             Priority 1  OpenAI   — requires OPENAI_API_KEY
             Priority 2  Anthropic — requires ANTHROPIC_API_KEY
+            Priority 3  Codex-Wrapper — requires CODEX_WRAPPER_API_KEY +
+                                         CODEX_WRAPPER_BASE_URL
 
         TTS routes (step_key = "tts_synthesize"):
             Priority 1  ElevenLabs — requires ELEVENLABS_API_KEY
@@ -102,6 +105,19 @@ class RouteRegistry:
                         priority=2,
                     )
                 )
+
+        if _codex_wrapper_credentials_available(env):
+            routes.append(
+                Route(
+                    step_key=StepKey.DRAFT_GENERATE,
+                    provider="codex_wrapper",
+                    model=env.get(
+                        "CODEX_WRAPPER_MODEL",
+                        _DEFAULT_CODEX_WRAPPER_LLM_MODEL,
+                    ),
+                    priority=3,
+                )
+            )
 
         # ---- TTS routes ----
         if "ELEVENLABS_API_KEY" in env:
@@ -320,7 +336,11 @@ def _provider_credentials_available(provider: str, env: Mapping[str, str]) -> bo
     always-credentialed to support future provider additions without changing
     this helper.
     """
-    key = _PROVIDER_CREDENTIAL_ENV.get(provider.casefold())
+    normalized_provider = provider.casefold()
+    if normalized_provider == "codex_wrapper":
+        return _codex_wrapper_credentials_available(env)
+
+    key = _PROVIDER_CREDENTIAL_ENV.get(normalized_provider)
     if key is None:
         # Fake provider or unknown provider — assume available.
         return True
@@ -334,6 +354,10 @@ def _google_credentials_available(env: Mapping[str, str]) -> bool:
         "GOOGLE_APPLICATION_CREDENTIALS" in env
         or "GOOGLE_TTS_CREDENTIALS_JSON" in env
     )
+
+
+def _codex_wrapper_credentials_available(env: Mapping[str, str]) -> bool:
+    return "CODEX_WRAPPER_API_KEY" in env and "CODEX_WRAPPER_BASE_URL" in env
 
 
 def _openai_tts_explicitly_configured(env: Mapping[str, str]) -> bool:
