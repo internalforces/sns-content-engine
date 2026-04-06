@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `06_codex_wrapper_provider`
+- Current task: `07_provider_routing_support`
 - Active status: `done`
-- Last updated: `2026-04-06 12:43 KST`
-- Active branch: `codex/task-06-codex-wrapper-provider`
-- Latest task commit: `Add Codex-Wrapper draft generation provider`
+- Last updated: `2026-04-06 12:56 KST`
+- Active branch: `codex/task-07-provider-routing-support`
+- Latest task commit: `Add codex_wrapper draft routing support`
 
 ## Scope For Current Task
-- Goal: `Add a draft-generation provider for an OpenAI-compatible Codex-Wrapper endpoint without changing the existing provider routing behavior yet`
-- In scope: `Codex-Wrapper provider implementation, env-based setup, request/error handling, focused provider tests, and draft workflow regression coverage`
-- Out of scope: `Provider routing config support, prompt-profile changes, and broader pipeline refactors`
+- Goal: `Allow config and environment-driven draft routing to resolve provider: codex_wrapper without disturbing existing fallback behavior`
+- In scope: `Route registry credential detection, draft resolver support, sample provider-config updates, and focused routing/resolver tests`
+- Out of scope: `Prompt-profile changes, new workflow behavior beyond provider resolution, and broader pipeline refactors`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -33,7 +33,7 @@ Keep updates short, factual, and current.
 | 04 | GDELT discovery connector | done | 2026-04-06 10:28 KST | Added a discovery-only gdelt source type, request-normalizing connector, and safe sample docs |
 | 05 | Policy-aware enrichment gating | done | 2026-04-06 10:41 KST | Added intentional skip handling for blocked fetch/rewrite paths in enrichment with readable persisted reasons |
 | 06 | Codex-Wrapper provider | done | 2026-04-06 12:43 KST | Added an OpenAI-compatible draft provider, export wiring, and workflow compatibility coverage |
-| 07 | Provider routing support | pending | - | |
+| 07 | Provider routing support | done | 2026-04-06 12:56 KST | Wired codex_wrapper into route registry and draft resolver, updated sample config, and verified mixed fallback coverage |
 | 08 | All-domain prompt profiles | pending | - | |
 | 09 | Provenance visibility | pending | - | |
 | 10 | Domain sensitivity guardrails | pending | - | |
@@ -47,11 +47,12 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/connectors/llm/__init__.py`
-- `app/connectors/llm/codex_wrapper_provider.py`
+- `app/connectors/llm/resolver.py`
+- `app/connectors/routing/registry.py`
+- `config/providers.yaml`
 - `docs/all-domain-news-progress.md`
-- `tests/test_codex_wrapper_provider.py`
-- `tests/test_generate_drafts_workflow.py`
+- `tests/test_openai_llm_provider.py`
+- `tests/test_phase6_config_routing.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -86,6 +87,11 @@ Status values:
 - `2026-04-06 12:40 KST` Added `CodexWrapperDraftGenerationProvider` with env-based setup for an OpenAI-compatible chat-completions endpoint, JSON-output instructions, and consistent error mapping
 - `2026-04-06 12:42 KST` Exported the new provider and added focused provider/workflow coverage for env defaults, explicit overrides, malformed responses, upstream failures, and draft persistence compatibility
 - `2026-04-06 12:43 KST` Completed task `06` after targeted Codex-Wrapper tests and broader OpenAI draft workflow regression tests passed
+- `2026-04-06 12:51 KST` Started task `07`. Scope: `config and env-driven codex_wrapper route resolution with focused routing/resolver coverage`
+- `2026-04-06 12:51 KST` Created or switched branch `codex/task-07-provider-routing-support`
+- `2026-04-06 12:55 KST` Added `codex_wrapper` support to the draft route resolver and route registry, keeping env auto-detection order stable while limiting wrapper auto-registration to draft generation
+- `2026-04-06 12:55 KST` Updated the bundled `config/providers.yaml` example to show `codex_wrapper` as the draft-generation route with Anthropic fallback and added focused routing/resolver tests
+- `2026-04-06 12:56 KST` Completed task `07` after routing/resolver tests and draft workflow/provider regression tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -101,12 +107,14 @@ Status values:
 - `2026-04-06 10:40 KST` `./.venv/bin/pytest tests/test_enrich_articles_workflow.py tests/test_run_local_pipeline_workflow.py -q` -> `passed (6 passed)`
 - `2026-04-06 12:42 KST` `./.venv/bin/pytest tests/test_codex_wrapper_provider.py tests/test_generate_drafts_workflow.py::test_generate_drafts_accepts_codex_wrapper_provider -q` -> `passed (12 passed)`
 - `2026-04-06 12:43 KST` `./.venv/bin/pytest tests/test_openai_llm_provider.py tests/test_generate_drafts_workflow.py -q` -> `passed (20 passed)`
+- `2026-04-06 12:55 KST` `./.venv/bin/pytest tests/test_openai_llm_provider.py tests/test_phase6_config_routing.py -q` -> `passed (60 passed)`
+- `2026-04-06 12:55 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_codex_wrapper_provider.py -q` -> `passed (20 passed)`
 
 ## Blockers
-- `None currently`
+- `Task 08 can now add all-domain prompt profiles using codex_wrapper in sample provider routing without extra resolver work`
 
 ## Follow-up
-- `Task 07 should wire codex_wrapper into resolver and config-driven routing without changing the provider module contract introduced here`
+- `None currently`
 
 ## Completion Summary
-- `Task 06 complete: added a Codex-Wrapper draft-generation provider for OpenAI-compatible chat completions, exported it through the LLM package surface, and verified it works with draft generation when injected directly while leaving resolver/routing changes for Task 07`
+- `Task 07 complete: added codex_wrapper credential-aware routing in the route registry and draft resolver, updated the bundled provider sample to prefer codex_wrapper for draft generation with Anthropic fallback, and verified both direct resolution and fallback behavior`

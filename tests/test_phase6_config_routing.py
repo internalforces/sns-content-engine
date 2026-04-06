@@ -335,6 +335,45 @@ def test_from_config_passes_params_to_route() -> None:
     assert route.get_param("voice_id") == "xyz"
 
 
+def test_from_config_builds_codex_wrapper_route_when_credentials_present() -> None:
+    config = AIProvidersConfig(
+        routes=[
+            RouteConfig(
+                step="draft_generate",
+                provider="codex_wrapper",
+                model="wrapper-model",
+                priority=1,
+            ),
+            RouteConfig(step="draft_generate", provider="fake", priority=2),
+        ]
+    )
+    env = {
+        "CODEX_WRAPPER_API_KEY": "cw-key",
+        "CODEX_WRAPPER_BASE_URL": "https://wrapper.example/v1",
+    }
+
+    registry = RouteRegistry.from_config(config, environment=env)
+    routes = registry.resolve_routes(StepKey.DRAFT_GENERATE)
+
+    assert [route.provider for route in routes] == ["codex_wrapper", "fake"]
+    assert routes[0].model == "wrapper-model"
+
+
+def test_from_config_skips_codex_wrapper_without_base_url() -> None:
+    config = AIProvidersConfig(
+        routes=[
+            RouteConfig(step="draft_generate", provider="codex_wrapper", priority=1),
+            RouteConfig(step="draft_generate", provider="fake", priority=2),
+        ]
+    )
+    env = {"CODEX_WRAPPER_API_KEY": "cw-key"}
+
+    registry = RouteRegistry.from_config(config, environment=env)
+    routes = registry.resolve_routes(StepKey.DRAFT_GENERATE)
+
+    assert [route.provider for route in routes] == ["fake"]
+
+
 def test_from_config_allows_fake_provider_without_credentials() -> None:
     config = AIProvidersConfig(
         routes=[
@@ -594,6 +633,39 @@ def test_from_environment_registers_metadata_and_image_prompt_steps_with_anthrop
         assert routes[0].provider == "anthropic"
 
 
+def test_from_environment_registers_codex_wrapper_for_draft_generate_only() -> None:
+    env = {
+        "CODEX_WRAPPER_API_KEY": "cw-key",
+        "CODEX_WRAPPER_BASE_URL": "https://wrapper.example/v1",
+    }
+    registry = RouteRegistry.from_environment(env)
+
+    draft_routes = registry.resolve_routes(StepKey.DRAFT_GENERATE)
+    assert len(draft_routes) == 1
+    assert draft_routes[0].provider == "codex_wrapper"
+
+    for step in (StepKey.METADATA_GENERATE, StepKey.IMAGE_PROMPT_GENERATE):
+        assert registry.resolve_routes(step) == []
+
+
+def test_from_environment_preserves_existing_llm_order_when_codex_wrapper_is_available() -> None:
+    env = {
+        "OPENAI_API_KEY": "sk-test",
+        "ANTHROPIC_API_KEY": "ant-test",
+        "CODEX_WRAPPER_API_KEY": "cw-key",
+        "CODEX_WRAPPER_BASE_URL": "https://wrapper.example/v1",
+    }
+    registry = RouteRegistry.from_environment(env)
+
+    routes = registry.resolve_routes(StepKey.DRAFT_GENERATE)
+
+    assert [route.provider for route in routes] == [
+        "openai",
+        "anthropic",
+        "codex_wrapper",
+    ]
+
+
 def test_with_account_override_applies_to_metadata_and_image_prompt_via_env_registry() -> None:
     """with_account_override must work for metadata_generate and image_prompt_generate
     when the registry was built from env vars (regression for the debug.md bug)."""
@@ -634,3 +706,7 @@ def test_sample_providers_yaml_is_valid(tmp_path: Path) -> None:
     for route in config.routes:
         assert route.step
         assert route.provider
+    assert any(
+        route.step == "draft_generate" and route.provider == "codex_wrapper"
+        for route in config.routes
+    )
