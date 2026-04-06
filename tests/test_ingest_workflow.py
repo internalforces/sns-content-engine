@@ -8,6 +8,7 @@ from textwrap import dedent
 
 from app.domain import SourceConnectorResult, SourceItemCandidate
 from app.storage import (
+    SourcePolicyMode,
     SourceItem,
     SourceItemRepository,
     create_all_tables,
@@ -216,13 +217,62 @@ def test_ingest_sources_allows_old_fingerprint_matches_outside_window(tmp_path: 
     assert result.duplicate_count == 0
 
 
+def test_ingest_sources_persists_source_policy_snapshot_from_config(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_config(
+        tmp_path,
+        duplicate_window_days=7,
+        policy_mode="restricted",
+        allow_full_text_fetch=False,
+        allow_llm_rewrite=False,
+        require_attribution=True,
+    )
+
+    result = ingest_sources(
+        tmp_path,
+        connector_registry=StaticConnectorRegistry(
+            {
+                "ai_tools_rss": (
+                    SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="policy-snapshot-1",
+                        source_url="https://example.com/posts/policy-snapshot",
+                        title="Policy snapshot item",
+                    ),
+                )
+            }
+        ),
+        session_factory=session_factory,
+        now=datetime(2026, 3, 17, 9, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.saved_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_items = SourceItemRepository(session).list()
+
+    assert len(stored_items) == 1
+    assert stored_items[0].policy_mode is SourcePolicyMode.RESTRICTED
+    assert stored_items[0].allow_full_text_fetch is False
+    assert stored_items[0].allow_llm_rewrite is False
+    assert stored_items[0].require_attribution is True
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'ingest.db'}")
     create_all_tables(engine)
     return create_session_factory(engine)
 
 
-def _write_config(path: Path, *, duplicate_window_days: int) -> None:
+def _write_config(
+    path: Path,
+    *,
+    duplicate_window_days: int,
+    policy_mode: str = "reusable",
+    allow_full_text_fetch: bool = True,
+    allow_llm_rewrite: bool = True,
+    require_attribution: bool = False,
+) -> None:
     _write_file(
         path / "accounts.yaml",
         """
@@ -260,6 +310,10 @@ def _write_config(path: Path, *, duplicate_window_days: int) -> None:
             type: rss
             url: https://example.com/feed.xml
             duplicate_window_days: {duplicate_window_days}
+            policy_mode: {policy_mode}
+            allow_full_text_fetch: {str(allow_full_text_fetch).lower()}
+            allow_llm_rewrite: {str(allow_llm_rewrite).lower()}
+            require_attribution: {str(require_attribution).lower()}
 
         source_sets:
           ai_tools_primary:

@@ -13,22 +13,22 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `01_source_policy_schema`
-- Active status: `in_progress`
-- Last updated: `2026-04-05 20:54 KST`
-- Active branch: `codex/task-01-source-policy-schema`
-- Latest task commit: `5b1db83 Add source policy fields to source config`
+- Current task: `02_policy_persistence`
+- Active status: `done`
+- Last updated: `2026-04-06 09:33 KST`
+- Active branch: `codex/task-02-policy-persistence`
+- Latest task commit: `Add policy metadata persistence to storage`
 
 ## Scope For Current Task
-- Goal: `Add source policy metadata to config schemas with backward-compatible defaults`
-- In scope: `Source config schema defaults, validation, and focused config tests`
-- Out of scope: `Storage persistence, workflow gating, example config expansion`
+- Goal: `Persist source policy metadata and policy decision reasons in storage`
+- In scope: `ORM schema additions, repository-backed persistence, and ingest mapping for policy snapshots`
+- Out of scope: `Policy-aware enrichment gating, example config expansion, history query output changes`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- |
 | 01 | Source policy schema | done | 2026-04-05 20:52 KST | Added source policy fields with explicit defaults and focused config validation |
-| 02 | Policy persistence | pending | - | |
+| 02 | Policy persistence | done | 2026-04-06 09:33 KST | Persisted source policy snapshots on source items and policy decision reasons on enrichments |
 | 03 | All-domain example config | pending | - | |
 | 04 | GDELT discovery connector | pending | - | |
 | 05 | Policy-aware enrichment gating | pending | - | |
@@ -47,8 +47,12 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/config/schemas.py`
-- `tests/test_config.py`
+- `app/storage/models.py`
+- `app/storage/__init__.py`
+- `app/storage/bootstrap.py`
+- `app/workflows/ingest_sources.py`
+- `tests/test_storage.py`
+- `tests/test_ingest_workflow.py`
 - `docs/all-domain-news-progress.md`
 
 ## Progress Log
@@ -57,18 +61,25 @@ Status values:
 - `2026-04-05 20:49 KST` Added source policy fields to `BaseSourceConfig` with backward-compatible defaults and string normalization
 - `2026-04-05 20:50 KST` Added focused config tests for default policy values, explicit overrides, and invalid policy mode handling
 - `2026-04-05 20:54 KST` Created commit `5b1db83` with message `Add source policy fields to source config`
+- `2026-04-06 09:22 KST` Started task `02`. Scope: `persist policy snapshots on source items and decision-reason fields for enrichment records`
+- `2026-04-06 09:22 KST` Created or switched branch `codex/task-02-policy-persistence`
+- `2026-04-06 09:29 KST` Added source policy snapshot fields to `SourceItem` and a `policy_decision_reason` field to `ArticleEnrichment`; updated storage schema validation requirements
+- `2026-04-06 09:29 KST` Wired `ingest_sources` to persist source policy values from config onto saved source items
+- `2026-04-06 09:30 KST` Added focused storage and ingest tests for policy persistence, idempotent reads, and schema drift detection
+- `2026-04-06 09:33 KST` Completed task `02` after targeted storage, ingest, and history query tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py -k 'not test_registry_loads_sample_config_directory' -q` -> `passed (19 passed, 1 deselected)`
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py -q` -> `not clean: pre-existing failure in test_registry_loads_sample_config_directory due current config/source-set expectations mismatch; initial plain pytest invocation also hit external app import path drift outside .venv`
+- `2026-04-06 09:30 KST` `./.venv/bin/pytest tests/test_storage.py::test_source_item_can_be_inserted_and_read tests/test_storage.py::test_article_enrichment_can_be_inserted_and_read tests/test_storage.py::test_article_enrichment_get_or_create_is_idempotent tests/test_storage.py::test_source_item_get_or_create_is_idempotent tests/test_storage.py::test_bootstrap_database_detects_missing_source_policy_snapshot_columns tests/test_storage.py::test_bootstrap_database_detects_missing_article_policy_reason_column tests/test_ingest_workflow.py::test_ingest_sources_persists_source_policy_snapshot_from_config -q` -> `passed (7 passed)`
+- `2026-04-06 09:31 KST` `./.venv/bin/pytest tests/test_storage.py tests/test_ingest_workflow.py tests/test_history_queries.py -q` -> `passed (49 passed)`
 
 ## Blockers
-- `No blocker for Task 01 completion; broader config test file still contains a pre-existing sample-config assertion mismatch unrelated to source policy schema`
+- `None currently`
 
 ## Follow-up
-- `Reconcile test_registry_loads_sample_config_directory with current config/sources.yaml contents in separate cleanup work`
+- `Task 03 can add operator-facing all-domain example configs on top of these persisted policy fields`
 
 ## Completion Summary
-- `Task 01 complete: source configs now support policy metadata with explicit defaults, and focused config tests cover defaults, overrides, and invalid values`
-- Commit: `5b1db83 Add source policy fields to source config`
+- `Task 02 complete: source items now persist source-policy snapshots, article enrichments can store policy decision reasons, and ingest saves policy metadata from config`
