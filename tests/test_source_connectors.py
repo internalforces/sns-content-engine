@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.config import ManualCsvSourceConfig, RssSourceConfig, SitemapSourceConfig
+from app.config import GdeltSourceConfig, ManualCsvSourceConfig, RssSourceConfig, SitemapSourceConfig
 from app.connectors.sources import (
+    GdeltSourceConnector,
     ManualCsvSourceConnector,
     RssSourceConnector,
     SitemapSourceConnector,
@@ -137,6 +139,73 @@ def test_manual_csv_connector_discovers_items_from_fixture_file() -> None:
     assert result.items[0].published_at == datetime(2026, 3, 16, 9, 30, tzinfo=timezone.utc)
     assert result.items[1].external_id == "https://example.com/manual/second-entry"
     assert result.items[1].title == "Second Entry"
+
+
+def test_gdelt_connector_discovers_normalized_items_from_json() -> None:
+    payload = json.dumps(
+        {
+            "articles": [
+                {
+                    "url": "https://example.com/news/launch?utm_source=gdelt",
+                    "title": "Launch Update",
+                    "seendate": "20260406T010203Z",
+                    "domain": "example.com",
+                    "language": "English",
+                    "sourcecountry": "US",
+                    "excerpt": "A short launch summary.",
+                },
+                {
+                    "url": "https://example.com/news/second",
+                    "title": "Second Signal",
+                    "seendate": "20260406T020304Z",
+                },
+            ]
+        }
+    ).encode("utf-8")
+    requested_urls: list[str] = []
+
+    connector = GdeltSourceConnector(
+        fetch_bytes=lambda url: requested_urls.append(url) or payload,
+    )
+    config = GdeltSourceConfig(type="gdelt", query="domain:news")
+
+    result = connector.discover("gdelt_latest", config)
+
+    assert requested_urls == [
+        "https://api.gdeltproject.org/api/v2/doc/doc?query=domain%3Anews&mode=ArtList&format=json&maxrecords=50&sort=DateDesc&timespan=1day"
+    ]
+    assert result.failures == ()
+    assert len(result.items) == 2
+    assert result.items[0].source_id == "gdelt_latest"
+    assert result.items[0].source_url == "https://example.com/news/launch"
+    assert result.items[0].summary == "A short launch summary."
+    assert result.items[0].published_at == datetime(2026, 4, 6, 1, 2, 3, tzinfo=timezone.utc)
+    assert result.items[0].raw_payload["kind"] == "gdelt"
+    assert result.items[0].raw_payload["query"] == "domain:news"
+    assert result.items[1].title == "Second Signal"
+
+
+def test_gdelt_connector_reports_invalid_json_as_parse_failure() -> None:
+    connector = GdeltSourceConnector(fetch_bytes=lambda _: b"{not-json")
+    config = GdeltSourceConfig(type="gdelt", query="domain:news")
+
+    result = connector.discover("gdelt_latest", config)
+
+    assert result.items == ()
+    assert len(result.failures) == 1
+    assert result.failures[0].source_id == "gdelt_latest"
+    assert result.failures[0].stage == "parse"
+    assert "invalid GDELT JSON" in result.failures[0].message
+
+
+def test_gdelt_connector_allows_empty_article_lists() -> None:
+    connector = GdeltSourceConnector(fetch_bytes=lambda _: b'{"articles": []}')
+    config = GdeltSourceConfig(type="gdelt", query="domain:news")
+
+    result = connector.discover("gdelt_latest", config)
+
+    assert result.items == ()
+    assert result.failures == ()
 
 
 def test_rss_connector_captures_fetch_failures_safely() -> None:

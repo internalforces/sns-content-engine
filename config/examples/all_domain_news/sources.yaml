@@ -29,15 +29,10 @@ sources:
     notes: "Sample Wikinews-style source with attribution-friendly defaults."
     duplicate_window_days: 3
 
-  # Enable this after Task 04 adds the gdelt connector type.
-  # gdelt_discovery_placeholder:
-  #   type: gdelt
-  #   query: "domain:news"
-  #   policy_mode: discovery_only
-  #   allow_full_text_fetch: false
-  #   allow_llm_rewrite: false
-  #   require_attribution: true
-  #   notes: "Placeholder future GDELT discovery source. Keep discovery-only until paired with a reusable source."
+  gdelt_latest_discovery:
+    type: gdelt
+    query: "domain:news"
+    notes: "Sample GDELT discovery-only source. Keep it in a separate discovery source set until policy-aware enrichment skips are enabled."
 
 source_sets:
   public_reusable:
@@ -58,6 +53,6 @@ source_sets:
       - corporate_ir_reusable
       - wikinews_attribution_friendly
 
-  # future_discovery:
-  #   sources:
-  #     - gdelt_discovery_placeholder
+  discovery_only_monitoring:
+    sources:
+      - gdelt_latest_discovery

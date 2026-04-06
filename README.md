@@ -61,9 +61,10 @@ export OPENAI_TIMEOUT_SECONDS="30"
 
 - `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`.
 - `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
-- `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a commented future GDELT placeholder.
+- `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 
 These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
+Keep the bundled GDELT example in a dedicated discovery-only source set until policy-aware enrichment skips are enabled; it is intended for recent-news discovery, not direct full-text reuse.
 
 ## CLI Usage
 
@@ -111,7 +112,7 @@ python -m app.cli scheduler run
 python -m app.cli db init
 ```
 
-The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV connectors, and reports normalized source item candidates plus captured failures.
+The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV / GDELT connectors, and reports normalized source item candidates plus captured failures.
 
 The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
 

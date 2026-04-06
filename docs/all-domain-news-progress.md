@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `03_all_domain_example_config`
+- Current task: `04_gdelt_discovery_connector`
 - Active status: `done`
-- Last updated: `2026-04-06 10:00 KST`
-- Active branch: `codex/task-03-all-domain-example-config`
-- Latest task commit: `Add all-domain example config samples`
+- Last updated: `2026-04-06 10:28 KST`
+- Active branch: `codex/task-04-gdelt-discovery-connector`
+- Latest task commit: `Add GDELT discovery source connector`
 
 ## Scope For Current Task
-- Goal: `Add a sample all-domain config directory that demonstrates safe source policy usage`
-- In scope: `New example config files, sample-only documentation, and config-loading validation for the bundled example`
-- Out of scope: `New connector types, policy-aware workflow gating, and provider routing changes`
+- Goal: `Add a discovery-only GDELT source connector that plugs into the existing normalized candidate flow`
+- In scope: `New gdelt source type and connector, registry wiring, sample config/docs updates, and focused connector/config coverage`
+- Out of scope: `Policy-aware enrichment gating, article fetching from discovered links, and provider routing changes`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -30,7 +30,7 @@ Keep updates short, factual, and current.
 | 01 | Source policy schema | done | 2026-04-05 20:52 KST | Added source policy fields with explicit defaults and focused config validation |
 | 02 | Policy persistence | done | 2026-04-06 09:33 KST | Persisted source policy snapshots on source items and policy decision reasons on enrichments |
 | 03 | All-domain example config | done | 2026-04-06 10:00 KST | Added sample-only config set for reusable public, corporate, and attribution-friendly news sources with a commented GDELT placeholder |
-| 04 | GDELT discovery connector | pending | - | |
+| 04 | GDELT discovery connector | done | 2026-04-06 10:28 KST | Added a discovery-only gdelt source type, request-normalizing connector, and safe sample docs |
 | 05 | Policy-aware enrichment gating | pending | - | |
 | 06 | Codex-Wrapper provider | pending | - | |
 | 07 | Provider routing support | pending | - | |
@@ -47,12 +47,18 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `config/examples/all_domain_news/accounts.yaml`
-- `config/examples/all_domain_news/prompts.yaml`
-- `config/examples/all_domain_news/sources.yaml`
 - `README.md`
-- `tests/test_config.py`
+- `app/config/__init__.py`
+- `app/config/schemas.py`
+- `app/connectors/sources/__init__.py`
+- `app/connectors/sources/base.py`
+- `app/connectors/sources/gdelt.py`
+- `app/connectors/sources/registry.py`
+- `config/examples/all_domain_news/sources.yaml`
 - `docs/all-domain-news-progress.md`
+- `tests/test_config.py`
+- `tests/test_discover_workflow.py`
+- `tests/test_source_connectors.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -71,6 +77,12 @@ Status values:
 - `2026-04-06 09:58 KST` Added `config/examples/all_domain_news/` sample config files covering reusable public feeds, reusable corporate IR/newsroom feeds, attribution-friendly Wikinews-style settings, and a commented future GDELT placeholder
 - `2026-04-06 09:59 KST` Documented bundled example-config intent in `README.md` and added focused config-registry coverage for the new example directory; aligned an outdated root sample source-set expectation with current bundled config
 - `2026-04-06 10:00 KST` Completed task `03` after targeted and full config tests passed
+- `2026-04-06 10:21 KST` Started task `04`. Scope: `gdelt source schema, discovery connector, registry wiring, and focused docs/tests`
+- `2026-04-06 10:21 KST` Created or switched branch `codex/task-04-gdelt-discovery-connector`
+- `2026-04-06 10:25 KST` Added `GdeltSourceConfig` with discovery-only defaults and wired a new `GdeltSourceConnector` through the existing source registry/export surface
+- `2026-04-06 10:26 KST` Updated the all-domain example sources and README so the bundled GDELT sample stays in a dedicated discovery-only source set until policy-aware enrichment gating is implemented
+- `2026-04-06 10:28 KST` Added focused config, connector, and discover-workflow coverage for the new gdelt source type and request normalization path
+- `2026-04-06 10:28 KST` Completed task `04` after targeted gdelt tests and the broader config/source/discovery regression slice passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -80,12 +92,14 @@ Status values:
 - `2026-04-06 09:31 KST` `./.venv/bin/pytest tests/test_storage.py tests/test_ingest_workflow.py tests/test_history_queries.py -q` -> `passed (49 passed)`
 - `2026-04-06 09:59 KST` `./.venv/bin/pytest tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (1 passed)`
 - `2026-04-06 10:00 KST` `./.venv/bin/pytest tests/test_config.py -q` -> `passed (21 passed)`
+- `2026-04-06 10:27 KST` `./.venv/bin/pytest tests/test_source_connectors.py::test_gdelt_connector_discovers_normalized_items_from_json tests/test_source_connectors.py::test_gdelt_connector_reports_invalid_json_as_parse_failure tests/test_source_connectors.py::test_gdelt_connector_allows_empty_article_lists tests/test_discover_workflow.py::test_discover_sources_runs_gdelt_connector_from_registry tests/test_config.py::test_gdelt_source_variant_loads_discovery_only_defaults tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (6 passed)`
+- `2026-04-06 10:27 KST` `./.venv/bin/pytest tests/test_source_connectors.py tests/test_discover_workflow.py tests/test_config.py -q` -> `passed (41 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 04 can implement the gdelt connector and uncomment the placeholder example source once that type is supported`
+- `Task 05 should keep the gdelt sample in a discovery-only source set while adding policy-aware enrichment skips for blocked full-text fetches`
 
 ## Completion Summary
-- `Task 03 complete: added a sample-only all-domain config set, documented that bundled examples do not replace the active default config, and verified the new example directory loads cleanly`
+- `Task 04 complete: added a discovery-only gdelt source type and connector, kept the bundled example isolated in its own discovery source set, and verified the new path with focused connector/config/workflow tests`
