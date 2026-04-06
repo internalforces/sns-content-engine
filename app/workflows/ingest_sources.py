@@ -14,6 +14,7 @@ from app.connectors.sources import SourceConnectorRegistry
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.services import SourceItemDeduper
 from app.storage import (
+    SourcePolicyMode,
     SourceItemRecentFingerprintClaim,
     SourceItemRecentFingerprintClaimRepository,
     SourceItem,
@@ -141,7 +142,15 @@ def ingest_sources(
                             duplicate_window_days=source_config.duplicate_window_days,
                             now=current_time,
                         )
-                        source_item = repository.add(_candidate_to_source_item(candidate))
+                        source_item = repository.add(
+                            _candidate_to_source_item(
+                                candidate,
+                                policy_mode=source_config.policy_mode,
+                                allow_full_text_fetch=source_config.allow_full_text_fetch,
+                                allow_llm_rewrite=source_config.allow_llm_rewrite,
+                                require_attribution=source_config.require_attribution,
+                            )
+                        )
                         if claim is not None:
                             claim.source_item = source_item
                             session.flush()
@@ -180,7 +189,14 @@ def ingest_sources(
     )
 
 
-def _candidate_to_source_item(candidate: SourceItemCandidate) -> SourceItem:
+def _candidate_to_source_item(
+    candidate: SourceItemCandidate,
+    *,
+    policy_mode: str,
+    allow_full_text_fetch: bool,
+    allow_llm_rewrite: bool,
+    require_attribution: bool,
+) -> SourceItem:
     return SourceItem(
         source_key=candidate.source_id,
         external_id=candidate.external_id,
@@ -189,6 +205,10 @@ def _candidate_to_source_item(candidate: SourceItemCandidate) -> SourceItem:
         summary=candidate.summary,
         published_at=candidate.published_at,
         raw_payload=candidate.raw_payload,
+        policy_mode=SourcePolicyMode(policy_mode),
+        allow_full_text_fetch=allow_full_text_fetch,
+        allow_llm_rewrite=allow_llm_rewrite,
+        require_attribution=require_attribution,
     )
 
 

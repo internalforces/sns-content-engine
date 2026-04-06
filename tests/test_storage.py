@@ -33,6 +33,7 @@ from app.storage import (
     PublishLogRepository,
     ReviewActionRepository,
     ReviewActionType,
+    SourcePolicyMode,
     StageExecutionStatus,
     SourceItem,
     SourceItemRepository,
@@ -95,6 +96,10 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
                 summary="A short summary",
                 published_at=datetime(2026, 3, 16, 12, 0, tzinfo=timezone.utc),
                 raw_payload={"author": "team"},
+                policy_mode=SourcePolicyMode.RESTRICTED,
+                allow_full_text_fetch=False,
+                allow_llm_rewrite=False,
+                require_attribution=True,
                 state=SourceItemState.INGESTED,
             )
         )
@@ -113,6 +118,10 @@ def test_source_item_can_be_inserted_and_read(session_factory) -> None:
     assert stored_item.published_at.tzinfo == timezone.utc
     assert stored_item.canonical_url == "https://example.com/posts/1"
     assert stored_item.normalized_title == "useful ai tool"
+    assert stored_item.policy_mode is SourcePolicyMode.RESTRICTED
+    assert stored_item.allow_full_text_fetch is False
+    assert stored_item.allow_llm_rewrite is False
+    assert stored_item.require_attribution is True
     assert len(stored_item.normalized_title_hash) == 64
     assert len(stored_item.dedupe_fingerprint) == 64
 
@@ -146,6 +155,7 @@ def test_article_enrichment_can_be_inserted_and_read(session_factory) -> None:
                 tickers=["SPY"],
                 markets=["US"],
                 classification="macro",
+                policy_decision_reason="Reusable source allows fetch and rewrite",
                 html_fetch_status=StageExecutionStatus.SUCCEEDED,
                 article_extract_status=StageExecutionStatus.SUCCEEDED,
                 summary_regenerate_status=StageExecutionStatus.SUCCEEDED,
@@ -167,6 +177,7 @@ def test_article_enrichment_can_be_inserted_and_read(session_factory) -> None:
         "Investors focused on central bank comments",
     ]
     assert stored.classification == "macro"
+    assert stored.policy_decision_reason == "Reusable source allows fetch and rewrite"
     assert stored.html_fetch_status is StageExecutionStatus.SUCCEEDED
     assert stored.summary_regenerate_status is StageExecutionStatus.SUCCEEDED
     assert stored.last_stage is PipelineStage.SUMMARY_REGENERATE
@@ -181,6 +192,10 @@ def test_article_enrichment_get_or_create_is_idempotent(session_factory) -> None
                 external_id="entry-article-2",
                 source_url="https://example.com/markets/2",
                 title="Second markets digest",
+                policy_mode=SourcePolicyMode.RESTRICTED,
+                allow_full_text_fetch=False,
+                allow_llm_rewrite=False,
+                require_attribution=True,
             )
         )
         repository = ArticleEnrichmentRepository(session)
@@ -189,6 +204,7 @@ def test_article_enrichment_get_or_create_is_idempotent(session_factory) -> None
                 source_item_id=source_item.id,
                 article_url="https://example.com/markets/2",
                 source_name="Example Finance",
+                policy_decision_reason="Restricted source blocks rewrite",
             )
         )
         second, was_created_again = repository.get_or_create(
@@ -196,6 +212,7 @@ def test_article_enrichment_get_or_create_is_idempotent(session_factory) -> None
                 source_item_id=source_item.id,
                 article_url="https://example.com/markets/2?duplicate=1",
                 source_name="Changed source name",
+                policy_decision_reason="Should not replace original reason",
             )
         )
 
@@ -203,6 +220,7 @@ def test_article_enrichment_get_or_create_is_idempotent(session_factory) -> None
     assert was_created_again is False
     assert second.id == first.id
     assert second.article_url == "https://example.com/markets/2"
+    assert second.policy_decision_reason == "Restricted source blocks rewrite"
 
 
 def test_pipeline_run_and_stage_summaries_can_be_inserted_and_read(session_factory) -> None:
@@ -296,6 +314,10 @@ def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
                 external_id="entry-idempotent",
                 source_url="https://example.com/posts/idempotent",
                 title="Original title",
+                policy_mode=SourcePolicyMode.DISCOVERY_ONLY,
+                allow_full_text_fetch=False,
+                allow_llm_rewrite=False,
+                require_attribution=True,
             )
         )
         second_item, was_created_again = repository.get_or_create(
@@ -304,6 +326,10 @@ def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
                 external_id="entry-idempotent",
                 source_url="https://example.com/posts/idempotent-v2",
                 title="Changed title should not replace original row",
+                policy_mode=SourcePolicyMode.REUSABLE,
+                allow_full_text_fetch=True,
+                allow_llm_rewrite=True,
+                require_attribution=False,
             )
         )
 
@@ -311,6 +337,10 @@ def test_source_item_get_or_create_is_idempotent(session_factory) -> None:
     assert was_created_again is False
     assert second_item.id == first_item.id
     assert second_item.title == "Original title"
+    assert second_item.policy_mode is SourcePolicyMode.DISCOVERY_ONLY
+    assert second_item.allow_full_text_fetch is False
+    assert second_item.allow_llm_rewrite is False
+    assert second_item.require_attribution is True
 
 
 def test_source_item_duplicate_lookup_supports_canonical_url_and_title_hash(session_factory) -> None:
@@ -1257,6 +1287,102 @@ def test_bootstrap_database_detects_missing_new_content_brief_columns(database_u
         engine.dispose()
 
     with pytest.raises(DatabaseSchemaError, match="content_briefs: missing columns angle, key_points, language"):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_source_policy_snapshot_columns(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE source_items")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE source_items (
+                    id INTEGER PRIMARY KEY,
+                    source_key VARCHAR(100) NOT NULL,
+                    external_id VARCHAR(255) NOT NULL,
+                    source_url VARCHAR(2048) NOT NULL,
+                    canonical_url VARCHAR(2048) NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    normalized_title VARCHAR(500) NOT NULL,
+                    normalized_title_hash VARCHAR(64) NOT NULL,
+                    summary TEXT,
+                    dedupe_fingerprint VARCHAR(64) NOT NULL,
+                    published_at DATETIME,
+                    raw_payload JSON,
+                    state VARCHAR(32) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_source_items_source_key_external_id UNIQUE (source_key, external_id),
+                    CONSTRAINT uq_source_items_canonical_url UNIQUE (canonical_url),
+                    CONSTRAINT uq_source_items_normalized_title_hash UNIQUE (normalized_title_hash)
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match="source_items: missing columns allow_full_text_fetch, allow_llm_rewrite, policy_mode, require_attribution",
+    ):
+        bootstrap_database(database_url)
+
+
+def test_bootstrap_database_detects_missing_article_policy_reason_column(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE article_enrichments")
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE article_enrichments (
+                    id INTEGER PRIMARY KEY,
+                    source_item_id INTEGER NOT NULL,
+                    source_name VARCHAR(255),
+                    article_url VARCHAR(2048) NOT NULL,
+                    published_at DATETIME,
+                    discovered_at DATETIME NOT NULL,
+                    fetched_at DATETIME,
+                    extracted_at DATETIME,
+                    summarized_at DATETIME,
+                    html_content TEXT,
+                    article_text TEXT,
+                    regenerated_summary TEXT,
+                    regenerated_key_points JSON NOT NULL,
+                    tags JSON NOT NULL,
+                    company_names JSON NOT NULL,
+                    tickers JSON NOT NULL,
+                    markets JSON NOT NULL,
+                    classification VARCHAR(50),
+                    rss_discovered_status VARCHAR(32) NOT NULL,
+                    saved_status VARCHAR(32) NOT NULL,
+                    html_fetch_status VARCHAR(32) NOT NULL,
+                    article_extract_status VARCHAR(32) NOT NULL,
+                    summary_regenerate_status VARCHAR(32) NOT NULL,
+                    brief_build_status VARCHAR(32) NOT NULL,
+                    draft_generate_status VARCHAR(32) NOT NULL,
+                    review_status VARCHAR(32) NOT NULL,
+                    last_stage VARCHAR(32) NOT NULL,
+                    failure_stage VARCHAR(32),
+                    failure_code VARCHAR(100),
+                    failure_message TEXT,
+                    metadata_json JSON,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_article_enrichments_source_item_id UNIQUE (source_item_id)
+                )
+                """
+            )
+    finally:
+        engine.dispose()
+
+    with pytest.raises(
+        DatabaseSchemaError,
+        match="article_enrichments: missing columns policy_decision_reason",
+    ):
         bootstrap_database(database_url)
 
 

@@ -72,6 +72,14 @@ class SourceItemState(str, Enum):
     REJECTED = "rejected"
 
 
+class SourcePolicyMode(str, Enum):
+    """Stored source-policy mode captured from config at ingest time."""
+
+    DISCOVERY_ONLY = "discovery_only"
+    REUSABLE = "reusable"
+    RESTRICTED = "restricted"
+
+
 class PipelineStage(str, Enum):
     """Tracked pipeline stages for article enrichment and local run history."""
 
@@ -162,6 +170,14 @@ class SourceItem(Base):
     dedupe_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     published_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     raw_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    policy_mode: Mapped[SourcePolicyMode] = mapped_column(
+        SqlEnum(SourcePolicyMode, native_enum=False, length=32),
+        default=SourcePolicyMode.REUSABLE,
+        nullable=False,
+    )
+    allow_full_text_fetch: Mapped[bool] = mapped_column(default=True, nullable=False)
+    allow_llm_rewrite: Mapped[bool] = mapped_column(default=True, nullable=False)
+    require_attribution: Mapped[bool] = mapped_column(default=False, nullable=False)
     state: Mapped[SourceItemState] = mapped_column(
         SqlEnum(SourceItemState, native_enum=False, length=32),
         default=SourceItemState.INGESTED,
@@ -314,6 +330,7 @@ class ArticleEnrichment(Base):
         default=StageExecutionStatus.PENDING,
         nullable=False,
     )
+    policy_decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_stage: Mapped[PipelineStage] = mapped_column(
         SqlEnum(PipelineStage, native_enum=False, length=32),
         default=PipelineStage.SAVED,
