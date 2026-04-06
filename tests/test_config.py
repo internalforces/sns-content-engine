@@ -12,6 +12,7 @@ from app.config import (
     ConfigReferenceError,
     ConfigRegistry,
     ConfigValidationError,
+    GdeltSourceConfig,
     ManualCsvSourceConfig,
     RssSourceConfig,
     SitemapSourceConfig,
@@ -89,6 +90,7 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     channel = account.channels["x"]
     official_source = registry.get_source("official_updates_reusable")
     corporate_source = registry.get_source("corporate_ir_reusable")
+    gdelt_source = registry.get_source("gdelt_latest_discovery")
     wikinews_source = registry.get_source("wikinews_attribution_friendly")
 
     assert account.topic == "All-domain latest news"
@@ -113,6 +115,13 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert corporate_source.require_attribution is True
     assert corporate_source.allow_llm_rewrite is True
 
+    assert isinstance(gdelt_source, GdeltSourceConfig)
+    assert gdelt_source.query == "domain:news"
+    assert gdelt_source.policy_mode == "discovery_only"
+    assert gdelt_source.allow_full_text_fetch is False
+    assert gdelt_source.allow_llm_rewrite is False
+    assert gdelt_source.require_attribution is True
+
     assert isinstance(wikinews_source, RssSourceConfig)
     assert wikinews_source.policy_mode == "reusable"
     assert wikinews_source.require_attribution is True
@@ -130,6 +139,9 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
         "official_updates_reusable",
         "corporate_ir_reusable",
         "wikinews_attribution_friendly",
+    )
+    assert registry.get_source_set("discovery_only_monitoring").sources == (
+        "gdelt_latest_discovery",
     )
 
 
@@ -301,6 +313,54 @@ def test_manual_csv_source_variant_loads_successfully(tmp_path: Path) -> None:
 
     assert isinstance(source, ManualCsvSourceConfig)
     assert source.path == (tmp_path / "data/manual/ai_tools.csv").resolve()
+
+
+def test_gdelt_source_variant_loads_discovery_only_defaults(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_discovery
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_gdelt:
+            type: gdelt
+            query: "domain:news"
+
+        source_sets:
+          ai_tools_discovery:
+            sources:
+              - ai_tools_gdelt
+        """,
+    )
+
+    registry = ConfigRegistry.from_directory(tmp_path)
+    source = registry.get_source("ai_tools_gdelt")
+
+    assert isinstance(source, GdeltSourceConfig)
+    assert source.query == "domain:news"
+    assert source.policy_mode == "discovery_only"
+    assert source.allow_full_text_fetch is False
+    assert source.allow_llm_rewrite is False
+    assert source.require_attribution is True
 
 
 def test_validation_config_loads_successfully(tmp_path: Path) -> None:

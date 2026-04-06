@@ -358,8 +358,24 @@ class ManualCsvSourceConfig(BaseSourceConfig):
     path: Path
 
 
+class GdeltSourceConfig(BaseSourceConfig):
+    """GDELT document API source definition."""
+
+    type: Literal["gdelt"]
+    query: str
+    policy_mode: Literal["discovery_only"] = "discovery_only"
+    allow_full_text_fetch: Literal[False] = False
+    allow_llm_rewrite: Literal[False] = False
+    require_attribution: bool = True
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        return _normalize_non_empty_string(value, label="query")
+
+
 SourceConfig = Annotated[
-    RssSourceConfig | SitemapSourceConfig | ManualCsvSourceConfig,
+    RssSourceConfig | SitemapSourceConfig | ManualCsvSourceConfig | GdeltSourceConfig,
     Field(discriminator="type"),
 ]
 

@@ -8,6 +8,7 @@ from textwrap import dedent
 import pytest
 
 from app.connectors.sources import (
+    GdeltSourceConnector,
     ManualCsvSourceConnector,
     RssSourceConnector,
     SitemapSourceConnector,
@@ -117,6 +118,68 @@ def test_discover_sources_captures_declared_connector_errors(tmp_path: Path) -> 
     assert result.failures[0].source_id == "ai_tools_rss"
     assert result.failures[0].stage == "fetch"
     assert result.failures[0].message == "ai_tools_rss offline"
+
+
+def test_discover_sources_runs_gdelt_connector_from_registry(tmp_path: Path) -> None:
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_discovery
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "system"
+            user_template: "user"
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_gdelt:
+            type: gdelt
+            query: "domain:news"
+
+        source_sets:
+          ai_tools_discovery:
+            sources:
+              - ai_tools_gdelt
+        """,
+    )
+
+    connector_registry = SourceConnectorRegistry(
+        gdelt_connector=GdeltSourceConnector(
+            fetch_bytes=lambda _: b"""
+            {"articles": [{"url": "https://example.com/news/launch", "title": "Launch", "seendate": "20260406T010203Z"}]}
+            """
+        ),
+    )
+
+    result = discover_sources(tmp_path, connector_registry=connector_registry)
+
+    assert result.processed_sources == ("ai_tools_gdelt",)
+    assert result.item_count == 1
+    assert result.failure_count == 0
+    assert result.counts_by_source() == {"ai_tools_gdelt": 1}
+    assert result.items[0].title == "Launch"
 
 
 def test_discover_sources_propagates_unexpected_connector_errors(tmp_path: Path) -> None:

@@ -8,7 +8,12 @@ from typing import TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from app.config.schemas import ManualCsvSourceConfig, RssSourceConfig, SitemapSourceConfig
+from app.config.schemas import (
+    GdeltSourceConfig,
+    ManualCsvSourceConfig,
+    RssSourceConfig,
+    SitemapSourceConfig,
+)
 from app.domain.source_ingestion import SourceConnectorResult
 
 SourceConfigT = TypeVar(
@@ -16,6 +21,7 @@ SourceConfigT = TypeVar(
     RssSourceConfig,
     SitemapSourceConfig,
     ManualCsvSourceConfig,
+    GdeltSourceConfig,
 )
 BytesFetcher = Callable[[str], bytes]
 
