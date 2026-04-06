@@ -124,6 +124,44 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
     assert provider.request.max_chars == 120
 
 
+def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_topics() -> None:
+    provider = _CapturingProvider(
+        (
+            "First health draft https://gilgop.cloud/health",
+            "Second health draft https://gilgop.cloud/health",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    generator.generate(
+        content_brief=_build_content_brief(
+            title="FDA clears updated vaccine rollout",
+            summary="Public health officials shared a vaccine rollout update.",
+            landing_url="https://gilgop.cloud/health",
+            tags=("health", "vaccine"),
+        ),
+        account_key="public_health_daily",
+        account=_build_account_config(max_chars=140, topic="Public health updates"),
+        prompt_profile=PromptProfileConfig(
+            system_template=(
+                "System {{ sensitivity_domain }} :: "
+                "{% if sensitivity_is_high_risk %}{{ sensitivity_guidance }}{% endif %}"
+            ),
+            user_template=(
+                "User {{ title }} :: "
+                "{% if sensitivity_is_high_risk %}{{ sensitivity_review_note }}{% endif %} :: "
+                "{{ landing_url }}"
+            ),
+        ),
+        variant_count=2,
+    )
+
+    assert provider.request is not None
+    assert "System health ::" in provider.request.system_prompt
+    assert "Avoid medical advice" in provider.request.system_prompt
+    assert "Health coverage should stay attributed" in provider.request.user_prompt
+
+
 @pytest.mark.parametrize(
     ("variants", "message"),
     [
@@ -183,9 +221,9 @@ class _CapturingProvider:
         return self._variants
 
 
-def _build_account_config(*, max_chars: int) -> AccountConfig:
+def _build_account_config(*, max_chars: int, topic: str = "AI tools and workflows") -> AccountConfig:
     return AccountConfig(
-        topic="AI tools and workflows",
+        topic=topic,
         source_sets=("ai_tools_primary",),
         prompt_profile="ai_tools_default",
         landing={"fallback_url": "https://gilgop.cloud/ai-tools", "rules": []},
@@ -197,15 +235,20 @@ def _build_account_config(*, max_chars: int) -> AccountConfig:
         },
     )
 
-
-def _build_content_brief() -> ContentBrief:
+def _build_content_brief(
+    *,
+    title: str = "Useful AI workflow patterns",
+    summary: str = "A concise guide for operators.",
+    landing_url: str = "https://gilgop.cloud/ai-tools",
+    tags: tuple[str, ...] = ("ai", "automation"),
+) -> ContentBrief:
     source_item = SourceItem(
         id=1,
         source_key="finance_rss",
         external_id="entry-1",
         source_url="https://example.com/articles/1",
-        title="Useful AI workflow patterns",
-        summary="A concise guide for operators.",
+        title=title,
+        summary=summary,
         policy_mode=SourcePolicyMode.RESTRICTED,
         require_attribution=True,
     )
@@ -213,21 +256,21 @@ def _build_content_brief() -> ContentBrief:
         source_item_id=1,
         source_name="Finance Feed",
         article_url="https://example.com/articles/1",
-        regenerated_summary="A concise guide for operators.",
+        regenerated_summary=summary,
     )
     return ContentBrief(
         source_item_id=1,
         source_item=source_item,
         account_key="ai_tools_daily",
-        title="Useful AI workflow patterns",
-        summary="A concise guide for operators.",
+        title=title,
+        summary=summary,
         key_points=[
-            "Useful AI workflow patterns",
+            title,
             "Tight review loops",
             "Better scheduling",
         ],
-        landing_url="https://gilgop.cloud/ai-tools",
-        tags=["ai", "automation"],
+        landing_url=landing_url,
+        tags=list(tags),
         angle="practical_how_to",
         language="en",
     )

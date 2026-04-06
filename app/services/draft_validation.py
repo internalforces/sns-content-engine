@@ -11,6 +11,7 @@ from urllib import error, request
 from urllib.parse import urlsplit
 
 from app.config import AccountConfig
+from app.services.prompt_renderer import build_domain_sensitivity
 from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls, topic_keywords
 from app.storage import ContentBrief, DraftVariant, DraftVariantState
 
@@ -20,6 +21,21 @@ LandingUrlStatusFetcher = Callable[[str], int]
 _WHITESPACE_RE = re.compile(r"\s+")
 _URL_RE = re.compile(r"https?://\S+")
 _LANDING_URL_TIMEOUT_SECONDS = 10.0
+_HIGH_RISK_CLAIM_PHRASES: dict[str, tuple[str, ...]] = {
+    "finance": (
+        "buy now",
+        "sell now",
+        "price target",
+        "guaranteed return",
+        "safe bet",
+    ),
+    "health": (
+        "miracle cure",
+        "guaranteed recovery",
+        "safe for everyone",
+        "proven treatment",
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +138,13 @@ class DraftValidator:
                 normalized_body,
                 content_brief=content_brief,
                 account_key=account_key,
+                account=account,
+            )
+        )
+        issue_list.extend(
+            _validate_domain_sensitivity(
+                normalized_body,
+                content_brief=content_brief,
                 account=account,
             )
         )
@@ -465,6 +488,56 @@ def _build_topic_candidates(
     ]
     normalized = [normalize_match_text(candidate) for candidate in candidates]
     return tuple(dict.fromkeys(candidate for candidate in normalized if candidate))
+
+
+def _validate_domain_sensitivity(
+    body: str,
+    *,
+    content_brief: ContentBrief,
+    account: AccountConfig,
+) -> tuple[DraftValidationIssue, ...]:
+    normalized_body = normalize_match_text(strip_urls(body))
+    sensitivity = build_domain_sensitivity(
+        title=content_brief.title,
+        summary=content_brief.summary,
+        tags=tuple(content_brief.tags),
+        topic=account.topic,
+    )
+    if not sensitivity.is_high_risk or sensitivity.domain is None:
+        return ()
+
+    issues: list[DraftValidationIssue] = [
+        DraftValidationIssue(
+            code="high_risk_domain",
+            message=(
+                f"draft covers a high-risk {sensitivity.domain.replace('_', ' ')} topic; "
+                "manual review should verify cautious, attributed phrasing"
+            ),
+            severity="warning",
+            metadata={
+                "domain": sensitivity.domain,
+                "matched_terms": sensitivity.matched_terms,
+            },
+        )
+    ]
+
+    for phrase in _HIGH_RISK_CLAIM_PHRASES.get(sensitivity.domain, ()):
+        if not contains_phrase(phrase, normalized_body):
+            continue
+
+        issues.append(
+            DraftValidationIssue(
+                code="high_risk_claim_language",
+                message=(
+                    f"draft uses high-risk {sensitivity.domain} phrasing that requires rewrite: "
+                    f"{phrase!r}"
+                ),
+                severity="error",
+                metadata={"domain": sensitivity.domain, "phrase": phrase},
+            )
+        )
+
+    return tuple(issues)
 
 
 def _normalize_body(value: str) -> str:
