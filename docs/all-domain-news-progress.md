@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `11_review_scheduling_validation`
+- Current task: `12_history_query_expansion_and_operator_docs`
 - Active status: `done`
-- Last updated: `2026-04-06 14:25 KST`
-- Active branch: `codex/task-11-review-scheduling-validation`
-- Latest task commit: `Block policy-violating drafts from scheduling`
+- Last updated: `2026-04-06 14:46 KST`
+- Active branch: `codex/task-12-history-query-expansion-operator-docs`
+- Latest task commit: `ff47c93 Expand policy-aware history queries and add operator guide`
 
 ## Scope For Current Task
-- Goal: `Block scheduling of drafts that violate attribution, restricted-source reuse, or minimum provenance requirements`
-- In scope: `Draft-validator policy checks, review-queue scheduling integration, and focused schedule/validation coverage`
-- Out of scope: `Review UI redesign, publish-time connector policy enforcement, and new provenance storage fields`
+- Goal: `Expose policy-aware history fields for future UI/API use and document safe all-domain operator guidance`
+- In scope: `History query expansion, focused history-query coverage, README/doc updates, and operator guidance for policy categories, intentional skips, Codex-Wrapper usage, and manual review`
+- Out of scope: `New storage schema changes, speculative API endpoints, CLI redesign, and publish-time automation changes`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -38,7 +38,7 @@ Keep updates short, factual, and current.
 | 09 | Provenance visibility | done | 2026-04-06 13:23 KST | Snapshotted source origin and policy metadata onto stored drafts for review visibility |
 | 10 | Domain sensitivity guardrails | done | 2026-04-06 13:46 KST | Added shared sensitivity detection plus prompt and validation guardrails for high-risk topics |
 | 11 | Review scheduling validation | done | 2026-04-06 14:25 KST | Added schedule-time blockers for required attribution, restricted-source full-text reuse, and missing draft provenance |
-| 12 | History query expansion and operator docs | pending | - | |
+| 12 | History query expansion and operator docs | done | 2026-04-06 14:46 KST | Added policy-aware run/failure history fields, intentional policy-skip query output, and all-domain operator docs |
 
 Status values:
 - `pending`
@@ -47,11 +47,16 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/services/draft_validation.py`
-- `app/workflows/review_queue.py`
+- `README.md`
+- `app/connectors/llm/resolver.py`
+- `app/storage/repositories.py`
+- `app/workflows/generate_drafts.py`
+- `app/workflows/history_queries.py`
+- `app/workflows/run_local_pipeline.py`
+- `docs/all-domain-news-operator-guide.md`
 - `docs/all-domain-news-progress.md`
-- `tests/test_draft_validation.py`
-- `tests/test_review_queue_workflow.py`
+- `docs/finance-local-ui-data-contract.md`
+- `tests/test_history_queries.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -111,6 +116,12 @@ Status values:
 - `2026-04-06 14:23 KST` Added schedule-only draft validation rules for missing attribution, missing provenance snapshots, and restricted-source full-text reuse while leaving approval semantics unchanged
 - `2026-04-06 14:24 KST` Updated review-queue fixtures and validator coverage so policy-compliant scheduling still succeeds while blocked cases fail with readable error codes
 - `2026-04-06 14:25 KST` Completed task `11` after targeted validator/review-queue tests and CLI regression coverage passed
+- `2026-04-06 14:39 KST` Started task `12`. Scope: `policy-aware history query fields plus all-domain operator docs`
+- `2026-04-06 14:39 KST` Created or switched branch `codex/task-12-history-query-expansion-operator-docs`
+- `2026-04-06 14:42 KST` Extended run and failure history helpers with policy-mode metadata, intentional policy-skip rows, and safe parsing of stored run-summary policy fields
+- `2026-04-06 14:43 KST` Wired draft-generation provider names and per-run policy counts into stored run summaries without changing the database schema
+- `2026-04-06 14:45 KST` Added `docs/all-domain-news-operator-guide.md`, linked it from `README.md`, and updated the UI data contract notes for policy-aware run and failure history fields
+- `2026-04-06 14:46 KST` Completed task `12` after focused history-query tests and broader draft/run-local/routing regressions passed; commit `ff47c93` recorded with message `Expand policy-aware history queries and add operator guide`
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -136,12 +147,14 @@ Status values:
 - `2026-04-06 13:45 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py::test_registry_loads_sample_config_directory tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (12 passed)`
 - `2026-04-06 14:23 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_review_queue_workflow.py -q` -> `passed (36 passed)`
 - `2026-04-06 14:24 KST` `./.venv/bin/pytest tests/test_cli.py -q` -> `passed (32 passed)`
+- `2026-04-06 14:41 KST` `./.venv/bin/pytest tests/test_history_queries.py -q` -> `passed (3 passed)`
+- `2026-04-06 14:42 KST` `./.venv/bin/pytest tests/test_run_local_pipeline_workflow.py tests/test_generate_drafts_workflow.py tests/test_phase6_config_routing.py -q` -> `passed (58 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 12 remains next: expand policy-aware history queries and add operator-facing all-domain safety docs`
+- `Future CLI or API surfaces can render the new policy-aware history fields directly without additional storage changes`
 
 ## Completion Summary
-- `Task 11 complete: scheduling now blocks drafts that miss required source attribution, lack reviewer-facing provenance snapshots, or show fetched full-text reuse from restricted sources, with focused validator, review-queue, and CLI regressions passing`
+- `Task 12 complete: history queries now expose policy-aware run metadata plus intentional policy skips, run-local summaries record policy counts and rewrite providers, and the repository includes a dedicated all-domain operator guide`
