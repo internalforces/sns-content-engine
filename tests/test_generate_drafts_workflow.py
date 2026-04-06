@@ -8,7 +8,10 @@ from textwrap import dedent
 
 import pytest
 
-from app.connectors.llm import DraftGenerationProviderError
+from app.connectors.llm import (
+    CodexWrapperDraftGenerationProvider,
+    DraftGenerationProviderError,
+)
 from app.storage import (
     ContentBrief,
     ContentBriefRepository,
@@ -237,6 +240,46 @@ def test_generate_drafts_aborts_when_openai_provider_fails(monkeypatch, tmp_path
     assert stored_drafts == []
 
 
+def test_generate_drafts_accepts_codex_wrapper_provider(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    provider = CodexWrapperDraftGenerationProvider(
+        client=_RecordingCodexWrapperClient(
+            _StubCodexWrapperResponse(
+                '{"variants":['
+                '"Codex first draft https://gilgop.cloud/ai-tools",'
+                '"Codex second draft https://gilgop.cloud/ai-tools",'
+                '"Codex third draft https://gilgop.cloud/ai-tools"'
+                "]}"
+            )
+        )
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=provider,
+    )
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "x",
+        )
+
+    assert [draft.body for draft in stored_drafts] == [
+        "Codex first draft https://gilgop.cloud/ai-tools",
+        "Codex second draft https://gilgop.cloud/ai-tools",
+        "Codex third draft https://gilgop.cloud/ai-tools",
+    ]
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'drafts.db'}")
     create_all_tables(engine)
@@ -336,6 +379,34 @@ class _RecordingOpenAIClient:
         self.payloads: list[object] = []
 
     def create_response(self, *, payload) -> object:
+        self.payloads.append(payload)
+        if isinstance(self._response_or_exception, Exception):
+            raise self._response_or_exception
+        return self._response_or_exception
+
+
+class _StubCodexWrapperResponse:
+    def __init__(self, output_text: str) -> None:
+        self.output_text = output_text
+        self.choices = [_StubCodexWrapperChoice(output_text)]
+
+
+class _StubCodexWrapperChoice:
+    def __init__(self, output_text: str) -> None:
+        self.message = _StubCodexWrapperMessage(output_text)
+
+
+class _StubCodexWrapperMessage:
+    def __init__(self, output_text: str) -> None:
+        self.content = output_text
+
+
+class _RecordingCodexWrapperClient:
+    def __init__(self, response_or_exception: object) -> None:
+        self._response_or_exception = response_or_exception
+        self.payloads: list[object] = []
+
+    def create_completion(self, *, payload) -> object:
         self.payloads.append(payload)
         if isinstance(self._response_or_exception, Exception):
             raise self._response_or_exception

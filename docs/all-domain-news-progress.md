@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `05_policy_aware_enrichment_gating`
+- Current task: `06_codex_wrapper_provider`
 - Active status: `done`
-- Last updated: `2026-04-06 10:41 KST`
-- Active branch: `codex/task-05-policy-aware-enrichment-gating`
-- Latest task commit: `Add policy-aware enrichment skips`
+- Last updated: `2026-04-06 12:43 KST`
+- Active branch: `codex/task-06-codex-wrapper-provider`
+- Latest task commit: `Add Codex-Wrapper draft generation provider`
 
 ## Scope For Current Task
-- Goal: `Make article enrichment intentionally skip policy-blocked fetch or rewrite work instead of recording ordinary failures`
-- In scope: `Policy-aware gating in enrich_articles, readable persisted policy skip reasons, and focused workflow regression coverage`
-- Out of scope: `Provider routing, review validation, history-query expansion, and broader pipeline redesign`
+- Goal: `Add a draft-generation provider for an OpenAI-compatible Codex-Wrapper endpoint without changing the existing provider routing behavior yet`
+- In scope: `Codex-Wrapper provider implementation, env-based setup, request/error handling, focused provider tests, and draft workflow regression coverage`
+- Out of scope: `Provider routing config support, prompt-profile changes, and broader pipeline refactors`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -32,7 +32,7 @@ Keep updates short, factual, and current.
 | 03 | All-domain example config | done | 2026-04-06 10:00 KST | Added sample-only config set for reusable public, corporate, and attribution-friendly news sources with a commented GDELT placeholder |
 | 04 | GDELT discovery connector | done | 2026-04-06 10:28 KST | Added a discovery-only gdelt source type, request-normalizing connector, and safe sample docs |
 | 05 | Policy-aware enrichment gating | done | 2026-04-06 10:41 KST | Added intentional skip handling for blocked fetch/rewrite paths in enrichment with readable persisted reasons |
-| 06 | Codex-Wrapper provider | pending | - | |
+| 06 | Codex-Wrapper provider | done | 2026-04-06 12:43 KST | Added an OpenAI-compatible draft provider, export wiring, and workflow compatibility coverage |
 | 07 | Provider routing support | pending | - | |
 | 08 | All-domain prompt profiles | pending | - | |
 | 09 | Provenance visibility | pending | - | |
@@ -47,9 +47,11 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/workflows/enrich_articles.py`
+- `app/connectors/llm/__init__.py`
+- `app/connectors/llm/codex_wrapper_provider.py`
 - `docs/all-domain-news-progress.md`
-- `tests/test_enrich_articles_workflow.py`
+- `tests/test_codex_wrapper_provider.py`
+- `tests/test_generate_drafts_workflow.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -79,6 +81,11 @@ Status values:
 - `2026-04-06 10:39 KST` Updated `enrich_articles` to treat blocked full-text fetch and blocked rewrite as intentional skips, persisting readable policy reasons instead of failure codes
 - `2026-04-06 10:40 KST` Added focused workflow tests covering allowed enrichment, blocked full-text fetch, blocked rewrite, and existing completed enrichments
 - `2026-04-06 10:41 KST` Completed task `05` after targeted enrichment tests and a broader run-local regression slice passed
+- `2026-04-06 12:38 KST` Started task `06`. Scope: `Codex-Wrapper draft-generation provider with env-based setup, OpenAI-compatible request shaping, and focused error handling`
+- `2026-04-06 12:38 KST` Created or switched branch `codex/task-06-codex-wrapper-provider`
+- `2026-04-06 12:40 KST` Added `CodexWrapperDraftGenerationProvider` with env-based setup for an OpenAI-compatible chat-completions endpoint, JSON-output instructions, and consistent error mapping
+- `2026-04-06 12:42 KST` Exported the new provider and added focused provider/workflow coverage for env defaults, explicit overrides, malformed responses, upstream failures, and draft persistence compatibility
+- `2026-04-06 12:43 KST` Completed task `06` after targeted Codex-Wrapper tests and broader OpenAI draft workflow regression tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -92,12 +99,14 @@ Status values:
 - `2026-04-06 10:27 KST` `./.venv/bin/pytest tests/test_source_connectors.py tests/test_discover_workflow.py tests/test_config.py -q` -> `passed (41 passed)`
 - `2026-04-06 10:40 KST` `./.venv/bin/pytest tests/test_enrich_articles_workflow.py -q` -> `passed (5 passed)`
 - `2026-04-06 10:40 KST` `./.venv/bin/pytest tests/test_enrich_articles_workflow.py tests/test_run_local_pipeline_workflow.py -q` -> `passed (6 passed)`
+- `2026-04-06 12:42 KST` `./.venv/bin/pytest tests/test_codex_wrapper_provider.py tests/test_generate_drafts_workflow.py::test_generate_drafts_accepts_codex_wrapper_provider -q` -> `passed (12 passed)`
+- `2026-04-06 12:43 KST` `./.venv/bin/pytest tests/test_openai_llm_provider.py tests/test_generate_drafts_workflow.py -q` -> `passed (20 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 06 can build on the new skip behavior without changing manual review defaults or the current summary fallback path`
+- `Task 07 should wire codex_wrapper into resolver and config-driven routing without changing the provider module contract introduced here`
 
 ## Completion Summary
-- `Task 05 complete: enrichment now records policy-blocked fetch and rewrite paths as intentional skips with readable reasons, while reusable sources and existing completed enrichments keep their previous behavior`
+- `Task 06 complete: added a Codex-Wrapper draft-generation provider for OpenAI-compatible chat completions, exported it through the LLM package surface, and verified it works with draft generation when injected directly while leaving resolver/routing changes for Task 07`
