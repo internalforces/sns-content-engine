@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_foundation`
-- Current task: `09_provenance_visibility`
+- Current task: `10_domain_sensitivity_guardrails`
 - Active status: `done`
-- Last updated: `2026-04-06 13:23 KST`
-- Active branch: `codex/task-09-provenance-visibility`
-- Latest task commit: `Persist draft provenance snapshots`
+- Last updated: `2026-04-06 13:46 KST`
+- Active branch: `codex/task-10-domain-sensitivity-guardrails`
+- Latest task commit: `Add domain sensitivity guardrails for high-risk topics`
 
 ## Scope For Current Task
-- Goal: `Persist and expose draft provenance snapshots so reviewers can understand source origin and policy context without log inspection`
-- In scope: `DraftVariant provenance fields, draft-generation snapshot wiring, and focused storage/workflow/generator coverage`
-- Out of scope: `Review queue UX redesign, policy enforcement changes, and domain-sensitivity logic`
+- Goal: `Add lightweight domain-sensitivity guardrails so higher-risk topics get more cautious prompt and validation behavior without changing the review-first flow`
+- In scope: `Rule-based sensitivity detection, prompt-generation guardrails, and focused validator/test coverage for sensitive vs neutral topics`
+- Out of scope: `Heavyweight classifiers, review queue UX changes, and publish-policy enforcement`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -36,7 +36,7 @@ Keep updates short, factual, and current.
 | 07 | Provider routing support | done | 2026-04-06 12:56 KST | Wired codex_wrapper into route registry and draft resolver, updated sample config, and verified mixed fallback coverage |
 | 08 | All-domain prompt profiles | done | 2026-04-06 13:07 KST | Added neutral all-domain prompt profiles, sample-account selection, and attribution-aware prompt context coverage |
 | 09 | Provenance visibility | done | 2026-04-06 13:23 KST | Snapshotted source origin and policy metadata onto stored drafts for review visibility |
-| 10 | Domain sensitivity guardrails | pending | - | |
+| 10 | Domain sensitivity guardrails | done | 2026-04-06 13:46 KST | Added shared sensitivity detection plus prompt and validation guardrails for high-risk topics |
 | 11 | Review scheduling validation | pending | - | |
 | 12 | History query expansion and operator docs | pending | - | |
 
@@ -47,13 +47,14 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
+- `app/services/draft_validation.py`
+- `app/services/prompt_renderer.py`
 - `app/services/x_draft_generator.py`
-- `app/storage/bootstrap.py`
-- `app/storage/models.py`
-- `app/workflows/generate_drafts.py`
+- `config/prompts.yaml`
 - `docs/all-domain-news-progress.md`
-- `tests/test_generate_drafts_workflow.py`
-- `tests/test_storage.py`
+- `tests/test_draft_validation.py`
+- `tests/test_prompt_renderer.py`
+- `tests/test_x_draft_generator.py`
 
 ## Progress Log
 - `2026-04-05 20:48 KST` Started task `01`. Scope: `source policy schema defaults and validation coverage`
@@ -103,6 +104,11 @@ Status values:
 - `2026-04-06 13:20 KST` Added draft-level provenance snapshot fields for source name, URLs, published timestamp, and policy mode; wired draft generation to persist a consistent snapshot derived from the content brief source item
 - `2026-04-06 13:21 KST` Added focused workflow and storage coverage for persisted provenance snapshots plus schema-drift detection of the new draft columns
 - `2026-04-06 13:23 KST` Completed task `09` after targeted provenance tests and broader draft/storage regression tests passed
+- `2026-04-06 13:39 KST` Started task `10`. Scope: `lightweight domain-sensitivity detection with prompt and validation guardrails`
+- `2026-04-06 13:39 KST` Created or switched branch `codex/task-10-domain-sensitivity-guardrails`
+- `2026-04-06 13:45 KST` Added a shared rule-based domain-sensitivity helper for politics, finance, health, and crime-or-disaster topics; wired the new context into all-domain prompt templates and X draft generation
+- `2026-04-06 13:45 KST` Added validator warnings for high-risk domains plus blocking phrase checks for finance and health claim language; updated focused renderer, generator, and validator tests
+- `2026-04-06 13:46 KST` Completed task `10` after focused prompt, generator, validator, draft-workflow, and config regression tests passed
 
 ## Test Log
 - `2026-04-05 20:51 KST` `./.venv/bin/pytest tests/test_config.py::test_sources_default_duplicate_window_days_to_thirty tests/test_config.py::test_sources_load_policy_overrides_for_supported_variants tests/test_config.py::test_invalid_source_policy_mode_raises_validation_error -q` -> `passed (3 passed)`
@@ -124,12 +130,14 @@ Status values:
 - `2026-04-06 13:06 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py -q` -> `passed (31 passed)`
 - `2026-04-06 13:21 KST` `./.venv/bin/pytest tests/test_storage.py::test_draft_variant_can_store_provenance_snapshot tests/test_storage.py::test_draft_variant_get_or_create_is_idempotent tests/test_storage.py::test_bootstrap_database_detects_missing_draft_variant_provenance_columns tests/test_generate_drafts_workflow.py::test_generate_drafts_persists_source_and_policy_provenance_on_drafts -q` -> `passed (4 passed)`
 - `2026-04-06 13:22 KST` `./.venv/bin/pytest tests/test_storage.py tests/test_generate_drafts_workflow.py tests/test_x_draft_generator.py -q` -> `passed (62 passed)`
+- `2026-04-06 13:45 KST` `./.venv/bin/pytest tests/test_prompt_renderer.py tests/test_x_draft_generator.py tests/test_draft_validation.py -q` -> `passed (31 passed)`
+- `2026-04-06 13:45 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_config.py::test_registry_loads_sample_config_directory tests/test_config.py::test_registry_loads_all_domain_example_config_directory -q` -> `passed (12 passed)`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `None currently`
+- `UI or review-queue surfacing of high-risk warnings remains deferred; this task keeps the signal in prompt context and draft validation only`
 
 ## Completion Summary
-- `Task 09 complete: stored draft-level provenance snapshots for source name, source URL, article URL, published timestamp, and source policy mode; kept prompt rendering aligned through a shared provenance helper; and verified persistence plus schema validation with focused regressions`
+- `Task 10 complete: added shared rule-based sensitivity detection for politics, finance, health, and crime-or-disaster topics; threaded the signal into all-domain prompt context; flagged high-risk drafts during validation; and blocked explicit finance/health claim language with focused regressions`

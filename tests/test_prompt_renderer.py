@@ -6,6 +6,7 @@ import pytest
 
 from app.config import PromptProfileConfig
 from app.services import PromptRenderer, PromptRenderingError
+from app.services.prompt_renderer import build_domain_sensitivity
 
 
 def test_prompt_renderer_renders_profile_with_full_context() -> None:
@@ -73,3 +74,49 @@ def test_prompt_renderer_supports_source_policy_conditionals_and_fallbacks() -> 
         rendered.user_prompt
         == "User Verified update from a public source. -> https://newsroom.example.com/daily-brief"
     )
+
+
+def test_prompt_renderer_supports_domain_sensitivity_conditionals() -> None:
+    renderer = PromptRenderer()
+    profile = PromptProfileConfig(
+        system_template=(
+            "System {% if sensitivity_is_high_risk %}{{ sensitivity_domain }} :: "
+            "{{ sensitivity_guidance }}{% else %}neutral{% endif %}"
+        ),
+        user_template=(
+            "User {% if sensitivity_is_high_risk %}{{ sensitivity_review_note }}{% else %}plain{% endif %}"
+        ),
+    )
+
+    sensitivity = build_domain_sensitivity(
+        title="FDA clears updated vaccine rollout",
+        summary="Public health officials shared a nationwide vaccine update.",
+        tags=("health", "vaccine"),
+        topic="Health policy updates",
+    )
+    rendered = renderer.render(
+        profile,
+        context={
+            "sensitivity_domain": sensitivity.domain,
+            "sensitivity_is_high_risk": sensitivity.is_high_risk,
+            "sensitivity_guidance": sensitivity.prompt_guidance,
+            "sensitivity_review_note": sensitivity.review_note,
+        },
+    )
+
+    assert rendered.system_prompt.startswith("System health :: Avoid medical advice")
+    assert "Health coverage should stay attributed" in rendered.user_prompt
+
+
+def test_build_domain_sensitivity_returns_neutral_signal_for_low_risk_topic() -> None:
+    sensitivity = build_domain_sensitivity(
+        title="New AI workflow shortcuts for small teams",
+        summary="A practical guide for operators.",
+        tags=("ai", "automation"),
+        topic="AI tools and workflows",
+    )
+
+    assert sensitivity.is_high_risk is False
+    assert sensitivity.domain is None
+    assert sensitivity.matched_terms == ()
+    assert sensitivity.prompt_guidance is None

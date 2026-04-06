@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.config import AccountConfig, PromptProfileConfig
 from app.connectors.llm import DraftGenerationProvider, DraftGenerationRequest
-from app.services.prompt_renderer import PromptRenderer
+from app.services.prompt_renderer import PromptRenderer, build_domain_sensitivity
 from app.storage import ContentBrief, SourcePolicyMode
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -100,6 +100,12 @@ def _build_render_context(
     max_chars: int,
 ) -> Mapping[str, object]:
     provenance = build_draft_provenance_snapshot(content_brief)
+    sensitivity = build_domain_sensitivity(
+        title=content_brief.title,
+        summary=content_brief.summary,
+        tags=tuple(content_brief.tags),
+        topic=account.topic,
+    )
     return {
         "account_key": account_key,
         "topic": account.topic,
@@ -117,6 +123,11 @@ def _build_render_context(
         "article_summary": _article_summary(content_brief),
         "policy_mode": provenance.policy_mode.value if provenance.policy_mode is not None else None,
         "require_attribution": _require_attribution(content_brief),
+        "sensitivity_domain": sensitivity.domain,
+        "sensitivity_is_high_risk": sensitivity.is_high_risk,
+        "sensitivity_matched_terms": sensitivity.matched_terms,
+        "sensitivity_guidance": sensitivity.prompt_guidance,
+        "sensitivity_review_note": sensitivity.review_note,
     }
 
 

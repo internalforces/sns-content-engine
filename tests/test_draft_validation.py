@@ -24,6 +24,60 @@ def test_draft_validator_accepts_valid_draft_body() -> None:
     assert result.issues == ()
 
 
+def test_draft_validator_warns_when_high_risk_finance_topic_is_detected() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Markets update points to a slower inflation print https://gilgop.cloud/finance",
+        content_brief=_build_content_brief(
+            account_key="finance_news_daily",
+            title="Markets react to inflation slowdown",
+            summary="Investors are parsing a fresh inflation update.",
+            landing_url="https://gilgop.cloud/finance",
+            tags=("finance", "markets"),
+        ),
+        account_key="finance_news_daily",
+        account=_build_account_config(
+            topic="Finance markets and investing",
+            landing_url="https://gilgop.cloud/finance",
+            include_keywords=("markets", "inflation"),
+            source_tags=("finance",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is True
+    assert _issue_codes(result) == {"high_risk_domain"}
+    assert {issue.severity for issue in result.issues} == {"warning"}
+
+
+def test_draft_validator_errors_on_high_risk_finance_claim_language() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Buy now before the next move in markets https://gilgop.cloud/finance",
+        content_brief=_build_content_brief(
+            account_key="finance_news_daily",
+            title="Markets react to inflation slowdown",
+            summary="Investors are parsing a fresh inflation update.",
+            landing_url="https://gilgop.cloud/finance",
+            tags=("finance", "markets"),
+        ),
+        account_key="finance_news_daily",
+        account=_build_account_config(
+            topic="Finance markets and investing",
+            landing_url="https://gilgop.cloud/finance",
+            include_keywords=("markets", "inflation"),
+            source_tags=("finance",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"high_risk_domain", "high_risk_claim_language"}
+    assert {issue.severity for issue in result.errors} == {"error"}
+
+
 def test_draft_validator_flags_char_limit_exceeded() -> None:
     validator = DraftValidator()
 
@@ -266,8 +320,23 @@ def test_draft_validator_errors_when_finance_profile_misses_topic_guard() -> Non
     )
 
     assert result.is_valid is False
-    assert _issue_codes(result) == {"topic_guard_failed"}
-    assert {issue.severity for issue in result.issues} == {"error"}
+    assert _issue_codes(result) == {"topic_guard_failed", "high_risk_domain"}
+    assert {issue.severity for issue in result.errors} == {"error"}
+
+
+def test_draft_validator_keeps_neutral_topics_free_of_domain_sensitivity_flags() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(),
+        channel="x",
+    )
+
+    assert "high_risk_domain" not in _issue_codes(result)
+    assert "high_risk_claim_language" not in _issue_codes(result)
 
 
 def _issue_codes(result) -> set[str]:
@@ -323,16 +392,18 @@ def _build_account_config(
 def _build_content_brief(
     *,
     account_key: str = "ai_tools_daily",
+    title: str = "Useful AI workflow patterns",
+    summary: str = "A concise guide for operators.",
     landing_url: str = "https://gilgop.cloud/ai-tools",
     tags: tuple[str, ...] = ("ai", "automation"),
 ) -> ContentBrief:
     return ContentBrief(
         source_item_id=1,
         account_key=account_key,
-        title="Useful AI workflow patterns",
-        summary="A concise guide for operators.",
+        title=title,
+        summary=summary,
         key_points=[
-            "Useful AI workflow patterns",
+            title,
             "Tight review loops",
         ],
         landing_url=landing_url,
