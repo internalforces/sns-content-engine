@@ -1,0 +1,63 @@
+sources:
+  official_updates_reusable:
+    type: rss
+    url: https://public.example.com/agency/press/feed.xml
+    policy_mode: reusable
+    allow_full_text_fetch: true
+    allow_llm_rewrite: true
+    require_attribution: true
+    notes: "Sample official or government-style feed. Replace with a real public institution RSS feed."
+    duplicate_window_days: 7
+
+  corporate_ir_reusable:
+    type: sitemap
+    url: https://investors.example.com/newsroom/sitemap.xml
+    policy_mode: reusable
+    allow_full_text_fetch: true
+    allow_llm_rewrite: true
+    require_attribution: true
+    notes: "Sample corporate newsroom or investor-relations sitemap. Replace with a real newsroom or IR source."
+    duplicate_window_days: 7
+
+  wikinews_attribution_friendly:
+    type: rss
+    url: https://wikinews.example.org/wiki/Special:NewsFeed?feed=rss
+    policy_mode: reusable
+    allow_full_text_fetch: true
+    allow_llm_rewrite: true
+    require_attribution: true
+    notes: "Sample Wikinews-style source with attribution-friendly defaults."
+    duplicate_window_days: 3
+
+  # Enable this after Task 04 adds the gdelt connector type.
+  # gdelt_discovery_placeholder:
+  #   type: gdelt
+  #   query: "domain:news"
+  #   policy_mode: discovery_only
+  #   allow_full_text_fetch: false
+  #   allow_llm_rewrite: false
+  #   require_attribution: true
+  #   notes: "Placeholder future GDELT discovery source. Keep discovery-only until paired with a reusable source."
+
+source_sets:
+  public_reusable:
+    sources:
+      - official_updates_reusable
+
+  corporate_reusable:
+    sources:
+      - corporate_ir_reusable
+
+  attribution_friendly_reusable:
+    sources:
+      - wikinews_attribution_friendly
+
+  all_domain_primary:
+    sources:
+      - official_updates_reusable
+      - corporate_ir_reusable
+      - wikinews_attribution_friendly
+
+  # future_discovery:
+  #   sources:
+  #     - gdelt_discovery_placeholder

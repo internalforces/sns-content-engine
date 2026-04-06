@@ -14,6 +14,7 @@ from app.config import (
     ConfigValidationError,
     ManualCsvSourceConfig,
     RssSourceConfig,
+    SitemapSourceConfig,
     load_sources_config,
 )
 
@@ -71,8 +72,65 @@ def test_registry_loads_sample_config_directory() -> None:
     assert registry.get_prompt_profile("seo_tools_default").system_template.startswith(
         "You are the growth editor"
     )
-    assert registry.get_source_set("ai_tools_primary").sources == ("ai_tools_manual",)
-    assert registry.get_source_set("seo_tools_primary").sources == ("seo_tools_manual",)
+    assert registry.get_source_set("ai_tools_primary").sources == (
+        "ai_tools_rss",
+        "ai_tools_manual",
+    )
+    assert registry.get_source_set("seo_tools_primary").sources == (
+        "seo_tools_rss",
+        "seo_tools_manual",
+    )
+
+
+def test_registry_loads_all_domain_example_config_directory() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/examples/all_domain_news")
+
+    account = registry.get_account("all_domain_news_daily")
+    channel = account.channels["x"]
+    official_source = registry.get_source("official_updates_reusable")
+    corporate_source = registry.get_source("corporate_ir_reusable")
+    wikinews_source = registry.get_source("wikinews_attribution_friendly")
+
+    assert account.topic == "All-domain latest news"
+    assert account.prompt_profile == "all_domain_review_default"
+    assert list(account.source_sets) == ["all_domain_primary"]
+    assert str(account.landing.fallback_url) == "https://newsroom.example.com/daily-brief"
+    assert account.matching.include_keywords == ("policy", "launch", "update", "report", "statement")
+    assert account.matching.exclude_keywords == ("coupon", "giveaway", "rumor")
+    assert account.matching.source_tags == ("official", "newsroom", "wikinews")
+    assert account.validation.profile == "standard"
+    assert channel.validation.max_links == 1
+    assert channel.validation.recent_duplicate_window_days == 2
+
+    assert isinstance(official_source, RssSourceConfig)
+    assert official_source.policy_mode == "reusable"
+    assert official_source.require_attribution is True
+    assert official_source.allow_full_text_fetch is True
+    assert "government-style feed" in official_source.notes
+
+    assert isinstance(corporate_source, SitemapSourceConfig)
+    assert corporate_source.policy_mode == "reusable"
+    assert corporate_source.require_attribution is True
+    assert corporate_source.allow_llm_rewrite is True
+
+    assert isinstance(wikinews_source, RssSourceConfig)
+    assert wikinews_source.policy_mode == "reusable"
+    assert wikinews_source.require_attribution is True
+    assert wikinews_source.notes == "Sample Wikinews-style source with attribution-friendly defaults."
+
+    assert registry.get_prompt_profile("all_domain_review_default").system_template.startswith(
+        "You are the review-first editor"
+    )
+    assert registry.get_source_set("public_reusable").sources == ("official_updates_reusable",)
+    assert registry.get_source_set("corporate_reusable").sources == ("corporate_ir_reusable",)
+    assert registry.get_source_set("attribution_friendly_reusable").sources == (
+        "wikinews_attribution_friendly",
+    )
+    assert registry.get_source_set("all_domain_primary").sources == (
+        "official_updates_reusable",
+        "corporate_ir_reusable",
+        "wikinews_attribution_friendly",
+    )
 
 
 def test_registry_is_deeply_immutable() -> None:
