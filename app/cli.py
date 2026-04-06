@@ -297,6 +297,65 @@ def run_local_command(
 
 
 
+def _format_history_run_row(row: object) -> str:
+    parts = [
+        f"run_id={row.run_id}",
+        f"status={row.status}",
+        f"discovered={row.discovered_count}",
+        f"saved={row.saved_count}",
+        f"enriched={row.enriched_count}",
+        f"briefs={row.brief_count}",
+        f"drafts={row.draft_count}",
+        f"failures={row.failure_count}",
+        f"policy_skipped={getattr(row, 'policy_skipped_count', 0)}",
+        f"attribution_required={getattr(row, 'attribution_required_count', 0)}",
+    ]
+    policy_mode_counts = getattr(row, "policy_mode_counts", {}) or {}
+    if policy_mode_counts:
+        parts.append(
+            "policy_modes="
+            + ",".join(
+                f"{policy_mode}:{count}"
+                for policy_mode, count in sorted(policy_mode_counts.items())
+            )
+        )
+    rewrite_providers = tuple(getattr(row, "rewrite_providers", ()) or ())
+    if rewrite_providers:
+        parts.append(f"rewrite_providers={','.join(rewrite_providers)}")
+    return " ".join(parts)
+
+
+def _format_history_failure_row(row: object) -> str:
+    return " ".join(
+        [
+            "type=failure",
+            f"source_item_id={row.source_item_id}",
+            f"stage={row.failure_stage or 'unknown'}",
+            f"code={row.failure_code}",
+            f"policy_mode={getattr(row, 'source_policy_mode', 'unknown')}",
+            f"attribution_required={_format_cli_bool(getattr(row, 'require_attribution', False))}",
+            f"message={row.failure_message}",
+        ]
+    )
+
+
+def _format_history_policy_skip_row(row: object) -> str:
+    return " ".join(
+        [
+            "type=policy_skip",
+            f"source_item_id={row.source_item_id}",
+            f"stage={row.skipped_stage}",
+            f"policy_mode={row.source_policy_mode}",
+            f"attribution_required={_format_cli_bool(row.require_attribution)}",
+            f"reason={row.policy_decision_reason}",
+        ]
+    )
+
+
+def _format_cli_bool(value: object) -> str:
+    return "true" if bool(value) else "false"
+
+
 @history_app.command("runs")
 def history_runs_command(
     database_url: Annotated[
@@ -312,11 +371,7 @@ def history_runs_command(
 
     result = list_pipeline_runs(database_url=database_url, limit=limit)
     for row in result.runs:
-        typer.echo(
-            f"run_id={row.run_id} status={row.status} discovered={row.discovered_count} "
-            f"saved={row.saved_count} enriched={row.enriched_count} briefs={row.brief_count} "
-            f"drafts={row.draft_count} failures={row.failure_count}"
-        )
+        typer.echo(_format_history_run_row(row))
 
 
 @history_app.command("failures")
@@ -334,10 +389,10 @@ def history_failures_command(
 
     result = list_pipeline_failures(database_url=database_url, limit=limit)
     for row in result.failures:
-        typer.echo(
-            f"source_item_id={row.source_item_id} stage={row.failure_stage or 'unknown'} "
-            f"code={row.failure_code} message={row.failure_message}"
-        )
+        typer.echo(_format_history_failure_row(row))
+    for row in getattr(result, "policy_skips", ()):
+        typer.echo(_format_history_policy_skip_row(row))
+
 
 @review_app.command("list")
 def review_list_command(

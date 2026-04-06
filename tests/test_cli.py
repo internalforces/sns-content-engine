@@ -349,6 +349,13 @@ def test_history_runs_command_outputs_recent_runs(monkeypatch) -> None:
                             "brief_count": 2,
                             "draft_count": 6,
                             "failure_count": 1,
+                            "policy_mode_counts": {
+                                "discovery_only": 1,
+                                "reusable": 2,
+                            },
+                            "policy_skipped_count": 1,
+                            "attribution_required_count": 2,
+                            "rewrite_providers": ("codex_wrapper", "fake"),
                         },
                     )(),
                 )
@@ -359,7 +366,12 @@ def test_history_runs_command_outputs_recent_runs(monkeypatch) -> None:
     result = runner.invoke(app, ["history", "runs"])
 
     assert result.exit_code == 0
-    assert "run_id=5 status=partial discovered=4 saved=3 enriched=2 briefs=2 drafts=6 failures=1" in result.stdout
+    assert (
+        "run_id=5 status=partial discovered=4 saved=3 enriched=2 briefs=2 drafts=6 "
+        "failures=1 policy_skipped=1 attribution_required=2 "
+        "policy_modes=discovery_only:1,reusable:2 rewrite_providers=codex_wrapper,fake"
+        in result.stdout
+    )
 
 
 
@@ -379,10 +391,25 @@ def test_history_failures_command_outputs_readable_failures(monkeypatch) -> None
                             "source_item_id": 9,
                             "failure_stage": "html_fetch",
                             "failure_code": "fetch_blocked",
+                            "source_policy_mode": "restricted",
+                            "require_attribution": True,
                             "failure_message": "사이트 접근이 차단되었어요",
                         },
                     )(),
-                )
+                ),
+                "policy_skips": (
+                    type(
+                        "PolicySkipRow",
+                        (),
+                        {
+                            "source_item_id": 12,
+                            "skipped_stage": "html_fetch",
+                            "source_policy_mode": "discovery_only",
+                            "require_attribution": True,
+                            "policy_decision_reason": "Source policy blocks full-text fetch for this item.",
+                        },
+                    )(),
+                ),
             },
         )(),
     )
@@ -390,7 +417,16 @@ def test_history_failures_command_outputs_readable_failures(monkeypatch) -> None
     result = runner.invoke(app, ["history", "failures"])
 
     assert result.exit_code == 0
-    assert "source_item_id=9 stage=html_fetch code=fetch_blocked message=사이트 접근이 차단되었어요" in result.stdout
+    assert (
+        "type=failure source_item_id=9 stage=html_fetch code=fetch_blocked "
+        "policy_mode=restricted attribution_required=true message=사이트 접근이 차단되었어요"
+        in result.stdout
+    )
+    assert (
+        "type=policy_skip source_item_id=12 stage=html_fetch policy_mode=discovery_only "
+        "attribution_required=true reason=Source policy blocks full-text fetch for this item."
+        in result.stdout
+    )
 
 
 def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
