@@ -14,7 +14,7 @@ from app.config import ConfigError
 from app.storage import DatabaseSchemaError
 
 if TYPE_CHECKING:
-    from app.storage import DraftVariant
+    from app.storage import DraftVariant, ReviewAction
     from app.workflows.history_queries import (
         ArticleStatusResult,
         ArticleStatusRow,
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         PipelineRunHistoryRow,
     )
     from app.workflows.review_queue import PendingReviewDraft, PendingReviewDraftsResult, ReviewDraftResult
+    from app.workflows.review_queue import ReviewDraftDetailResult
 
 
 class _ApiModel(BaseModel):
@@ -177,6 +178,30 @@ class ReviewDraftArticleEnrichmentResponse(_ApiModel):
     classification: str | None
 
 
+class ReviewDraftAuditEntryResponse(_ApiModel):
+    action_id: int
+    action_type: str
+    reviewer: str
+    created_at: str
+    before_text: str
+    after_text: str
+    draft_state_before: str
+    draft_state_after: str
+    rejection_reason: str | None
+    scheduled_for: str | None
+    publish_job_id: int | None
+
+
+class ReviewDraftSiblingVariantResponse(_ApiModel):
+    draft_id: int
+    variant_index: int
+    body: str
+    draft_state: str
+    rejection_reason: str | None
+    created_at: str
+    reviewed_at: str | None
+
+
 class ReviewDraftDetailResponse(_ApiModel):
     draft_id: int
     account_key: str
@@ -191,6 +216,8 @@ class ReviewDraftDetailResponse(_ApiModel):
     brief: ReviewDraftBriefResponse
     source_item: ReviewDraftSourceItemResponse
     article_enrichment: ReviewDraftArticleEnrichmentResponse | None
+    review_actions: list[ReviewDraftAuditEntryResponse]
+    sibling_variants: list[ReviewDraftSiblingVariantResponse]
 
 
 class ReviewActionContextRequest(_ApiModel):
@@ -236,7 +263,7 @@ def create_app(
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
     article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
-    review_draft_detail_fetcher: Callable[..., DraftVariant] | None = None,
+    review_draft_detail_fetcher: Callable[..., ReviewDraftDetailResult] | None = None,
     draft_approver: Callable[..., ReviewDraftResult] | None = None,
     draft_rejector: Callable[..., ReviewDraftResult] | None = None,
     draft_editor: Callable[..., ReviewDraftResult] | None = None,
@@ -443,8 +470,8 @@ def create_app(
         draft_id: int,
         database_url: str | None = Query(default=None),
     ) -> ReviewDraftDetailResponse:
-        draft = review_draft_detail_fetcher(draft_id, database_url=database_url)
-        return _build_review_draft_detail_response(draft)
+        detail = review_draft_detail_fetcher(draft_id, database_url=database_url)
+        return _build_review_draft_detail_response(detail)
 
     @application.post("/reviews/{draft_id}/approve", response_model=ReviewActionResponse, tags=["reviews"])
     def approve_review_draft(
@@ -591,7 +618,8 @@ def _build_pending_review_draft_response(row: PendingReviewDraft) -> PendingRevi
     )
 
 
-def _build_review_draft_detail_response(draft: DraftVariant) -> ReviewDraftDetailResponse:
+def _build_review_draft_detail_response(detail) -> ReviewDraftDetailResponse:
+    draft = detail.draft
     content_brief = draft.content_brief
     source_item = content_brief.source_item
     article_enrichment = source_item.article_enrichment
@@ -639,6 +667,10 @@ def _build_review_draft_detail_response(draft: DraftVariant) -> ReviewDraftDetai
         article_enrichment=_build_review_draft_article_enrichment_response(article_enrichment)
         if article_enrichment
         else None,
+        review_actions=[_build_review_draft_audit_entry_response(action) for action in detail.review_actions],
+        sibling_variants=[
+            _build_review_draft_sibling_variant_response(variant) for variant in detail.sibling_variants
+        ],
     )
 
 
@@ -656,6 +688,34 @@ def _build_review_draft_article_enrichment_response(
         regenerated_summary=article_enrichment.regenerated_summary,
         regenerated_key_points=list(article_enrichment.regenerated_key_points),
         classification=article_enrichment.classification,
+    )
+
+
+def _build_review_draft_audit_entry_response(action: ReviewAction) -> ReviewDraftAuditEntryResponse:
+    return ReviewDraftAuditEntryResponse(
+        action_id=action.id,
+        action_type=action.action_type.value,
+        reviewer=action.reviewer,
+        created_at=action.created_at.isoformat(),
+        before_text=action.before_text,
+        after_text=action.after_text,
+        draft_state_before=action.draft_state_before.value,
+        draft_state_after=action.draft_state_after.value,
+        rejection_reason=action.rejection_reason,
+        scheduled_for=action.scheduled_for.isoformat() if action.scheduled_for else None,
+        publish_job_id=action.publish_job_id,
+    )
+
+
+def _build_review_draft_sibling_variant_response(draft: DraftVariant) -> ReviewDraftSiblingVariantResponse:
+    return ReviewDraftSiblingVariantResponse(
+        draft_id=draft.id,
+        variant_index=draft.variant_index,
+        body=draft.body,
+        draft_state=draft.state.value,
+        rejection_reason=draft.rejection_reason,
+        created_at=draft.created_at.isoformat(),
+        reviewed_at=draft.reviewed_at.isoformat() if draft.reviewed_at else None,
     )
 
 

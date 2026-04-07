@@ -37,6 +37,7 @@ from app.workflows import (
     reject_draft,
     schedule_draft,
 )
+from app.workflows.review_queue import get_review_draft_detail
 
 _DRAFT_SOURCE_COUNTER = count()
 _VALID_DRAFT_BODY = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
@@ -71,6 +72,70 @@ def test_list_pending_review_drafts_returns_only_pending(session_factory) -> Non
     assert result.drafts[0].account_key == "ai_tools_daily"
     assert result.drafts[0].channel == "x"
     assert result.drafts[0].title == "Brief for draft"
+
+
+def test_get_review_draft_detail_returns_audit_history_and_sibling_variants(
+    session_factory, config_dir
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, body=_VALID_DRAFT_BODY)
+        draft_id = draft.id
+
+    updated_body = "Updated AI automation operator draft body https://gilgop.cloud/ai-tools"
+    edit_draft(
+        draft_id,
+        body=updated_body,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    approve_draft(
+        draft_id,
+        reviewer="editor-b",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+
+    with session_scope(session_factory) as session:
+        repository = DraftVariantRepository(session)
+        stored_draft = repository.get(draft_id)
+        assert stored_draft is not None
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=2,
+                body="Variant two for side-by-side comparison",
+            )
+        )
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=1,
+                body="Variant one for side-by-side comparison",
+            )
+        )
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="linkedin",
+                variant_index=0,
+                body="Different channel comparison variant",
+            )
+        )
+
+    detail = get_review_draft_detail(draft_id, session_factory=session_factory)
+
+    assert detail.draft.id == draft_id
+    assert [action.action_type for action in detail.review_actions] == [
+        ReviewActionType.EDIT,
+        ReviewActionType.APPROVE,
+    ]
+    assert detail.review_actions[0].before_text == _VALID_DRAFT_BODY
+    assert detail.review_actions[0].after_text == updated_body
+    assert [variant.variant_index for variant in detail.sibling_variants] == [1, 2]
+    assert [variant.channel for variant in detail.sibling_variants] == ["x", "x"]
 
 
 def test_approve_draft_updates_state_and_records_review_action(session_factory, config_dir) -> None:
