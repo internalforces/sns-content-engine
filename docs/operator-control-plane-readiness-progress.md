@@ -15,9 +15,9 @@ Keep updates short, factual, and current.
 - Current milestone: `phase_1_operator_control_plane_basics`
 - Current task: `02_review_audit_and_sibling_variant_visibility`
 - Active status: `done`
-- Last updated: `2026-04-07 16:47 KST`
+- Last updated: `2026-04-07 16:48 KST`
 - Active branch: `codex/task-02-review-audit-sibling-visibility`
-- Latest task commit: `Pending task commit`
+- Latest task commit: `f1f0ba2` (`Add review audit and sibling variant detail`)
 
 ## Scope For Current Task
 - Goal: `Expose stored review-action history and sibling variants through the draft-detail API so operators can understand timeline context and compare alternatives`
@@ -60,6 +60,7 @@ Status values:
 - `2026-04-07 16:45 KST` Changed the review-detail read helper to return one repository-backed detail bundle so the API can serialize the main draft, chronological review actions, and same-brief/channel sibling variants without reconstructing history from logs
 - `2026-04-07 16:46 KST` Extended `GET /reviews/{draft_id}` with explicit `review_actions` and `sibling_variants` sections while preserving the existing draft, provenance, brief, source-item, and article-enrichment fields
 - `2026-04-07 16:46 KST` Added focused API coverage for empty and populated review-history states plus a review-workflow helper test for sibling filtering and stable variant ordering
+- `2026-04-07 16:48 KST` Committed Task `02` as `f1f0ba2` (`Add review audit and sibling variant detail`) after the focused review-detail slice and broader API/review workflow regression slice passed
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
