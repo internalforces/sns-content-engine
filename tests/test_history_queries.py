@@ -23,6 +23,7 @@ from app.storage import (
     session_scope,
 )
 from app.workflows import list_pipeline_failures, list_pipeline_runs
+from app.workflows import list_article_statuses
 
 
 def test_list_pipeline_runs_returns_recent_rows(tmp_path) -> None:
@@ -169,6 +170,62 @@ def test_list_pipeline_failures_returns_readable_rows(tmp_path) -> None:
         result.policy_skips[0].policy_decision_reason
         == "Source policy blocks full-text fetch for this item (mode=discovery_only)."
     )
+
+
+def test_list_article_statuses_returns_article_rows_with_defaults(tmp_path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        pending_source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ops_manual",
+                external_id="entry-1",
+                source_url="https://example.com/articles/1",
+                title="Operator checklist update",
+                created_at=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        failed_source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="finance_rss",
+                external_id="entry-2",
+                source_url="https://example.com/articles/2",
+                title="Central bank update",
+                published_at=datetime(2026, 3, 17, 21, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=failed_source_item.id,
+                source_name="Finance Feed",
+                article_url="https://example.com/final/2",
+                published_at=datetime(2026, 3, 17, 21, 0, tzinfo=timezone.utc),
+                discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
+                failure_stage=PipelineStage.HTML_FETCH,
+                failure_code="fetch_blocked",
+                failure_message="site blocked",
+                html_fetch_status=StageExecutionStatus.FAILED,
+                last_stage=PipelineStage.HTML_FETCH,
+            )
+        )
+
+    result = list_article_statuses(session_factory=session_factory)
+
+    assert len(result.articles) == 2
+    assert result.articles[0].source_item_id == failed_source_item.id
+    assert result.articles[0].source_name == "Finance Feed"
+    assert result.articles[0].article_url == "https://example.com/final/2"
+    assert result.articles[0].enrichment_state == "failed"
+    assert result.articles[0].fetch_status == "failed"
+    assert result.articles[0].last_failure_message == "site blocked"
+    assert result.articles[1].source_item_id == pending_source_item.id
+    assert result.articles[1].article_enrichment_id is None
+    assert result.articles[1].source_name == "ops_manual"
+    assert result.articles[1].enrichment_state == "pending"
+    assert result.articles[1].fetch_status == "pending"
+    assert result.articles[1].extract_status == "pending"
+    assert result.articles[1].summarize_status == "pending"
+    assert result.articles[1].last_failure_message is None
 
 
 

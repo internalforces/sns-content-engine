@@ -4,18 +4,22 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, ConfigDict
 
-from app.workflows.history_queries import (
-    PipelineFailureHistoryResult,
-    PipelineFailureRow,
-    PipelinePolicySkipRow,
-    PipelineRunHistoryResult,
-    PipelineRunHistoryRow,
-)
+if TYPE_CHECKING:
+    from app.workflows.history_queries import (
+        ArticleStatusResult,
+        ArticleStatusRow,
+        PipelineFailureHistoryResult,
+        PipelineFailureRow,
+        PipelinePolicySkipRow,
+        PipelineRunHistoryResult,
+        PipelineRunHistoryRow,
+    )
+    from app.workflows.review_queue import PendingReviewDraft, PendingReviewDraftsResult
 
 
 class _ApiModel(BaseModel):
@@ -90,11 +94,48 @@ class PipelineFailuresResponse(_ApiModel):
     policy_skips: list[PipelinePolicySkipResponse]
 
 
+class ArticleStatusResponse(_ApiModel):
+    source_item_id: int
+    article_enrichment_id: int | None
+    source_name: str
+    title: str
+    original_url: str
+    article_url: str | None
+    published_at: str | None
+    discovered_at: str
+    enrichment_state: str
+    fetch_status: str
+    extract_status: str
+    summarize_status: str
+    last_failure_message: str | None
+
+
+class ArticleStatusesResponse(_ApiModel):
+    articles: list[ArticleStatusResponse]
+
+
+class PendingReviewDraftResponse(_ApiModel):
+    draft_id: int
+    account_key: str
+    channel: str
+    variant_index: int
+    created_at: str
+    title: str
+    body: str
+
+
+class PendingReviewDraftsResponse(_ApiModel):
+    pending_count: int
+    drafts: list[PendingReviewDraftResponse]
+
+
 def create_app(
     *,
     healthcheck_runner: Callable[..., Any] | None = None,
     pipeline_runs_lister: Callable[..., PipelineRunHistoryResult] | None = None,
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
+    article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
+    pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
 ) -> FastAPI:
     """Create the FastAPI application for read-only operator routes."""
 
@@ -110,6 +151,14 @@ def create_app(
         from app.workflows.history_queries import list_pipeline_failures as default_pipeline_failures_lister
 
         pipeline_failures_lister = default_pipeline_failures_lister
+    if article_statuses_lister is None:
+        from app.workflows.history_queries import list_article_statuses as default_article_statuses_lister
+
+        article_statuses_lister = default_article_statuses_lister
+    if pending_review_drafts_lister is None:
+        from app.workflows.review_queue import list_pending_review_drafts as default_pending_review_drafts_lister
+
+        pending_review_drafts_lister = default_pending_review_drafts_lister
 
     application = FastAPI(
         title="sns-content-engine API",
@@ -150,6 +199,26 @@ def create_app(
         return PipelineFailuresResponse(
             failures=[_build_failure_response(row) for row in result.failures],
             policy_skips=[_build_policy_skip_response(row) for row in result.policy_skips],
+        )
+
+    @application.get("/articles", response_model=ArticleStatusesResponse, tags=["articles"])
+    def get_articles(
+        database_url: str | None = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> ArticleStatusesResponse:
+        result = article_statuses_lister(database_url=database_url, limit=limit)
+        return ArticleStatusesResponse(
+            articles=[_build_article_status_response(row) for row in result.articles],
+        )
+
+    @application.get("/reviews/pending", response_model=PendingReviewDraftsResponse, tags=["reviews"])
+    def get_pending_review_drafts(
+        database_url: str | None = Query(default=None),
+    ) -> PendingReviewDraftsResponse:
+        result = pending_review_drafts_lister(database_url=database_url)
+        return PendingReviewDraftsResponse(
+            pending_count=result.pending_count,
+            drafts=[_build_pending_review_draft_response(row) for row in result.drafts],
         )
 
     return application
@@ -205,6 +274,36 @@ def _build_policy_skip_response(row: PipelinePolicySkipRow) -> PipelinePolicySki
         skipped_stage=row.skipped_stage,
         policy_decision_reason=row.policy_decision_reason,
         updated_at=row.updated_at.isoformat(),
+    )
+
+
+def _build_article_status_response(row: ArticleStatusRow) -> ArticleStatusResponse:
+    return ArticleStatusResponse(
+        source_item_id=row.source_item_id,
+        article_enrichment_id=row.article_enrichment_id,
+        source_name=row.source_name,
+        title=row.title,
+        original_url=row.original_url,
+        article_url=row.article_url,
+        published_at=row.published_at.isoformat() if row.published_at else None,
+        discovered_at=row.discovered_at.isoformat(),
+        enrichment_state=row.enrichment_state,
+        fetch_status=row.fetch_status,
+        extract_status=row.extract_status,
+        summarize_status=row.summarize_status,
+        last_failure_message=row.last_failure_message,
+    )
+
+
+def _build_pending_review_draft_response(row: PendingReviewDraft) -> PendingReviewDraftResponse:
+    return PendingReviewDraftResponse(
+        draft_id=row.draft_id,
+        account_key=row.account_key,
+        channel=row.channel,
+        variant_index=row.variant_index,
+        created_at=row.created_at.isoformat(),
+        title=row.title,
+        body=row.body,
     )
 
 
