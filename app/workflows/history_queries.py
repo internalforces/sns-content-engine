@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
+
 from app.storage import (
+    ArticleEnrichment,
     ArticleEnrichmentRepository,
     PipelineRunRepository,
+    SourceItem,
+    StageExecutionStatus,
     create_database_engine,
     create_session_factory,
     ensure_database_schema_is_current,
@@ -74,6 +79,28 @@ class PipelineRunHistoryResult:
 class PipelineFailureHistoryResult:
     failures: tuple[PipelineFailureRow, ...]
     policy_skips: tuple[PipelinePolicySkipRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArticleStatusRow:
+    source_item_id: int
+    article_enrichment_id: int | None
+    source_name: str
+    title: str
+    original_url: str
+    article_url: str | None
+    published_at: datetime | None
+    discovered_at: datetime
+    enrichment_state: str
+    fetch_status: str
+    extract_status: str
+    summarize_status: str
+    last_failure_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ArticleStatusResult:
+    articles: tuple[ArticleStatusRow, ...]
 
 
 def list_pipeline_runs(*, database_url: str | None = None, session_factory=None, limit: int = 20) -> PipelineRunHistoryResult:
@@ -180,6 +207,36 @@ def list_pipeline_failures(*, database_url: str | None = None, session_factory=N
     return PipelineFailureHistoryResult(failures=failures, policy_skips=policy_skips)
 
 
+def list_article_statuses(*, database_url: str | None = None, session_factory=None, limit: int = 50) -> ArticleStatusResult:
+    owned_engine = None
+    if session_factory is None:
+        owned_engine = create_database_engine(database_url)
+        ensure_database_schema_is_current(owned_engine)
+        session_factory = create_session_factory(owned_engine)
+    else:
+        bound_engine = getattr(session_factory, "kw", {}).get("bind")
+        if bound_engine is not None:
+            ensure_database_schema_is_current(bound_engine)
+
+    try:
+        with session_scope(session_factory) as session:
+            statement = (
+                select(SourceItem, ArticleEnrichment)
+                .outerjoin(ArticleEnrichment, ArticleEnrichment.source_item_id == SourceItem.id)
+                .order_by(SourceItem.created_at.desc(), SourceItem.id.desc())
+                .limit(limit)
+            )
+            rows = tuple(
+                _build_article_status_row(source_item, enrichment)
+                for source_item, enrichment in session.execute(statement).all()
+            )
+    finally:
+        if owned_engine is not None:
+            owned_engine.dispose()
+
+    return ArticleStatusResult(articles=rows)
+
+
 def _normalize_policy_mode_counts(summary_json: dict | None) -> dict[str, int]:
     if not isinstance(summary_json, dict):
         return {}
@@ -236,3 +293,70 @@ def _coerce_non_negative_int(value: object) -> int:
     if isinstance(value, int):
         return max(value, 0)
     return 0
+
+
+def _build_article_status_row(source_item: SourceItem, enrichment: ArticleEnrichment | None) -> ArticleStatusRow:
+    if enrichment is None:
+        fetch_status = StageExecutionStatus.PENDING.value
+        extract_status = StageExecutionStatus.PENDING.value
+        summarize_status = StageExecutionStatus.PENDING.value
+        article_url = None
+        article_enrichment_id = None
+        source_name = source_item.source_key
+        published_at = source_item.published_at
+        discovered_at = source_item.created_at
+        last_failure_message = None
+    else:
+        fetch_status = enrichment.html_fetch_status.value
+        extract_status = enrichment.article_extract_status.value
+        summarize_status = enrichment.summary_regenerate_status.value
+        article_url = enrichment.article_url
+        article_enrichment_id = enrichment.id
+        source_name = enrichment.source_name or source_item.source_key
+        published_at = enrichment.published_at or source_item.published_at
+        discovered_at = enrichment.discovered_at
+        last_failure_message = enrichment.failure_message
+
+    return ArticleStatusRow(
+        source_item_id=source_item.id,
+        article_enrichment_id=article_enrichment_id,
+        source_name=source_name,
+        title=source_item.title,
+        original_url=source_item.source_url,
+        article_url=article_url,
+        published_at=published_at,
+        discovered_at=discovered_at,
+        enrichment_state=_derive_article_enrichment_state(enrichment),
+        fetch_status=fetch_status,
+        extract_status=extract_status,
+        summarize_status=summarize_status,
+        last_failure_message=last_failure_message,
+    )
+
+
+def _derive_article_enrichment_state(enrichment: ArticleEnrichment | None) -> str:
+    if enrichment is None:
+        return "pending"
+    if enrichment.failure_code:
+        return "failed"
+    if _is_policy_skipped(enrichment):
+        return "skipped"
+    if enrichment.summary_regenerate_status is StageExecutionStatus.SUCCEEDED:
+        return "enriched"
+    if any(
+        status is StageExecutionStatus.SUCCEEDED
+        for status in (
+            enrichment.html_fetch_status,
+            enrichment.article_extract_status,
+            enrichment.summary_regenerate_status,
+        )
+    ):
+        return "in_progress"
+    return "pending"
+
+
+def _is_policy_skipped(enrichment: ArticleEnrichment) -> bool:
+    return bool(enrichment.policy_decision_reason) and (
+        enrichment.html_fetch_status is StageExecutionStatus.SKIPPED
+        or enrichment.summary_regenerate_status is StageExecutionStatus.SKIPPED
+    )
