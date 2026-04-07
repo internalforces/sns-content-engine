@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import ConfigRegistry
 from app.services import DraftValidator
 from app.storage import (
+    DraftVariant,
     DraftVariantState,
     PublishJob,
     PublishJobRepository,
@@ -86,6 +87,28 @@ class ReviewDraftResult:
     action_id: int
     publish_job_id: int | None = None
     scheduled_for: datetime | None = None
+
+
+def get_review_draft_detail(
+    draft_id: int,
+    *,
+    database_url: str | None = None,
+    session_factory=None,
+) -> DraftVariant:
+    """Return one draft with linked brief, source, and enrichment context."""
+
+    owned_engine, resolved_session_factory = _resolve_session_factory(
+        database_url=database_url,
+        session_factory=session_factory,
+    )
+    try:
+        with session_scope(resolved_session_factory) as session:
+            draft = DraftVariantRepository(session).get_detail(draft_id)
+            if draft is None:
+                raise DraftNotFoundError(f"draft {draft_id} was not found")
+            return draft
+    finally:
+        _dispose_engine(owned_engine)
 
 
 def list_pending_review_drafts(

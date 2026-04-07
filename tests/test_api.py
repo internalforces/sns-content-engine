@@ -291,6 +291,85 @@ def test_pending_review_endpoint_returns_empty_state(tmp_path: Path) -> None:
     assert response.json() == {"pending_count": 0, "drafts": []}
 
 
+def test_review_detail_endpoint_returns_full_draft_context(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            include_provenance=True,
+            include_article_enrichment=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"] == draft.id
+    assert payload["account_key"] == "ai_tools_daily"
+    assert payload["channel"] == "x"
+    assert payload["variant_index"] == 0
+    assert payload["body"] == "Useful AI automation workflows for operators"
+    assert payload["draft_state"] == "pending_review"
+    assert payload["rejection_reason"] is None
+    assert payload["reviewed_at"] is None
+    assert payload["provenance"]["source_name"] == "AI Tools Daily"
+    assert payload["provenance"]["source_url"].startswith("https://example.com/drafts/")
+    assert payload["provenance"]["article_url"] == payload["provenance"]["source_url"]
+    assert payload["provenance"]["source_published_at"] == "2026-03-17T12:00:00+00:00"
+    assert payload["provenance"]["source_policy_mode"] == "reusable"
+    assert payload["brief"]["brief_id"] > 0
+    assert payload["brief"]["title"] == "Brief for draft"
+    assert payload["brief"]["summary"] == "Summary for review"
+    assert payload["brief"]["key_points"] == ["Point one"]
+    assert payload["brief"]["landing_url"] == "https://gilgop.cloud/ai-tools"
+    assert payload["brief"]["tags"] == ["ai"]
+    assert payload["brief"]["angle"] == "topic_takeaway"
+    assert payload["brief"]["language"] == "en"
+    assert payload["source_item"]["source_item_id"] > 0
+    assert payload["source_item"]["source_key"] == "ai_tools_rss"
+    assert payload["source_item"]["external_id"].startswith("draft-entry-")
+    assert payload["source_item"]["title"].startswith("Draft source ")
+    assert payload["source_item"]["summary"] == "RSS summary for review"
+    assert payload["source_item"]["source_url"].startswith("https://example.com/drafts/")
+    assert payload["source_item"]["canonical_url"] == payload["source_item"]["source_url"]
+    assert payload["source_item"]["published_at"] == "2026-03-17T12:00:00+00:00"
+    assert payload["source_item"]["policy_mode"] == "reusable"
+    assert payload["source_item"]["require_attribution"] is True
+    assert payload["article_enrichment"]["article_enrichment_id"] > 0
+    assert payload["article_enrichment"]["source_name"] == "AI Tools Daily"
+    assert payload["article_enrichment"]["article_url"].startswith("https://example.com/articles/")
+    assert payload["article_enrichment"]["published_at"] == "2026-03-17T12:00:00+00:00"
+    assert payload["article_enrichment"]["discovered_at"] == "2026-03-18T09:01:00+00:00"
+    assert payload["article_enrichment"]["regenerated_summary"] == "Regenerated article summary for operators"
+    assert payload["article_enrichment"]["regenerated_key_points"] == [
+        "Detail point one",
+        "Detail point two",
+    ]
+    assert payload["article_enrichment"]["classification"] == "analysis"
+
+
+def test_review_detail_endpoint_returns_not_found_error(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/reviews/999",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error_code": "draft_not_found",
+        "message": "draft 999 was not found",
+    }
+
+
 def test_review_approve_endpoint_returns_action_result(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
@@ -570,6 +649,7 @@ def _create_draft_variant(
     created_at: datetime,
     body: str = "Useful AI automation workflows for operators",
     include_provenance: bool = False,
+    include_article_enrichment: bool = False,
 ) -> DraftVariant:
     source_number = next(_DRAFT_SOURCE_COUNTER)
     source_item = SourceItemRepository(session).add(
@@ -578,8 +658,26 @@ def _create_draft_variant(
             external_id=f"draft-entry-{source_number}",
             source_url=f"https://example.com/drafts/{source_number}",
             title=f"Draft source {source_number}",
+            summary="RSS summary for review" if include_article_enrichment else None,
+            published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+            if include_article_enrichment
+            else None,
+            require_attribution=include_article_enrichment,
         )
     )
+    if include_article_enrichment:
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                source_name="AI Tools Daily",
+                article_url=f"https://example.com/articles/{source_number}",
+                published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
+                discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
+                regenerated_summary="Regenerated article summary for operators",
+                regenerated_key_points=["Detail point one", "Detail point two"],
+                classification="analysis",
+            )
+        )
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,

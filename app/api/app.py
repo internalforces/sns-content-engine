@@ -14,6 +14,7 @@ from app.config import ConfigError
 from app.storage import DatabaseSchemaError
 
 if TYPE_CHECKING:
+    from app.storage import DraftVariant
     from app.workflows.history_queries import (
         ArticleStatusResult,
         ArticleStatusRow,
@@ -133,6 +134,65 @@ class PendingReviewDraftsResponse(_ApiModel):
     drafts: list[PendingReviewDraftResponse]
 
 
+class ReviewDraftProvenanceResponse(_ApiModel):
+    source_name: str | None
+    source_url: str | None
+    article_url: str | None
+    source_published_at: str | None
+    source_policy_mode: str | None
+
+
+class ReviewDraftBriefResponse(_ApiModel):
+    brief_id: int
+    title: str
+    summary: str | None
+    key_points: list[str]
+    landing_url: str
+    tags: list[str]
+    angle: str
+    language: str
+
+
+class ReviewDraftSourceItemResponse(_ApiModel):
+    source_item_id: int
+    source_key: str
+    external_id: str
+    title: str
+    summary: str | None
+    source_url: str
+    canonical_url: str
+    published_at: str | None
+    policy_mode: str
+    require_attribution: bool
+
+
+class ReviewDraftArticleEnrichmentResponse(_ApiModel):
+    article_enrichment_id: int
+    source_name: str | None
+    article_url: str
+    published_at: str | None
+    discovered_at: str
+    regenerated_summary: str | None
+    regenerated_key_points: list[str]
+    classification: str | None
+
+
+class ReviewDraftDetailResponse(_ApiModel):
+    draft_id: int
+    account_key: str
+    channel: str
+    variant_index: int
+    body: str
+    draft_state: str
+    rejection_reason: str | None
+    created_at: str
+    reviewed_at: str | None
+    provenance: ReviewDraftProvenanceResponse
+    brief: ReviewDraftBriefResponse
+    source_item: ReviewDraftSourceItemResponse
+    article_enrichment: ReviewDraftArticleEnrichmentResponse | None
+
+
 class ReviewActionContextRequest(_ApiModel):
     reviewer: str | None = None
     config_dir: str = "config"
@@ -176,6 +236,7 @@ def create_app(
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
     article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
+    review_draft_detail_fetcher: Callable[..., DraftVariant] | None = None,
     draft_approver: Callable[..., ReviewDraftResult] | None = None,
     draft_rejector: Callable[..., ReviewDraftResult] | None = None,
     draft_editor: Callable[..., ReviewDraftResult] | None = None,
@@ -203,6 +264,10 @@ def create_app(
         from app.workflows.review_queue import list_pending_review_drafts as default_pending_review_drafts_lister
 
         pending_review_drafts_lister = default_pending_review_drafts_lister
+    if review_draft_detail_fetcher is None:
+        from app.workflows.review_queue import get_review_draft_detail as default_review_draft_detail_fetcher
+
+        review_draft_detail_fetcher = default_review_draft_detail_fetcher
     if draft_approver is None:
         from app.workflows.review_queue import approve_draft as default_draft_approver
 
@@ -373,6 +438,14 @@ def create_app(
             drafts=[_build_pending_review_draft_response(row) for row in result.drafts],
         )
 
+    @application.get("/reviews/{draft_id}", response_model=ReviewDraftDetailResponse, tags=["reviews"])
+    def get_review_draft_detail(
+        draft_id: int,
+        database_url: str | None = Query(default=None),
+    ) -> ReviewDraftDetailResponse:
+        draft = review_draft_detail_fetcher(draft_id, database_url=database_url)
+        return _build_review_draft_detail_response(draft)
+
     @application.post("/reviews/{draft_id}/approve", response_model=ReviewActionResponse, tags=["reviews"])
     def approve_review_draft(
         draft_id: int,
@@ -515,6 +588,74 @@ def _build_pending_review_draft_response(row: PendingReviewDraft) -> PendingRevi
         created_at=row.created_at.isoformat(),
         title=row.title,
         body=row.body,
+    )
+
+
+def _build_review_draft_detail_response(draft: DraftVariant) -> ReviewDraftDetailResponse:
+    content_brief = draft.content_brief
+    source_item = content_brief.source_item
+    article_enrichment = source_item.article_enrichment
+    return ReviewDraftDetailResponse(
+        draft_id=draft.id,
+        account_key=content_brief.account_key,
+        channel=draft.channel,
+        variant_index=draft.variant_index,
+        body=draft.body,
+        draft_state=draft.state.value,
+        rejection_reason=draft.rejection_reason,
+        created_at=draft.created_at.isoformat(),
+        reviewed_at=draft.reviewed_at.isoformat() if draft.reviewed_at else None,
+        provenance=ReviewDraftProvenanceResponse(
+            source_name=draft.source_name,
+            source_url=draft.source_url,
+            article_url=draft.article_url,
+            source_published_at=draft.source_published_at.isoformat()
+            if draft.source_published_at
+            else None,
+            source_policy_mode=draft.source_policy_mode.value if draft.source_policy_mode else None,
+        ),
+        brief=ReviewDraftBriefResponse(
+            brief_id=content_brief.id,
+            title=content_brief.title,
+            summary=content_brief.summary,
+            key_points=list(content_brief.key_points),
+            landing_url=content_brief.landing_url,
+            tags=list(content_brief.tags),
+            angle=content_brief.angle,
+            language=content_brief.language,
+        ),
+        source_item=ReviewDraftSourceItemResponse(
+            source_item_id=source_item.id,
+            source_key=source_item.source_key,
+            external_id=source_item.external_id,
+            title=source_item.title,
+            summary=source_item.summary,
+            source_url=source_item.source_url,
+            canonical_url=source_item.canonical_url,
+            published_at=source_item.published_at.isoformat() if source_item.published_at else None,
+            policy_mode=source_item.policy_mode.value,
+            require_attribution=source_item.require_attribution,
+        ),
+        article_enrichment=_build_review_draft_article_enrichment_response(article_enrichment)
+        if article_enrichment
+        else None,
+    )
+
+
+def _build_review_draft_article_enrichment_response(
+    article_enrichment,
+) -> ReviewDraftArticleEnrichmentResponse:
+    return ReviewDraftArticleEnrichmentResponse(
+        article_enrichment_id=article_enrichment.id,
+        source_name=article_enrichment.source_name,
+        article_url=article_enrichment.article_url,
+        published_at=article_enrichment.published_at.isoformat()
+        if article_enrichment.published_at
+        else None,
+        discovered_at=article_enrichment.discovered_at.isoformat(),
+        regenerated_summary=article_enrichment.regenerated_summary,
+        regenerated_key_points=list(article_enrichment.regenerated_key_points),
+        classification=article_enrichment.classification,
     )
 
 
