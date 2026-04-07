@@ -14,10 +14,10 @@ Keep updates short, factual, and current.
 ## Current Status
 - Current milestone: `phase_1_backend_ready_operator_api`
 - Current task: `04_sqlite_migration_baseline`
-- Active status: `in_progress`
-- Last updated: `2026-04-07 11:28 KST`
+- Active status: `done`
+- Last updated: `2026-04-07 11:30 KST`
 - Active branch: `codex/task-04-sqlite-migration-baseline`
-- Latest task commit: `not created yet`
+- Latest task commit: `726f790 Add SQLite schema migration baseline`
 
 ## Scope For Current Task
 - Goal: `Introduce an explicit SQLite schema upgrade baseline so existing local databases can be upgraded intentionally instead of being recreated`
@@ -30,7 +30,7 @@ Keep updates short, factual, and current.
 | 01 | FastAPI application wiring and read-only history | done | 2026-04-06 16:08 KST | FastAPI app entrypoint now exposes read-only `/health`, `/runs`, and `/failures` JSON routes with focused API tests |
 | 02 | Article and pending-review read endpoints | done | 2026-04-07 10:55 KST | `/articles` and `/reviews/pending` now expose stored article/enrichment state and pending review drafts with focused API/workflow coverage |
 | 03 | Review action API parity | done | 2026-04-07 11:05 KST | Added thin review action routes plus structured HTTP error mapping for approve/reject/edit/schedule without changing review_queue semantics |
-| 04 | SQLite migration baseline | in_progress | 2026-04-07 11:28 KST | Added SQLite schema version detection, explicit `db upgrade` flow, docs updates, and focused regression coverage; commit still pending |
+| 04 | SQLite migration baseline | done | 2026-04-07 11:30 KST | Added SQLite schema version detection, explicit `db upgrade` flow, operator docs updates, and focused regression coverage for upgrade success and no-op paths |
 | 05 | Config readiness guidance and validation | pending | 2026-04-06 15:53 KST | Planned operator-facing checks for sample config and placeholder URLs |
 | 06 | Source-specific extraction tuning hooks | pending | 2026-04-06 15:53 KST | Planned additive extraction escape hatches for hard publisher layouts |
 
@@ -80,6 +80,7 @@ Status values:
 - `2026-04-07 11:21 KST` Added `sns-engine db upgrade` plus `scripts/create_db.py --upgrade` so operators can upgrade intentionally without changing the existing `db init` behavior
 - `2026-04-07 11:27 KST` Updated README and operator guides to replace the old “recreate the database” guidance with the new upgrade flow for older local SQLite files
 - `2026-04-07 11:28 KST` Added focused storage, CLI, and script coverage for schema version detection, legacy upgrade success, current-schema no-op upgrades, and upgrade-aware healthcheck messaging; broader storage/API/operations regression slices also passed
+- `2026-04-07 11:30 KST` Created commit `726f790` with message `Add SQLite schema migration baseline`
 
 ## Test Log
 - `2026-04-06 15:53 KST` `git diff --check` -> `passed`
@@ -109,7 +110,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 04 can add migration-aware startup checks to the same API surface without revisiting the review action contract`
+- `Task 05 can build on the same healthcheck surface to make sample-config and placeholder-source readiness more explicit for operators`
 
 ## Completion Summary
-- `Task 03 complete: the FastAPI operator surface now exposes approve/reject/edit/schedule review mutations with structured JSON responses and explicit HTTP error mapping while preserving the existing review_queue validation path`
+- `Task 04 complete: local SQLite environments now have an explicit schema version baseline plus intentional `db upgrade` support, allowing older unversioned databases to be upgraded additively instead of being recreated`
