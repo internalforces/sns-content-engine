@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.config import load_sources_config
 from app.domain import extract_source_tags
 from app.services import (
     ArticleExtractError,
@@ -88,10 +89,16 @@ def enrich_articles(
 ) -> EnrichArticlesResult:
     """Fetch, extract, and summarize article pages for ingested source items."""
 
-    del config_dir  # reserved for future source-specific enrichment settings
-
     fetcher = html_fetcher or ArticleHtmlFetcher()
     extractor = article_extractor or ArticleExtractor()
+    source_specific_extractors = (
+        {}
+        if article_extractor is not None
+        else _build_source_specific_extractors(
+            config_dir,
+            default_minimum_word_count=extractor.minimum_word_count,
+        )
+    )
     regenerator = summary_regenerator or SummaryRegenerator()
     event_time = _normalize_now(now)
 
@@ -170,7 +177,8 @@ def enrich_articles(
                     enrichment.fetched_at = event_time
                     enrichment.last_stage = PipelineStage.HTML_FETCH
 
-                    extract_result = extractor.extract(fetch_result.html)
+                    active_extractor = source_specific_extractors.get(source_item.source_key, extractor)
+                    extract_result = active_extractor.extract(fetch_result.html)
                     enrichment.article_text = extract_result.article_text
                     enrichment.article_extract_status = StageExecutionStatus.SUCCEEDED
                     enrichment.extracted_at = event_time
@@ -276,6 +284,31 @@ def enrich_articles(
         processed_source_item_ids=tuple(item.id for item in stored_source_items),
         outcomes=tuple(outcomes),
     )
+
+
+def _build_source_specific_extractors(
+    config_dir: Path | str,
+    *,
+    default_minimum_word_count: int,
+) -> dict[str, ArticleExtractor]:
+    config_dir_path = Path(config_dir)
+    sources_path = config_dir_path / "sources.yaml"
+    if not sources_path.exists():
+        return {}
+
+    sources_config = load_sources_config(sources_path)
+    extractors: dict[str, ArticleExtractor] = {}
+    for source_key, source in sources_config.sources.items():
+        extraction = source.extraction
+        if extraction is None or not extraction.has_overrides:
+            continue
+        extractors[source_key] = ArticleExtractor(
+            minimum_word_count=extraction.minimum_word_count or default_minimum_word_count,
+            preferred_selectors=extraction.prefer_selectors,
+            excluded_selectors=extraction.exclude_selectors,
+        )
+
+    return extractors
 
 
 def _mark_failure(

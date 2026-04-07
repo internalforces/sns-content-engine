@@ -57,6 +57,42 @@ def test_article_extractor_falls_back_to_main_content() -> None:
     assert result.source_name is None
 
 
+def test_article_extractor_supports_source_specific_selectors_and_exclusions() -> None:
+    html = """
+    <html>
+      <head>
+        <title>Market structure update</title>
+      </head>
+      <body>
+        <div class="layout-shell">
+          <div class="article-body">
+            <p>Market liquidity improved after dealers adjusted inventories across rates and credit desks.</p>
+            <div class="inline-promo">
+              <p>Subscribe now for premium alerts and shopping offers.</p>
+            </div>
+            <p>Traders said funding pressure eased while macro expectations stayed firmly in focus.</p>
+            <p>Analysts still watched bank commentary, earnings quality, and regional demand trends.</p>
+          </div>
+          <div class="related-links">
+            <p>Read more gift guides and weekend lifestyle picks.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = ArticleExtractor(
+        minimum_word_count=20,
+        preferred_selectors=(".article-body",),
+        excluded_selectors=(".inline-promo",),
+    ).extract(html)
+
+    assert result.title == "Market structure update"
+    assert "Market liquidity improved" in result.article_text
+    assert "Subscribe now for premium alerts" not in result.article_text
+    assert "weekend lifestyle picks" not in result.article_text
+
+
 def test_article_extractor_reports_missing_body_text() -> None:
     html = "<html><body><div></div></body></html>"
 
