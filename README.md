@@ -66,6 +66,7 @@ For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`,
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 
 These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
+`sns-engine healthcheck` now treats bundled `config/examples/...` directories and unresolved `example.com` / `example.org` / `example.net` URLs as not operator-ready, so copy and edit the sample files before using them for live workflows.
 Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-aware enrichment skips are now recorded when later steps block full-text fetch or rewrite, so the sample is intended for recent-news discovery rather than direct full-text reuse.
 
 ## Operator Guides
@@ -133,7 +134,7 @@ The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest
 
 The `history runs` and `history failures` commands expose operator-readable summaries from persisted `pipeline_runs` and article-enrichment history while still matching the future UI/API data model. Run history includes policy-aware counts and rewrite-provider names when available, and failure history prints both ordinary `type=failure` rows and intentional `type=policy_skip` rows with source-policy metadata.
 
-The `healthcheck` command is a strict readiness check. It validates both config loading and database schema readiness, prints key=value status lines, and exits non-zero if either check fails.
+The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
 
 The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable.
 
@@ -191,6 +192,7 @@ sns-engine scheduler run --config-dir config --database-url sqlite:///data/sns_c
 Operational notes:
 
 - `healthcheck` is readiness only. If it reports an outdated SQLite schema, run `sns-engine db upgrade`. Use `sns-engine db init` only for fresh databases.
+- `healthcheck` also fails when `--config-dir` points at bundled `config/examples/...` content or when placeholder `example.com` / `example.org` / `example.net` URLs are still present. Copy the sample config to a separate directory and replace those URLs before real runs.
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.

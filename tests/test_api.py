@@ -57,7 +57,7 @@ def test_health_endpoint_returns_readiness_json(tmp_path: Path) -> None:
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["failed_check_count"] == 0
-    assert [check["name"] for check in payload["checks"]] == ["config", "database"]
+    assert [check["name"] for check in payload["checks"]] == ["config", "config_readiness", "database"]
 
 
 def test_runs_endpoint_returns_readable_history_rows(tmp_path: Path) -> None:
@@ -496,7 +496,11 @@ def _build_session_factory(tmp_path: Path):
     return create_session_factory(engine)
 
 
-def _write_minimal_project_config(path: Path) -> None:
+def _write_minimal_project_config(
+    path: Path,
+    *,
+    source_url: str = "https://gilgop.cloud/feed.xml",
+) -> None:
     _write_file(
         path / "accounts.yaml",
         """
@@ -544,13 +548,13 @@ def _write_minimal_project_config(path: Path) -> None:
         sources:
           ai_tools_rss:
             type: rss
-            url: https://example.com/feed.xml
+            url: {source_url}
 
         source_sets:
           ai_tools_primary:
             sources:
               - ai_tools_rss
-        """,
+        """.format(source_url=source_url),
     )
 
 

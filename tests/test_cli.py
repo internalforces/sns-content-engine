@@ -53,8 +53,9 @@ def test_healthcheck_command_reports_ok_status(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "event=healthcheck component=cli status=ok check_count=2 failed_check_count=0" in result.stdout
+    assert "event=healthcheck component=cli status=ok check_count=3 failed_check_count=0" in result.stdout
     assert "event=healthcheck component=cli status=ok check=config" in result.stdout
+    assert "event=healthcheck component=cli status=ok check=config_readiness" in result.stdout
     assert "event=healthcheck component=cli status=ok check=database" in result.stdout
     assert "database_backend=sqlite" in result.stdout
     assert database_url not in result.stdout
@@ -136,6 +137,24 @@ def test_healthcheck_command_reports_outdated_database_schema(tmp_path: Path) ->
     assert "event=healthcheck component=cli status=failed check=database" in result.output
     assert "missing required tables" in result.output
     assert "Run `sns-engine db upgrade`" in result.output
+
+
+def test_healthcheck_command_reports_placeholder_config_not_ready(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path, source_url="https://example.com/feed.xml")
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'healthcheck-placeholder.db'}"
+    init_result = runner.invoke(app, ["db", "init", "--database-url", database_url])
+
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
+
+    assert result.exit_code == 1
+    assert "event=healthcheck component=cli status=failed check=config_readiness" in result.output
+    assert "placeholder URLs detected" in result.output
+    assert "sources.ai_tools_rss.url (example.com)" in result.output
 
 
 def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
@@ -1105,7 +1124,11 @@ def _create_legacy_upgrade_fixture(connection) -> None:
     )
 
 
-def _write_minimal_project_config(path: Path) -> None:
+def _write_minimal_project_config(
+    path: Path,
+    *,
+    source_url: str = "https://gilgop.cloud/feed.xml",
+) -> None:
     _write_file(
         path / "accounts.yaml",
         """
@@ -1141,13 +1164,13 @@ def _write_minimal_project_config(path: Path) -> None:
         sources:
           ai_tools_rss:
             type: rss
-            url: https://example.com/feed.xml
+            url: {source_url}
 
         source_sets:
           ai_tools_primary:
             sources:
               - ai_tools_rss
-        """,
+        """.format(source_url=source_url),
     )
 
 
