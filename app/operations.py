@@ -10,15 +10,19 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, make_url
 
-from app.config import ConfigRegistry
+from app.config import ConfigRegistry, RssSourceConfig, SitemapSourceConfig
 from app.storage import ensure_database_schema_is_current, resolve_database_url
 
 _OPERATIONS_LOGGER_NAME = "sns_engine.operations"
 _SAFE_LOG_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/:")
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_BUNDLED_SAMPLE_CONFIG_ROOT = (_PROJECT_ROOT / "config" / "examples").resolve()
+_PLACEHOLDER_HOST_SUFFIXES = ("example.com", "example.org", "example.net")
 
 
 class RetryPolicy(str, Enum):
@@ -116,6 +120,12 @@ def run_healthcheck(
                     f"sources={len(registry.sources)} "
                     f"config_dir={normalized_config_dir}"
                 ),
+            )
+        )
+        checks.append(
+            _run_config_readiness_healthcheck(
+                registry=registry,
+                config_dir=normalized_config_dir,
             )
         )
 
@@ -304,6 +314,43 @@ def _run_database_healthcheck(database_url: str) -> str:
     return f"schema_current database_backend={backend} database_target={target}"
 
 
+def _run_config_readiness_healthcheck(
+    *,
+    registry: ConfigRegistry,
+    config_dir: Path,
+) -> HealthcheckCheck:
+    readiness_issues: list[str] = []
+
+    sample_config_issue = _detect_bundled_sample_config_issue(config_dir)
+    if sample_config_issue is not None:
+        readiness_issues.append(sample_config_issue)
+
+    placeholder_urls = _collect_placeholder_url_fields(registry)
+    if placeholder_urls:
+        preview_items = ", ".join(placeholder_urls[:4])
+        additional_count = len(placeholder_urls) - 4
+        if additional_count > 0:
+            preview_items = f"{preview_items}, +{additional_count} more"
+        readiness_issues.append(
+            "placeholder URLs detected at "
+            f"{preview_items}. Replace example.com/example.org/example.net sample URLs "
+            "with operator-approved values before real runs."
+        )
+
+    if readiness_issues:
+        return HealthcheckCheck(
+            name="config_readiness",
+            status="failed",
+            message=" ".join(readiness_issues),
+        )
+
+    return HealthcheckCheck(
+        name="config_readiness",
+        status="ok",
+        message="operator_ready no bundled sample config directory or placeholder URLs detected",
+    )
+
+
 def _create_healthcheck_engine(url: URL):
     if _is_file_backed_sqlite_url(url):
         database_path = _resolve_sqlite_database_path(url)
@@ -364,3 +411,73 @@ def _is_file_backed_sqlite_url(url: URL) -> bool:
 def _resolve_sqlite_database_path(url: URL) -> Path:
     database = url.database or ""
     return Path(database).expanduser().resolve()
+
+
+def _detect_bundled_sample_config_issue(config_dir: Path) -> str | None:
+    resolved_config_dir = config_dir.resolve()
+    try:
+        resolved_config_dir.relative_to(_BUNDLED_SAMPLE_CONFIG_ROOT)
+    except ValueError:
+        return None
+
+    display_path = _display_project_relative_path(resolved_config_dir)
+    return (
+        f"config_dir={display_path} points at a bundled sample config directory. "
+        "Copy it to a separate working directory and replace the sample URLs before real runs."
+    )
+
+
+def _collect_placeholder_url_fields(registry: ConfigRegistry) -> tuple[str, ...]:
+    placeholder_fields: list[str] = []
+
+    for account_key, account in registry.accounts.items():
+        _append_placeholder_url_field(
+            placeholder_fields,
+            field_path=f"accounts.{account_key}.landing.fallback_url",
+            url_value=str(account.landing.fallback_url),
+        )
+        for index, rule in enumerate(account.landing.rules):
+            _append_placeholder_url_field(
+                placeholder_fields,
+                field_path=f"accounts.{account_key}.landing.rules.{index}.url",
+                url_value=str(rule.url),
+            )
+        for index, prefix in enumerate(account.landing.validation.allowed_url_prefixes):
+            _append_placeholder_url_field(
+                placeholder_fields,
+                field_path=f"accounts.{account_key}.landing.validation.allowed_url_prefixes.{index}",
+                url_value=str(prefix),
+            )
+
+    for source_key, source in registry.sources.items():
+        if isinstance(source, (RssSourceConfig, SitemapSourceConfig)):
+            _append_placeholder_url_field(
+                placeholder_fields,
+                field_path=f"sources.{source_key}.url",
+                url_value=str(source.url),
+            )
+
+    return tuple(placeholder_fields)
+
+
+def _append_placeholder_url_field(
+    placeholder_fields: list[str],
+    *,
+    field_path: str,
+    url_value: str,
+) -> None:
+    hostname = urlparse(url_value).hostname
+    if hostname is None:
+        return
+    normalized_hostname = hostname.casefold()
+    for suffix in _PLACEHOLDER_HOST_SUFFIXES:
+        if normalized_hostname == suffix or normalized_hostname.endswith(f".{suffix}"):
+            placeholder_fields.append(f"{field_path} ({hostname})")
+            return
+
+
+def _display_project_relative_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(_PROJECT_ROOT))
+    except ValueError:
+        return str(path)

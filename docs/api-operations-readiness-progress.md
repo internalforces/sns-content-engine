@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_backend_ready_operator_api`
-- Current task: `04_sqlite_migration_baseline`
+- Current task: `05_config_readiness_guidance_and_validation`
 - Active status: `done`
-- Last updated: `2026-04-07 11:30 KST`
-- Active branch: `codex/task-04-sqlite-migration-baseline`
-- Latest task commit: `726f790 Add SQLite schema migration baseline`
+- Last updated: `2026-04-07 11:42 KST`
+- Active branch: `codex/task-05-config-readiness-validation`
+- Latest task commit: `74e7c19 Improve healthcheck config readiness guidance`
 
 ## Scope For Current Task
-- Goal: `Introduce an explicit SQLite schema upgrade baseline so existing local databases can be upgraded intentionally instead of being recreated`
-- In scope: `Migration metadata, legacy schema version detection, additive SQLite upgrade helpers, CLI/script upgrade entrypoints, focused storage/CLI/docs updates, and progress tracking`
-- Out of scope: `Auth, frontend work, non-SQLite migration engines, scheduler redesign, and unrelated review/API behavior changes`
+- Goal: `Make operator readiness checks more explicit so sample configs and placeholder URLs are caught before real runs`
+- In scope: `Healthcheck-side config readiness detection, placeholder URL and bundled sample-config guidance, focused CLI/API/operations/docs updates, and progress tracking`
+- Out of scope: `Auth, frontend work, scheduler redesign, provider-secret validation, and unrelated extraction or review workflow changes`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -31,7 +31,7 @@ Keep updates short, factual, and current.
 | 02 | Article and pending-review read endpoints | done | 2026-04-07 10:55 KST | `/articles` and `/reviews/pending` now expose stored article/enrichment state and pending review drafts with focused API/workflow coverage |
 | 03 | Review action API parity | done | 2026-04-07 11:05 KST | Added thin review action routes plus structured HTTP error mapping for approve/reject/edit/schedule without changing review_queue semantics |
 | 04 | SQLite migration baseline | done | 2026-04-07 11:30 KST | Added SQLite schema version detection, explicit `db upgrade` flow, operator docs updates, and focused regression coverage for upgrade success and no-op paths |
-| 05 | Config readiness guidance and validation | pending | 2026-04-06 15:53 KST | Planned operator-facing checks for sample config and placeholder URLs |
+| 05 | Config readiness guidance and validation | done | 2026-04-07 11:42 KST | `healthcheck` now fails fast on bundled sample config dirs and placeholder example.* URLs, with focused CLI/API/operations coverage and updated README guidance |
 | 06 | Source-specific extraction tuning hooks | pending | 2026-04-06 15:53 KST | Planned additive extraction escape hatches for hard publisher layouts |
 
 Status values:
@@ -42,16 +42,11 @@ Status values:
 
 ## Changed Files For Active Task
 - `README.md`
-- `app/cli.py`
-- `app/storage/__init__.py`
-- `app/storage/bootstrap.py`
-- `docs/all-domain-news-operator-guide.md`
+- `app/operations.py`
 - `docs/api-operations-readiness-progress.md`
-- `docs/finance-local-operator-guide.md`
-- `scripts/create_db.py`
+- `tests/test_api.py`
 - `tests/test_cli.py`
-- `tests/test_scripts.py`
-- `tests/test_storage.py`
+- `tests/test_operations.py`
 
 ## Progress Log
 - `2026-04-06 15:53 KST` Created the API and operations readiness roadmap based on the current repository state after finance-local MVP, all-domain phase 1, and implementation-alignment completion
@@ -81,6 +76,12 @@ Status values:
 - `2026-04-07 11:27 KST` Updated README and operator guides to replace the old “recreate the database” guidance with the new upgrade flow for older local SQLite files
 - `2026-04-07 11:28 KST` Added focused storage, CLI, and script coverage for schema version detection, legacy upgrade success, current-schema no-op upgrades, and upgrade-aware healthcheck messaging; broader storage/API/operations regression slices also passed
 - `2026-04-07 11:30 KST` Created commit `726f790` with message `Add SQLite schema migration baseline`
+- `2026-04-07 11:35 KST` Started Task `05` on branch `codex/task-05-config-readiness-validation`
+- `2026-04-07 11:35 KST` Chose the smallest additive shape: keep config loading strict, add healthcheck-side readiness checks for bundled sample directories and placeholder URLs, and update docs/tests around the clearer operator guidance
+- `2026-04-07 11:39 KST` Added a dedicated `config_readiness` healthcheck step in `app.operations`, failing fast when `--config-dir` points at bundled `config/examples/...` content or when placeholder `example.*` URLs remain in landing/source config fields
+- `2026-04-07 11:39 KST` Updated focused CLI/API/operations tests and README guidance so the new operator-readiness behavior is covered and documented alongside the existing schema healthcheck flow
+- `2026-04-07 11:40 KST` Targeted regression checks passed for the new readiness behavior across operations, CLI healthcheck output, and the FastAPI health endpoint; the broader API/CLI regression slice also passed without behavioral drift
+- `2026-04-07 11:42 KST` Created commit `74e7c19` with message `Improve healthcheck config readiness guidance`
 
 ## Test Log
 - `2026-04-06 15:53 KST` `git diff --check` -> `passed`
@@ -105,12 +106,17 @@ Status values:
 - `2026-04-07 11:27 KST` `PYTHONPATH=$PWD pytest tests/test_operations.py` -> `passed`
 - `2026-04-07 11:27 KST` `PYTHONPATH=$PWD pytest tests/test_api.py` -> `passed`
 - `2026-04-07 11:28 KST` `git diff --check` -> `passed`
+- `2026-04-07 11:39 KST` `git diff --check` -> `passed`
+- `2026-04-07 11:39 KST` `PYTHONPATH=$PWD pytest tests/test_operations.py` -> `passed`
+- `2026-04-07 11:39 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k health` -> `passed`
+- `2026-04-07 11:39 KST` `PYTHONPATH=$PWD pytest tests/test_cli.py -k healthcheck` -> `passed`
+- `2026-04-07 11:40 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_cli.py` -> `passed`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 05 can build on the same healthcheck surface to make sample-config and placeholder-source readiness more explicit for operators`
+- `Task 06 can build on the new readiness messaging if extraction tuning later needs source-level operator hints or docs updates`
 
 ## Completion Summary
-- `Task 04 complete: local SQLite environments now have an explicit schema version baseline plus intentional `db upgrade` support, allowing older unversioned databases to be upgraded additively instead of being recreated`
+- `Task 05 complete: `healthcheck` now distinguishes syntactically valid config from operator-ready config by failing fast on bundled sample directories and unresolved placeholder example.* URLs while preserving the existing schema readiness checks`
