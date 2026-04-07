@@ -1,7 +1,14 @@
 """Storage primitives for the sns-content-engine database layer."""
 
-from app.storage.bootstrap import bootstrap_database, create_all_tables
-from app.storage.bootstrap import DatabaseSchemaError, ensure_database_schema_is_current
+from app.storage.bootstrap import (
+    DatabaseSchemaError,
+    SchemaUpgradeResult,
+    bootstrap_database,
+    create_all_tables,
+    ensure_database_schema_is_current,
+    get_database_schema_version,
+    upgrade_database_schema,
+)
 from app.storage.database import (
     DEFAULT_DATABASE_URL,
     Base,
@@ -54,10 +61,12 @@ __all__ = [
     "ContentBrief",
     "ContentBriefRepository",
     "DatabaseSchemaError",
+    "SchemaUpgradeResult",
     "DraftVariant",
     "DraftVariantRepository",
     "DraftVariantState",
     "ensure_database_schema_is_current",
+    "get_database_schema_version",
     "InvalidStateTransitionError",
     "ManualApprovalRequiredError",
     "PublishJob",
@@ -88,4 +97,5 @@ __all__ = [
     "create_session_factory",
     "resolve_database_url",
     "session_scope",
+    "upgrade_database_schema",
 ]

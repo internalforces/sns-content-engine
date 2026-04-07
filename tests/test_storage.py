@@ -42,7 +42,9 @@ from app.storage import (
     create_all_tables,
     create_database_engine,
     create_session_factory,
+    get_database_schema_version,
     session_scope,
+    upgrade_database_schema,
 )
 
 _DRAFT_SOURCE_COUNTER = count()
@@ -82,6 +84,104 @@ def test_create_all_creates_expected_tables(database_url: str) -> None:
         "source_item_recent_fingerprint_claims",
         "source_items",
     }
+
+
+def test_bootstrap_database_records_current_schema_version(database_url: str) -> None:
+    resolved_url = bootstrap_database(database_url)
+
+    assert resolved_url == database_url
+
+    engine = create_database_engine(database_url)
+    try:
+        tables = set(inspect(engine).get_table_names())
+        version = get_database_schema_version(engine)
+    finally:
+        engine.dispose()
+
+    assert "schema_migrations" in tables
+    assert version == 2
+
+
+def test_get_database_schema_version_detects_unversioned_current_schema(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        create_all_tables(engine)
+        version = get_database_schema_version(engine)
+    finally:
+        engine.dispose()
+
+    assert version == 1
+
+
+def test_upgrade_database_schema_upgrades_legacy_sqlite_schema(database_url: str) -> None:
+    engine = create_database_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            _create_legacy_upgrade_fixture(connection)
+    finally:
+        engine.dispose()
+
+    result = upgrade_database_schema(database_url)
+
+    assert result.from_version == 1
+    assert result.to_version == 2
+    assert result.applied_migrations == ("002_sqlite_migration_baseline",)
+
+    engine = create_database_engine(database_url)
+    session_factory = create_session_factory(engine)
+    try:
+        assert get_database_schema_version(engine) == 2
+        with session_scope(session_factory) as session:
+            source_item = SourceItemRepository(session).get(1)
+            content_brief = ContentBriefRepository(session).get(1)
+            draft_variant = DraftVariantRepository(session).get(1)
+            publish_job = PublishJobRepository(session).get(1)
+            pipeline_run = PipelineRunRepository(session).get(1)
+
+        inspector = inspect(engine)
+        unique_index_names = {
+            index["name"]
+            for index in inspector.get_indexes("publish_jobs")
+            if index.get("name") and index.get("unique")
+        }
+    finally:
+        engine.dispose()
+
+    assert source_item is not None
+    assert source_item.canonical_url == "https://example.com/posts/legacy"
+    assert source_item.normalized_title == "legacy ai update"
+    assert source_item.policy_mode is SourcePolicyMode.REUSABLE
+    assert source_item.allow_full_text_fetch is True
+    assert source_item.allow_llm_rewrite is True
+    assert source_item.require_attribution is False
+    assert source_item.dedupe_fingerprint
+
+    assert content_brief is not None
+    assert content_brief.key_points == ["Legacy AI update", "Legacy summary"]
+    assert content_brief.angle == "topic_takeaway"
+    assert content_brief.language == "en"
+
+    assert draft_variant is not None
+    assert draft_variant.source_name == "legacy_feed"
+    assert draft_variant.source_url == "https://example.com/posts/legacy?utm_source=newsletter"
+    assert draft_variant.article_url == "https://example.com/posts/legacy?utm_source=newsletter"
+    assert draft_variant.source_policy_mode is SourcePolicyMode.REUSABLE
+
+    assert publish_job is not None
+    assert len(publish_job.idempotency_key) == 64
+    assert pipeline_run is not None
+    assert pipeline_run.brief_count == 0
+    assert {"uq_publish_jobs_active_draft_variant_id", "uq_publish_jobs_idempotency_key"} <= unique_index_names
+
+
+def test_upgrade_database_schema_is_noop_for_current_versioned_schema(database_url: str) -> None:
+    bootstrap_database(database_url)
+
+    result = upgrade_database_schema(database_url)
+
+    assert result.from_version == 2
+    assert result.to_version == 2
+    assert result.applied_migrations == ()
 
 
 def test_source_item_can_be_inserted_and_read(session_factory) -> None:
@@ -1795,6 +1895,251 @@ def test_bootstrap_database_detects_missing_publish_job_idempotency_unique_index
         match="publish_jobs: missing unique indexes uq_publish_jobs_idempotency_key",
     ):
         bootstrap_database(database_url)
+
+
+def _create_legacy_upgrade_fixture(connection) -> None:
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE source_items (
+            id INTEGER PRIMARY KEY,
+            source_key VARCHAR(100) NOT NULL,
+            external_id VARCHAR(255) NOT NULL,
+            source_url VARCHAR(2048) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            published_at DATETIME,
+            raw_payload JSON,
+            state VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO source_items (
+            id,
+            source_key,
+            external_id,
+            source_url,
+            title,
+            summary,
+            published_at,
+            raw_payload,
+            state,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            'legacy_feed',
+            'legacy-1',
+            'https://example.com/posts/legacy?utm_source=newsletter',
+            'Legacy AI update',
+            'Legacy summary',
+            '2026-03-18T09:00:00+00:00',
+            '{}',
+            'INGESTED',
+            '2026-03-18T09:05:00+00:00',
+            '2026-03-18T09:05:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE pipeline_runs (
+            id INTEGER PRIMARY KEY,
+            workflow_name VARCHAR(100) NOT NULL,
+            trigger_mode VARCHAR(50) NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            started_at DATETIME NOT NULL,
+            completed_at DATETIME,
+            source_count INTEGER NOT NULL,
+            discovered_count INTEGER NOT NULL,
+            saved_count INTEGER NOT NULL,
+            enriched_count INTEGER NOT NULL,
+            summarized_count INTEGER NOT NULL,
+            draft_count INTEGER NOT NULL,
+            failure_count INTEGER NOT NULL,
+            latest_error_code VARCHAR(100),
+            latest_error_message TEXT,
+            summary_json JSON,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO pipeline_runs (
+            id,
+            workflow_name,
+            trigger_mode,
+            status,
+            started_at,
+            completed_at,
+            source_count,
+            discovered_count,
+            saved_count,
+            enriched_count,
+            summarized_count,
+            draft_count,
+            failure_count,
+            latest_error_code,
+            latest_error_message,
+            summary_json,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            'run_local_finance',
+            'manual_local',
+            'SUCCEEDED',
+            '2026-03-18T09:00:00+00:00',
+            '2026-03-18T09:10:00+00:00',
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            NULL,
+            NULL,
+            '{}',
+            '2026-03-18T09:00:00+00:00',
+            '2026-03-18T09:10:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE content_briefs (
+            id INTEGER PRIMARY KEY,
+            source_item_id INTEGER NOT NULL,
+            account_key VARCHAR(100) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            landing_url VARCHAR(2048) NOT NULL,
+            tags JSON NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO content_briefs (
+            id,
+            source_item_id,
+            account_key,
+            title,
+            summary,
+            landing_url,
+            tags,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'ai_tools_daily',
+            'Legacy AI update',
+            'Legacy summary',
+            'https://gilgop.cloud/ai-tools',
+            '["ai"]',
+            '2026-03-18T09:06:00+00:00',
+            '2026-03-18T09:06:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE draft_variants (
+            id INTEGER PRIMARY KEY,
+            content_brief_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            variant_index INTEGER NOT NULL,
+            body TEXT NOT NULL,
+            state VARCHAR(32) NOT NULL,
+            rejection_reason TEXT,
+            reviewed_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO draft_variants (
+            id,
+            content_brief_id,
+            channel,
+            variant_index,
+            body,
+            state,
+            rejection_reason,
+            reviewed_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            0,
+            'Legacy draft body',
+            'PENDING_REVIEW',
+            NULL,
+            NULL,
+            '2026-03-18T09:07:00+00:00',
+            '2026-03-18T09:07:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE publish_jobs (
+            id INTEGER PRIMARY KEY,
+            draft_variant_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            scheduled_for DATETIME,
+            state VARCHAR(32) NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            external_post_id VARCHAR(255),
+            last_error TEXT,
+            published_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO publish_jobs (
+            id,
+            draft_variant_id,
+            channel,
+            scheduled_for,
+            state,
+            attempt_count,
+            external_post_id,
+            last_error,
+            published_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            '2026-03-20T09:00:00+00:00',
+            'SCHEDULED',
+            0,
+            NULL,
+            NULL,
+            NULL,
+            '2026-03-18T09:08:00+00:00',
+            '2026-03-18T09:08:00+00:00'
+        )
+        """
+    )
 
 
 def _create_draft_variant(

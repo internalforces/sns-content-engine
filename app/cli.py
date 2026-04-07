@@ -11,7 +11,7 @@ from app import __version__
 from app.connectors.llm import DraftGenerationProviderError
 from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
-from app.storage import DatabaseSchemaError, bootstrap_database
+from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
 from app.workflows import (
     ReviewQueueError,
     approve_draft,
@@ -843,6 +843,39 @@ def init_database(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"database initialized: {resolved_url}")
+
+
+@db_app.command("upgrade")
+def upgrade_database_command(
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Apply supported SQLite schema upgrades to an existing database."""
+
+    try:
+        result = upgrade_database_schema(database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    if result.was_upgraded:
+        typer.echo(
+            "database upgraded: "
+            f"{result.database_url} "
+            f"(schema_version={result.from_version}->{result.to_version})"
+        )
+        return
+
+    typer.echo(
+        "database already current: "
+        f"{result.database_url} "
+        f"(schema_version={result.to_version})"
+    )
 
 
 def _exit_with_error(exc: Exception) -> None:

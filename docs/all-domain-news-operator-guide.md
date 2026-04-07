@@ -48,6 +48,8 @@ sns-engine history failures --database-url sqlite:///data/sns_content_engine.db
 sns-engine review list --database-url sqlite:///data/sns_content_engine.db
 ```
 
+If you are continuing from an older local SQLite database, run `sns-engine db upgrade --database-url ...` before the next `run-local` or review workflow.
+
 ## Operator checklist
 - Start from `config/examples/all_domain_news/`, then replace sample URLs with operator-approved sources.
 - Keep discovery-only sources in separate source sets when you want discovery coverage without treating them as reusable full-text sources.
