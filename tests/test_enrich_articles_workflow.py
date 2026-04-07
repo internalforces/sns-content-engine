@@ -75,6 +75,22 @@ class _FakeRegenerator:
         )()
 
 
+class _FlexibleRegenerator:
+    def regenerate(self, *, title: str, article_text: str, rss_description: str | None = None):
+        return type(
+            "Regenerated",
+            (),
+            {
+                "summary": f"{title}: concise summary",
+                "key_points": (
+                    article_text.split(".")[0].strip(),
+                    "Key point two",
+                    "Key point three",
+                ),
+            },
+        )()
+
+
 class _BlockedFetcher:
     def fetch(self, article_url: str):
         from app.services import HtmlFetcherError
@@ -263,6 +279,91 @@ def test_enrich_articles_persists_readable_failures(tmp_path: Path) -> None:
     assert enrichment.failure_message == "사이트 접근이 차단되었어요"
     assert enrichment.failure_stage is PipelineStage.HTML_FETCH
     assert enrichment.html_fetch_status is StageExecutionStatus.FAILED
+
+
+def test_enrich_articles_uses_source_specific_extraction_rules_with_default_extractor(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "sources.yaml").write_text(
+        """
+sources:
+  finance_rss:
+    type: rss
+    url: https://example.com/feed.xml
+    extraction:
+      prefer_selectors:
+        - .story-body
+      exclude_selectors:
+        - .inline-promo
+      minimum_word_count: 20
+
+source_sets:
+  finance_primary:
+    sources:
+      - finance_rss
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="finance_rss",
+                external_id="entry-4",
+                source_url="https://example.com/articles/4",
+                title="Config-driven extraction item",
+                summary="Feed summary",
+                state=SourceItemState.INGESTED,
+            )
+        )
+        source_item_id = source_item.id
+
+    html = """
+    <html>
+      <head>
+        <title>Market structure update</title>
+        <meta property="og:site_name" content="Finance Feed" />
+      </head>
+      <body>
+        <div class="page-shell">
+          <div class="story-body">
+            <p>Market liquidity improved after dealers adjusted inventories across rates and credit desks.</p>
+            <div class="inline-promo">
+              <p>Subscribe now for premium alerts and shopping offers.</p>
+            </div>
+            <p>Traders said funding pressure eased while macro expectations stayed firmly in focus.</p>
+            <p>Analysts still watched bank commentary, earnings quality, and regional demand trends.</p>
+          </div>
+          <div class="related-links">
+            <p>Read more gift guides and weekend lifestyle picks.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    result = enrich_articles(
+        tmp_path,
+        session_factory=session_factory,
+        html_fetcher=_FakeFetcher({"https://example.com/articles/4": html}),
+        summary_regenerator=_FlexibleRegenerator(),
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.enriched_count == 1
+    assert result.failed_count == 0
+
+    with session_scope(session_factory) as session:
+        enrichment = ArticleEnrichmentRepository(session).get_by_source_item_id(source_item_id)
+
+    assert enrichment is not None
+    assert enrichment.source_name == "Finance Feed"
+    assert enrichment.article_extract_status is StageExecutionStatus.SUCCEEDED
+    assert enrichment.article_text is not None
+    assert "Market liquidity improved" in enrichment.article_text
+    assert "Subscribe now for premium alerts" not in enrichment.article_text
+    assert "weekend lifestyle picks" not in enrichment.article_text
 
 
 def test_enrich_articles_skips_existing_completed_enrichment(tmp_path: Path) -> None:

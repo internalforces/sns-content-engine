@@ -18,6 +18,11 @@ sources:
     require_attribution: true
     notes: "Sample corporate newsroom or investor-relations sitemap. Replace with a real newsroom or IR source."
     duplicate_window_days: 7
+    extraction:
+      prefer_selectors:
+        - .article-body
+      exclude_selectors:
+        - .related-links
 
   wikinews_attribution_friendly:
     type: rss

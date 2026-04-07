@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.storage.models import (
     ArticleEnrichment,
@@ -410,6 +410,18 @@ class DraftVariantRepository:
 
     def get(self, draft_id: int) -> DraftVariant | None:
         return self.session.get(DraftVariant, draft_id)
+
+    def get_detail(self, draft_id: int) -> DraftVariant | None:
+        statement = (
+            select(DraftVariant)
+            .options(
+                joinedload(DraftVariant.content_brief)
+                .joinedload(ContentBrief.source_item)
+                .joinedload(SourceItem.article_enrichment)
+            )
+            .where(DraftVariant.id == draft_id)
+        )
+        return self.session.scalar(statement)
 
     def get_by_identity(
         self,

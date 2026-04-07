@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_backend_ready_operator_api`
-- Current task: `05_config_readiness_guidance_and_validation`
+- Current task: `06_source_specific_extraction_tuning_hooks`
 - Active status: `done`
-- Last updated: `2026-04-07 11:42 KST`
-- Active branch: `codex/task-05-config-readiness-validation`
-- Latest task commit: `74e7c19 Improve healthcheck config readiness guidance`
+- Last updated: `2026-04-07 13:47 KST`
+- Active branch: `codex/task-06-source-extraction-hooks`
+- Latest task commit: `pending`
 
 ## Scope For Current Task
-- Goal: `Make operator readiness checks more explicit so sample configs and placeholder URLs are caught before real runs`
-- In scope: `Healthcheck-side config readiness detection, placeholder URL and bundled sample-config guidance, focused CLI/API/operations/docs updates, and progress tracking`
-- Out of scope: `Auth, frontend work, scheduler redesign, provider-secret validation, and unrelated extraction or review workflow changes`
+- Goal: `Add a small source-specific extraction override path so hard publisher layouts can be tuned without redesigning enrichment`
+- In scope: `Source-level extraction config schema, default extractor hook-up through enrich_articles, focused extractor/config/workflow coverage, and progress tracking`
+- Out of scope: `Auth, frontend work, scraper subsystem redesign, connector changes, and unrelated review or scheduler behavior`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -32,7 +32,7 @@ Keep updates short, factual, and current.
 | 03 | Review action API parity | done | 2026-04-07 11:05 KST | Added thin review action routes plus structured HTTP error mapping for approve/reject/edit/schedule without changing review_queue semantics |
 | 04 | SQLite migration baseline | done | 2026-04-07 11:30 KST | Added SQLite schema version detection, explicit `db upgrade` flow, operator docs updates, and focused regression coverage for upgrade success and no-op paths |
 | 05 | Config readiness guidance and validation | done | 2026-04-07 11:42 KST | `healthcheck` now fails fast on bundled sample config dirs and placeholder example.* URLs, with focused CLI/API/operations coverage and updated README guidance |
-| 06 | Source-specific extraction tuning hooks | pending | 2026-04-06 15:53 KST | Planned additive extraction escape hatches for hard publisher layouts |
+| 06 | Source-specific extraction tuning hooks | done | 2026-04-07 13:47 KST | Added opt-in source extraction selectors and per-source minimum word count overrides in the default enrichment path |
 
 Status values:
 - `pending`
@@ -41,12 +41,16 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `README.md`
-- `app/operations.py`
+- `app/config/__init__.py`
+- `app/config/schemas.py`
+- `app/domain/extraction_selectors.py`
+- `app/services/article_extractor.py`
+- `app/workflows/enrich_articles.py`
+- `config/examples/all_domain_news/sources.yaml`
 - `docs/api-operations-readiness-progress.md`
-- `tests/test_api.py`
-- `tests/test_cli.py`
-- `tests/test_operations.py`
+- `tests/test_article_extractor.py`
+- `tests/test_config.py`
+- `tests/test_enrich_articles_workflow.py`
 
 ## Progress Log
 - `2026-04-06 15:53 KST` Created the API and operations readiness roadmap based on the current repository state after finance-local MVP, all-domain phase 1, and implementation-alignment completion
@@ -82,6 +86,11 @@ Status values:
 - `2026-04-07 11:39 KST` Updated focused CLI/API/operations tests and README guidance so the new operator-readiness behavior is covered and documented alongside the existing schema healthcheck flow
 - `2026-04-07 11:40 KST` Targeted regression checks passed for the new readiness behavior across operations, CLI healthcheck output, and the FastAPI health endpoint; the broader API/CLI regression slice also passed without behavioral drift
 - `2026-04-07 11:42 KST` Created commit `74e7c19` with message `Improve healthcheck config readiness guidance`
+- `2026-04-07 13:36 KST` Started Task `06` on branch `codex/task-06-source-extraction-hooks`
+- `2026-04-07 13:36 KST` Chose a small additive shape: add opt-in source extraction selectors to `sources.yaml`, build default extractor overrides from `config_dir`, and keep custom injected extractors working unchanged in tests
+- `2026-04-07 13:47 KST` Added `SourceExtractionConfig` to source schemas plus a shared limited-selector validator so `sources.yaml` can define opt-in preferred/excluded extraction scopes and per-source minimum word counts
+- `2026-04-07 13:47 KST` Extended `ArticleExtractor` with limited selector-aware preferred/excluded scope handling and wired `enrich_articles` to build cached default extractors per `source_key` from `sources.yaml` without changing injected custom extractor behavior
+- `2026-04-07 13:47 KST` Added focused extractor/config/workflow coverage plus a sample extraction override in the all-domain example sources config to document the new hook shape
 
 ## Test Log
 - `2026-04-06 15:53 KST` `git diff --check` -> `passed`
@@ -111,12 +120,17 @@ Status values:
 - `2026-04-07 11:39 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k health` -> `passed`
 - `2026-04-07 11:39 KST` `PYTHONPATH=$PWD pytest tests/test_cli.py -k healthcheck` -> `passed`
 - `2026-04-07 11:40 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_cli.py` -> `passed`
+- `2026-04-07 13:45 KST` `git diff --check` -> `passed`
+- `2026-04-07 13:45 KST` `PYTHONPATH=$PWD pytest tests/test_article_extractor.py` -> `passed`
+- `2026-04-07 13:46 KST` `PYTHONPATH=$PWD pytest tests/test_config.py -k extraction` -> `passed`
+- `2026-04-07 13:46 KST` `PYTHONPATH=$PWD pytest tests/test_enrich_articles_workflow.py -k source_specific_extraction_rules_with_default_extractor` -> `passed`
+- `2026-04-07 13:47 KST` `PYTHONPATH=$PWD pytest tests/test_article_extractor.py tests/test_enrich_articles_workflow.py tests/test_run_local_pipeline_workflow.py tests/test_config.py` -> `passed`
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 06 can build on the new readiness messaging if extraction tuning later needs source-level operator hints or docs updates`
+- `Current tuning intentionally supports a limited selector form (tag, .class, #id, and simple combinations); broader selector syntax can be added later only if a real source needs it`
 
 ## Completion Summary
-- `Task 05 complete: `healthcheck` now distinguishes syntactically valid config from operator-ready config by failing fast on bundled sample directories and unresolved placeholder example.* URLs while preserving the existing schema readiness checks`
+- `Task 06 complete: the default enrichment path now supports opt-in source-specific extraction tuning through `sources.yaml`, including preferred content selectors, excluded boilerplate selectors, and per-source minimum word count overrides without changing review-first workflow semantics`

@@ -123,6 +123,9 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert corporate_source.policy_mode == "reusable"
     assert corporate_source.require_attribution is True
     assert corporate_source.allow_llm_rewrite is True
+    assert corporate_source.extraction is not None
+    assert corporate_source.extraction.prefer_selectors == (".article-body",)
+    assert corporate_source.extraction.exclude_selectors == (".related-links",)
 
     assert isinstance(gdelt_source, GdeltSourceConfig)
     assert gdelt_source.query == "domain:news"
@@ -241,6 +244,33 @@ def test_registry_rejects_unknown_prompt_profile_reference(tmp_path: Path) -> No
     assert "accounts.yaml" in message
     assert "accounts.ai_tools_daily.prompt_profile" in message
     assert "missing_profile" in message
+
+
+def test_sources_config_rejects_invalid_extraction_selector(tmp_path: Path) -> None:
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            extraction:
+              prefer_selectors:
+                - "div article"
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        load_sources_config(tmp_path / "sources.yaml")
+
+    message = str(exc_info.value)
+    assert "sources.yaml" in message
+    assert "sources.ai_tools_rss.rss.extraction.prefer_selectors" in message
 
 
 def test_registry_rejects_source_set_with_unknown_source(tmp_path: Path) -> None:

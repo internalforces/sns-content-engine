@@ -10,6 +10,7 @@ from typing import Annotated, Literal, Mapping
 from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
+from app.domain.extraction_selectors import normalize_extraction_selector
 from app.domain.source_deduplication import normalize_title_text
 
 
@@ -314,6 +315,31 @@ class SourceSetConfig(FrozenConfigModel):
         return _normalize_non_empty_string_sequence(values, label="source references")
 
 
+class SourceExtractionConfig(FrozenConfigModel):
+    """Opt-in extraction overrides for one source definition."""
+
+    prefer_selectors: tuple[str, ...] = Field(default_factory=tuple)
+    exclude_selectors: tuple[str, ...] = Field(default_factory=tuple)
+    minimum_word_count: int | None = Field(default=None, ge=1)
+
+    @field_validator("prefer_selectors", "exclude_selectors")
+    @classmethod
+    def validate_selectors(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return _normalize_string_sequence(
+            values,
+            label="extraction selector",
+            normalizer=normalize_extraction_selector,
+        )
+
+    @property
+    def has_overrides(self) -> bool:
+        return bool(
+            self.prefer_selectors
+            or self.exclude_selectors
+            or self.minimum_word_count is not None
+        )
+
+
 class BaseSourceConfig(FrozenConfigModel):
     """Shared source configuration fields."""
 
@@ -323,6 +349,7 @@ class BaseSourceConfig(FrozenConfigModel):
     require_attribution: bool = False
     notes: str | None = None
     duplicate_window_days: int = Field(default=30, ge=0)
+    extraction: SourceExtractionConfig | None = None
 
     @field_validator("policy_mode", mode="before")
     @classmethod
