@@ -1,4 +1,4 @@
-"""FastAPI application wiring for operational read-only routes."""
+"""FastAPI application wiring for operator routes."""
 
 from __future__ import annotations
 
@@ -6,8 +6,12 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
+
+from app.config import ConfigError
+from app.storage import DatabaseSchemaError
 
 if TYPE_CHECKING:
     from app.workflows.history_queries import (
@@ -19,7 +23,7 @@ if TYPE_CHECKING:
         PipelineRunHistoryResult,
         PipelineRunHistoryRow,
     )
-    from app.workflows.review_queue import PendingReviewDraft, PendingReviewDraftsResult
+    from app.workflows.review_queue import PendingReviewDraft, PendingReviewDraftsResult, ReviewDraftResult
 
 
 class _ApiModel(BaseModel):
@@ -129,6 +133,42 @@ class PendingReviewDraftsResponse(_ApiModel):
     drafts: list[PendingReviewDraftResponse]
 
 
+class ReviewActionContextRequest(_ApiModel):
+    reviewer: str | None = None
+    config_dir: str = "config"
+
+
+class ApproveDraftRequest(ReviewActionContextRequest):
+    pass
+
+
+class RejectDraftRequest(ReviewActionContextRequest):
+    reason: str
+
+
+class EditDraftRequest(ReviewActionContextRequest):
+    body: str
+
+
+class ScheduleDraftRequest(ReviewActionContextRequest):
+    scheduled_for: str
+
+
+class ReviewActionResponse(_ApiModel):
+    draft_id: int
+    reviewer: str
+    action_type: str
+    draft_state: str
+    action_id: int
+    publish_job_id: int | None = None
+    scheduled_for: str | None = None
+
+
+class ApiErrorResponse(_ApiModel):
+    error_code: str
+    message: str
+
+
 def create_app(
     *,
     healthcheck_runner: Callable[..., Any] | None = None,
@@ -136,8 +176,12 @@ def create_app(
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
     article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
+    draft_approver: Callable[..., ReviewDraftResult] | None = None,
+    draft_rejector: Callable[..., ReviewDraftResult] | None = None,
+    draft_editor: Callable[..., ReviewDraftResult] | None = None,
+    draft_scheduler: Callable[..., ReviewDraftResult] | None = None,
 ) -> FastAPI:
-    """Create the FastAPI application for read-only operator routes."""
+    """Create the FastAPI application for operator routes."""
 
     if healthcheck_runner is None:
         from app.operations import run_healthcheck as default_healthcheck_runner
@@ -159,11 +203,119 @@ def create_app(
         from app.workflows.review_queue import list_pending_review_drafts as default_pending_review_drafts_lister
 
         pending_review_drafts_lister = default_pending_review_drafts_lister
+    if draft_approver is None:
+        from app.workflows.review_queue import approve_draft as default_draft_approver
+
+        draft_approver = default_draft_approver
+    if draft_rejector is None:
+        from app.workflows.review_queue import reject_draft as default_draft_rejector
+
+        draft_rejector = default_draft_rejector
+    if draft_editor is None:
+        from app.workflows.review_queue import edit_draft as default_draft_editor
+
+        draft_editor = default_draft_editor
+    if draft_scheduler is None:
+        from app.workflows.review_queue import schedule_draft as default_draft_scheduler
+
+        draft_scheduler = default_draft_scheduler
 
     application = FastAPI(
         title="sns-content-engine API",
         version="0.1.0",
     )
+
+    from app.workflows.review_queue import (
+        DraftNotFoundError,
+        DraftReviewStateError,
+        DraftScheduleError,
+        DraftValidationFailedError,
+        ReviewQueueError,
+        ReviewerIdentityError,
+    )
+
+    @application.exception_handler(DatabaseSchemaError)
+    async def handle_database_schema_error(
+        _request: Request, exc: DatabaseSchemaError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=503,
+            error_code="database_schema_error",
+            message=str(exc),
+        )
+
+    @application.exception_handler(ConfigError)
+    async def handle_config_error(_request: Request, exc: ConfigError) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=422,
+            error_code="config_invalid",
+            message=str(exc),
+        )
+
+    @application.exception_handler(DraftNotFoundError)
+    async def handle_draft_not_found(_request: Request, exc: DraftNotFoundError) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=404,
+            error_code="draft_not_found",
+            message=str(exc),
+        )
+
+    @application.exception_handler(DraftReviewStateError)
+    async def handle_draft_state_conflict(
+        _request: Request, exc: DraftReviewStateError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=409,
+            error_code="draft_state_conflict",
+            message=str(exc),
+        )
+
+    @application.exception_handler(DraftValidationFailedError)
+    async def handle_draft_validation_failed(
+        _request: Request, exc: DraftValidationFailedError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=422,
+            error_code="draft_validation_failed",
+            message=str(exc),
+        )
+
+    @application.exception_handler(DraftScheduleError)
+    async def handle_draft_schedule_error(
+        _request: Request, exc: DraftScheduleError
+    ) -> JSONResponse:
+        message = str(exc)
+        if "already has an active publish job" in message:
+            return _build_api_error_response(
+                status_code=409,
+                error_code="draft_schedule_conflict",
+                message=message,
+            )
+        return _build_api_error_response(
+            status_code=422,
+            error_code="draft_schedule_invalid",
+            message=message,
+        )
+
+    @application.exception_handler(ReviewerIdentityError)
+    async def handle_reviewer_identity_error(
+        _request: Request, exc: ReviewerIdentityError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=422,
+            error_code="reviewer_identity_required",
+            message=str(exc),
+        )
+
+    @application.exception_handler(ReviewQueueError)
+    async def handle_review_queue_error(
+        _request: Request, exc: ReviewQueueError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=422,
+            error_code="review_queue_error",
+            message=str(exc),
+        )
 
     @application.get("/health", response_model=HealthcheckResponse, tags=["operations"])
     def get_health(
@@ -220,6 +372,65 @@ def create_app(
             pending_count=result.pending_count,
             drafts=[_build_pending_review_draft_response(row) for row in result.drafts],
         )
+
+    @application.post("/reviews/{draft_id}/approve", response_model=ReviewActionResponse, tags=["reviews"])
+    def approve_review_draft(
+        draft_id: int,
+        payload: ApproveDraftRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ReviewActionResponse:
+        result = draft_approver(
+            draft_id,
+            reviewer=payload.reviewer,
+            config_dir=payload.config_dir,
+            database_url=database_url,
+        )
+        return _build_review_action_response(result)
+
+    @application.post("/reviews/{draft_id}/reject", response_model=ReviewActionResponse, tags=["reviews"])
+    def reject_review_draft(
+        draft_id: int,
+        payload: RejectDraftRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ReviewActionResponse:
+        result = draft_rejector(
+            draft_id,
+            reason=payload.reason,
+            reviewer=payload.reviewer,
+            config_dir=payload.config_dir,
+            database_url=database_url,
+        )
+        return _build_review_action_response(result)
+
+    @application.post("/reviews/{draft_id}/edit", response_model=ReviewActionResponse, tags=["reviews"])
+    def edit_review_draft(
+        draft_id: int,
+        payload: EditDraftRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ReviewActionResponse:
+        result = draft_editor(
+            draft_id,
+            body=payload.body,
+            reviewer=payload.reviewer,
+            config_dir=payload.config_dir,
+            database_url=database_url,
+        )
+        return _build_review_action_response(result)
+
+    @application.post("/reviews/{draft_id}/schedule", response_model=ReviewActionResponse, tags=["reviews"])
+    def schedule_review_draft(
+        draft_id: int,
+        payload: ScheduleDraftRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ReviewActionResponse:
+        result = draft_scheduler(
+            draft_id,
+            scheduled_for=payload.scheduled_for,
+            reviewer=payload.reviewer,
+            config_dir=payload.config_dir,
+            database_url=database_url,
+        )
+        return _build_review_action_response(result)
 
     return application
 
@@ -305,6 +516,23 @@ def _build_pending_review_draft_response(row: PendingReviewDraft) -> PendingRevi
         title=row.title,
         body=row.body,
     )
+
+
+def _build_review_action_response(result: ReviewDraftResult) -> ReviewActionResponse:
+    return ReviewActionResponse(
+        draft_id=result.draft_id,
+        reviewer=result.reviewer,
+        action_type=result.action_type.value,
+        draft_state=result.draft_state.value,
+        action_id=result.action_id,
+        publish_job_id=result.publish_job_id,
+        scheduled_for=result.scheduled_for.isoformat() if result.scheduled_for else None,
+    )
+
+
+def _build_api_error_response(*, status_code: int, error_code: str, message: str) -> JSONResponse:
+    payload = ApiErrorResponse(error_code=error_code, message=message)
+    return JSONResponse(status_code=status_code, content=payload.model_dump())
 
 
 app = create_app()
