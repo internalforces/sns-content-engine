@@ -14,10 +14,10 @@ Keep updates short, factual, and current.
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
 - Current task: `04_publish_job_detail_and_log_timeline`
-- Active status: `in_progress`
-- Last updated: `2026-04-07 17:09 KST`
+- Active status: `done`
+- Last updated: `2026-04-07 17:10 KST`
 - Active branch: `codex/task-04-publish-job-detail-log-timeline`
-- Latest task commit: `pending_task_commit`
+- Latest task commit: `76eeace`
 
 ## Scope For Current Task
 - Goal: `Expose one publish job with readable execution status, linked draft/source context, and ordered publish-log history for an operator detail screen`
@@ -30,7 +30,7 @@ Keep updates short, factual, and current.
 | 01 | Review-draft detail endpoint | done | 2026-04-07 14:29 KST | Added `GET /reviews/{draft_id}` with repository-backed linked brief/source/enrichment detail and passing API/review regression tests |
 | 02 | Review audit and sibling-variant visibility | done | 2026-04-07 16:47 KST | Extended `GET /reviews/{draft_id}` with stored review-action timeline data and same-brief/channel sibling variants plus passing API/workflow coverage |
 | 03 | Publish-job list endpoint | done | 2026-04-07 17:00 KST | Added `GET /publish-jobs` with storage-backed state/account/channel/limit filters and linked draft metadata plus passing API/scheduler regression coverage |
-| 04 | Publish-job detail and log timeline | in_progress | 2026-04-07 17:04 KST | Started detail-read implementation for one publish job with linked draft/source metadata and ordered publish-log timeline |
+| 04 | Publish-job detail and log timeline | done | 2026-04-07 17:10 KST | Added `GET /publish-jobs/{publish_job_id}` with storage-backed draft/source detail, ordered publish-log timeline, and passing API/scheduler regression coverage |
 | 05 | Scheduler action API wrappers | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 | 06 | Control-plane API docs and regression coverage | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 
@@ -70,6 +70,7 @@ Status values:
 - `2026-04-07 17:07 KST` Added `PublishJobRepository.get_detail` plus a history-query detail helper so the API can load one publish job with linked draft, brief, source-item context, and ordered persisted publish logs without changing scheduler behavior
 - `2026-04-07 17:08 KST` Extended the FastAPI contract with `GET /publish-jobs/{publish_job_id}` including nested draft/provenance/brief/source context, readable publish-log timeline entries, and a dedicated not-found API error
 - `2026-04-07 17:08 KST` Added focused API coverage for published, failed, empty-log, and not-found publish-job detail paths while keeping the new surface read-only
+- `2026-04-07 17:10 KST` Committed Task `04` as `76eeace` (`Add publish job detail API endpoint`) after the focused publish-job detail API slice and broader API/scheduler regression slice passed
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
@@ -100,3 +101,4 @@ Status values:
 - `Task 01 complete: single-draft review detail is now available through `GET /reviews/{draft_id}` with explicit draft, provenance, brief, source-item, and enrichment context`
 - `Task 02 complete: `GET /reviews/{draft_id}` now also exposes stored review-action history and same-brief/channel sibling variants with stable ordering and empty-state coverage`
 - `Task 03 complete: `GET /publish-jobs` now exposes stored publish jobs with state/account/channel/limit filters plus linked draft, brief, and source metadata for operator list views`
+- `Task 04 complete: `GET /publish-jobs/{publish_job_id}` now exposes one publish job with readable state/timestamps, linked draft and source context, and ordered persisted publish-log events for operator detail views`
