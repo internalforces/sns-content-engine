@@ -16,6 +16,7 @@ from app.storage import (
     DraftVariantState,
     PublishJob,
     PublishJobRepository,
+    ReviewAction,
     ReviewActionRepository,
     ReviewActionType,
     create_database_engine,
@@ -89,13 +90,22 @@ class ReviewDraftResult:
     scheduled_for: datetime | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ReviewDraftDetailResult:
+    """Serialized draft detail with related audit history and sibling variants."""
+
+    draft: DraftVariant
+    review_actions: tuple[ReviewAction, ...]
+    sibling_variants: tuple[DraftVariant, ...]
+
+
 def get_review_draft_detail(
     draft_id: int,
     *,
     database_url: str | None = None,
     session_factory=None,
-) -> DraftVariant:
-    """Return one draft with linked brief, source, and enrichment context."""
+) -> ReviewDraftDetailResult:
+    """Return one draft with linked detail, audit history, and sibling variants."""
 
     owned_engine, resolved_session_factory = _resolve_session_factory(
         database_url=database_url,
@@ -103,10 +113,25 @@ def get_review_draft_detail(
     )
     try:
         with session_scope(resolved_session_factory) as session:
-            draft = DraftVariantRepository(session).get_detail(draft_id)
+            drafts = DraftVariantRepository(session)
+            draft = drafts.get_detail(draft_id)
             if draft is None:
                 raise DraftNotFoundError(f"draft {draft_id} was not found")
-            return draft
+
+            review_actions = tuple(ReviewActionRepository(session).list_for_draft(draft_id))
+            sibling_variants = tuple(
+                sibling
+                for sibling in drafts.list_by_content_brief_and_channel(
+                    draft.content_brief_id,
+                    draft.channel,
+                )
+                if sibling.id != draft.id
+            )
+            return ReviewDraftDetailResult(
+                draft=draft,
+                review_actions=review_actions,
+                sibling_variants=sibling_variants,
+            )
     finally:
         _dispose_engine(owned_engine)
 

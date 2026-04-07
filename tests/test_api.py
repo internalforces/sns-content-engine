@@ -32,6 +32,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
+from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
 
 _DRAFT_SOURCE_COUNTER = count()
 _VALID_REVIEW_DRAFT_BODY = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
@@ -352,6 +353,108 @@ def test_review_detail_endpoint_returns_full_draft_context(tmp_path: Path) -> No
         "Detail point two",
     ]
     assert payload["article_enrichment"]["classification"] == "analysis"
+    assert payload["review_actions"] == []
+    assert payload["sibling_variants"] == []
+
+
+def test_review_detail_endpoint_returns_audit_history_and_sibling_variants(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    edited_body = "Edited AI automation workflow summary for operators https://gilgop.cloud/ai-tools"
+    edit_draft(
+        draft.id,
+        body=edited_body,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    approve_draft(
+        draft.id,
+        reviewer="editor-b",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    schedule_result = schedule_draft(
+        draft.id,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        reviewer="scheduler-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+
+    with session_scope(session_factory) as session:
+        repository = DraftVariantRepository(session)
+        stored_draft = repository.get(draft.id)
+        assert stored_draft is not None
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=2,
+                body="Variant two for deeper operator analysis",
+                created_at=datetime(2026, 3, 18, 9, 20, tzinfo=timezone.utc),
+            )
+        )
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=1,
+                body="Variant one with a shorter operator hook",
+                created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            )
+        )
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="linkedin",
+                variant_index=0,
+                body="Different channel variant should stay hidden",
+                created_at=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc),
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [action["action_type"] for action in payload["review_actions"]] == [
+        "edit",
+        "approve",
+        "schedule",
+    ]
+    assert [action["reviewer"] for action in payload["review_actions"]] == [
+        "editor-a",
+        "editor-b",
+        "scheduler-a",
+    ]
+    assert payload["review_actions"][0]["before_text"] == _VALID_REVIEW_DRAFT_BODY
+    assert payload["review_actions"][0]["after_text"] == edited_body
+    assert payload["review_actions"][0]["draft_state_before"] == "pending_review"
+    assert payload["review_actions"][0]["draft_state_after"] == "pending_review"
+    assert payload["review_actions"][1]["draft_state_before"] == "pending_review"
+    assert payload["review_actions"][1]["draft_state_after"] == "approved"
+    assert payload["review_actions"][2]["publish_job_id"] == schedule_result.publish_job_id
+    assert payload["review_actions"][2]["scheduled_for"] == "2026-03-18T00:00:00+00:00"
+    assert [variant["variant_index"] for variant in payload["sibling_variants"]] == [1, 2]
+    assert [variant["body"] for variant in payload["sibling_variants"]] == [
+        "Variant one with a shorter operator hook",
+        "Variant two for deeper operator analysis",
+    ]
+    assert all(variant["draft_state"] == "pending_review" for variant in payload["sibling_variants"])
 
 
 def test_review_detail_endpoint_returns_not_found_error(tmp_path: Path) -> None:
