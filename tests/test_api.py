@@ -1,4 +1,4 @@
-"""Tests for the FastAPI read-only operator routes."""
+"""Tests for the FastAPI operator routes."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from app.storage import (
     DraftVariant,
     DraftVariantRepository,
     DraftVariantState,
+    PublishJobRepository,
     PipelineRun,
     PipelineRunRepository,
     PipelineRunStatus,
@@ -33,6 +34,7 @@ from app.storage import (
 )
 
 _DRAFT_SOURCE_COUNTER = count()
+_VALID_REVIEW_DRAFT_BODY = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
 
 
 def test_health_endpoint_returns_readiness_json(tmp_path: Path) -> None:
@@ -289,6 +291,205 @@ def test_pending_review_endpoint_returns_empty_state(tmp_path: Path) -> None:
     assert response.json() == {"pending_count": 0, "drafts": []}
 
 
+def test_review_approve_endpoint_returns_action_result(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/approve",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-a", "config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"] == draft.id
+    assert payload["reviewer"] == "editor-a"
+    assert payload["action_type"] == "approve"
+    assert payload["draft_state"] == "approved"
+    assert payload["publish_job_id"] is None
+    assert payload["scheduled_for"] is None
+
+
+def test_review_reject_endpoint_returns_action_result(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/reject",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-b", "reason": "Off topic for this account"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"] == draft.id
+    assert payload["reviewer"] == "editor-b"
+    assert payload["action_type"] == "reject"
+    assert payload["draft_state"] == "rejected"
+
+
+def test_review_edit_endpoint_returns_action_result(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/edit",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={
+            "reviewer": "editor-c",
+            "body": "Updated draft body https://gilgop.cloud/ai-tools",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"] == draft.id
+    assert payload["reviewer"] == "editor-c"
+    assert payload["action_type"] == "edit"
+    assert payload["draft_state"] == "pending_review"
+
+
+def test_review_schedule_endpoint_returns_action_result(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/schedule",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={
+            "reviewer": "scheduler-a",
+            "config_dir": str(tmp_path),
+            "scheduled_for": "2026-03-18T09:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"] == draft.id
+    assert payload["reviewer"] == "scheduler-a"
+    assert payload["action_type"] == "schedule"
+    assert payload["draft_state"] == "approved"
+    assert payload["publish_job_id"] is not None
+    assert payload["scheduled_for"] == "2026-03-18T00:00:00+00:00"
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].draft_variant_id == draft.id
+
+
+def test_review_action_endpoint_returns_not_found_error(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/reviews/999/approve",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-a", "config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error_code": "draft_not_found",
+        "message": "draft 999 was not found",
+    }
+
+
+def test_review_approve_endpoint_returns_validation_error(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body="Operator update for general readers https://gilgop.cloud/ai-tools",
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/approve",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-a", "config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["error_code"] == "draft_validation_failed"
+    assert "topic_guard_failed" in payload["message"]
+
+
+def test_review_schedule_endpoint_returns_conflict_for_duplicate_job(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    first_response = client.post(
+        f"/reviews/{draft.id}/schedule",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={
+            "reviewer": "scheduler-a",
+            "config_dir": str(tmp_path),
+            "scheduled_for": "2026-03-18T09:00:00+09:00",
+        },
+    )
+    second_response = client.post(
+        f"/reviews/{draft.id}/schedule",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={
+            "reviewer": "scheduler-a",
+            "config_dir": str(tmp_path),
+            "scheduled_for": "2026-03-18T10:00:00+09:00",
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["error_code"] == "draft_schedule_conflict"
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'api.db'}")
     create_all_tables(engine)
@@ -308,12 +509,24 @@ def _write_minimal_project_config(path: Path) -> None:
             landing:
               fallback_url: https://gilgop.cloud/ai-tools
               rules: []
+            matching:
+              include_keywords:
+                - ai
+                - automation
+              source_tags:
+                - ai
+                - automation
+              strict_topic_guard: true
             channels:
               x:
                 schedule:
                   cron: "0 9 * * *"
                 render:
                   max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
         """,
     )
     _write_file(
@@ -351,6 +564,8 @@ def _create_draft_variant(
     variant_index: int,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
     created_at: datetime,
+    body: str = "Useful AI automation workflows for operators",
+    include_provenance: bool = False,
 ) -> DraftVariant:
     source_number = next(_DRAFT_SOURCE_COUNTER)
     source_item = SourceItemRepository(session).add(
@@ -369,15 +584,34 @@ def _create_draft_variant(
             summary="Summary for review",
             key_points=["Point one"],
             landing_url="https://gilgop.cloud/ai-tools",
+            tags=["ai"],
+            angle="topic_takeaway",
+            language="en",
         )
     )
-    return DraftVariantRepository(session).add(
+    repository = DraftVariantRepository(session)
+    draft = repository.add(
         DraftVariant(
             content_brief_id=brief.id,
             channel="x",
             variant_index=variant_index,
-            body="Useful AI automation workflows for operators",
-            state=draft_state,
+            body=body,
             created_at=created_at,
+            source_name="AI Tools Daily" if include_provenance else None,
+            source_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            article_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            source_published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+            if include_provenance
+            else None,
+            source_policy_mode=SourcePolicyMode.REUSABLE if include_provenance else None,
         )
     )
+    if draft_state is DraftVariantState.APPROVED:
+        repository.transition_state(draft, DraftVariantState.APPROVED)
+    elif draft_state is DraftVariantState.REJECTED:
+        repository.transition_state(
+            draft,
+            DraftVariantState.REJECTED,
+            rejection_reason="Rejected during test setup",
+        )
+    return draft
