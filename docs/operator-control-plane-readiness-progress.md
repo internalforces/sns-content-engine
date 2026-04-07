@@ -14,10 +14,10 @@ Keep updates short, factual, and current.
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
 - Current task: `01_review_draft_detail_endpoint`
-- Active status: `in_progress`
-- Last updated: `2026-04-07 14:28 KST`
+- Active status: `done`
+- Last updated: `2026-04-07 14:29 KST`
 - Active branch: `codex/task-01-review-draft-detail-endpoint`
-- Latest task commit: `not_created`
+- Latest task commit: `6907f71` (`Add review draft detail API endpoint`)
 
 ## Scope For Current Task
 - Goal: `Expose full review-draft context through the API so a real operator screen can inspect one draft without CLI parsing or direct DB access`
@@ -27,7 +27,7 @@ Keep updates short, factual, and current.
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- |
-| 01 | Review-draft detail endpoint | in_progress | 2026-04-07 14:22 KST | Implementing repository-backed single-draft detail API on dedicated task branch |
+| 01 | Review-draft detail endpoint | done | 2026-04-07 14:29 KST | Added `GET /reviews/{draft_id}` with repository-backed linked brief/source/enrichment detail and passing API/review regression tests |
 | 02 | Review audit and sibling-variant visibility | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 | 03 | Publish-job list endpoint | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 | 04 | Publish-job detail and log timeline | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
@@ -55,6 +55,7 @@ Status values:
 - `2026-04-07 14:28 KST` Added `DraftVariantRepository.get_detail` plus a review-queue read helper so the API can load one draft with its linked brief, source item, and article enrichment without duplicating persistence logic
 - `2026-04-07 14:28 KST` Added `GET /reviews/{draft_id}` with explicit operator-facing sections for draft review state, provenance, brief context, source item details, and optional article enrichment
 - `2026-04-07 14:28 KST` Extended `tests/test_api.py` with populated and not-found review-detail coverage using the existing draft fixture helper
+- `2026-04-07 14:29 KST` Committed Task `01` as `6907f71` (`Add review draft detail API endpoint`) after the focused API test and broader API/review workflow regression slice passed
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
@@ -69,4 +70,4 @@ Status values:
 - `None yet`
 
 ## Completion Summary
-- `Roadmap scaffolded; implementation has not started yet`
+- `Task 01 complete: single-draft review detail is now available through `GET /reviews/{draft_id}` with explicit draft, provenance, brief, source-item, and enrichment context`
