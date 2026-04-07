@@ -11,6 +11,8 @@ from app.storage import (
     ArticleEnrichment,
     ArticleEnrichmentRepository,
     PipelineRunRepository,
+    PublishJobRepository,
+    PublishJobState,
     SourceItem,
     StageExecutionStatus,
     create_database_engine,
@@ -101,6 +103,32 @@ class ArticleStatusRow:
 @dataclass(frozen=True, slots=True)
 class ArticleStatusResult:
     articles: tuple[ArticleStatusRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublishJobListRow:
+    publish_job_id: int
+    draft_id: int
+    brief_id: int
+    account_key: str
+    channel: str
+    state: str
+    scheduled_for: datetime | None
+    published_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    attempt_count: int
+    external_post_id: str | None
+    last_error: str | None
+    variant_index: int
+    draft_state: str
+    brief_title: str
+    source_title: str
+
+
+@dataclass(frozen=True, slots=True)
+class PublishJobListResult:
+    jobs: tuple[PublishJobListRow, ...]
 
 
 def list_pipeline_runs(*, database_url: str | None = None, session_factory=None, limit: int = 20) -> PipelineRunHistoryResult:
@@ -235,6 +263,61 @@ def list_article_statuses(*, database_url: str | None = None, session_factory=No
             owned_engine.dispose()
 
     return ArticleStatusResult(articles=rows)
+
+
+def list_publish_jobs(
+    *,
+    database_url: str | None = None,
+    session_factory=None,
+    state: PublishJobState | None = None,
+    account_key: str | None = None,
+    channel: str | None = None,
+    limit: int = 50,
+) -> PublishJobListResult:
+    owned_engine = None
+    if session_factory is None:
+        owned_engine = create_database_engine(database_url)
+        ensure_database_schema_is_current(owned_engine)
+        session_factory = create_session_factory(owned_engine)
+    else:
+        bound_engine = getattr(session_factory, "kw", {}).get("bind")
+        if bound_engine is not None:
+            ensure_database_schema_is_current(bound_engine)
+
+    try:
+        with session_scope(session_factory) as session:
+            jobs = tuple(
+                PublishJobListRow(
+                    publish_job_id=job.id,
+                    draft_id=job.draft_variant.id,
+                    brief_id=job.draft_variant.content_brief.id,
+                    account_key=job.draft_variant.content_brief.account_key,
+                    channel=job.channel,
+                    state=job.state.value,
+                    scheduled_for=job.scheduled_for,
+                    published_at=job.published_at,
+                    created_at=job.created_at,
+                    updated_at=job.updated_at,
+                    attempt_count=job.attempt_count,
+                    external_post_id=job.external_post_id,
+                    last_error=job.last_error,
+                    variant_index=job.draft_variant.variant_index,
+                    draft_state=job.draft_variant.state.value,
+                    brief_title=job.draft_variant.content_brief.title,
+                    source_title=job.draft_variant.content_brief.source_item.title,
+                )
+                for job in PublishJobRepository(session).list_for_operator(
+                    state=state,
+                    account_key=account_key,
+                    channel=channel,
+                    limit=limit,
+                )
+            )
+    finally:
+        if owned_engine is not None:
+            owned_engine.dispose()
+
+    return PublishJobListResult(jobs=jobs)
 
 
 def _normalize_policy_mode_counts(summary_json: dict | None) -> dict[str, int]:

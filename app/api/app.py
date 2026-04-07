@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.config import ConfigError
-from app.storage import DatabaseSchemaError
+from app.storage import DatabaseSchemaError, PublishJobState
 
 if TYPE_CHECKING:
     from app.storage import DraftVariant, ReviewAction
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
         PipelineFailureHistoryResult,
         PipelineFailureRow,
         PipelinePolicySkipRow,
+        PublishJobListResult,
+        PublishJobListRow,
         PipelineRunHistoryResult,
         PipelineRunHistoryRow,
     )
@@ -118,6 +120,30 @@ class ArticleStatusResponse(_ApiModel):
 
 class ArticleStatusesResponse(_ApiModel):
     articles: list[ArticleStatusResponse]
+
+
+class PublishJobRowResponse(_ApiModel):
+    publish_job_id: int
+    draft_id: int
+    brief_id: int
+    account_key: str
+    channel: str
+    state: str
+    scheduled_for: str | None
+    published_at: str | None
+    created_at: str
+    updated_at: str
+    attempt_count: int
+    external_post_id: str | None
+    last_error: str | None
+    variant_index: int
+    draft_state: str
+    brief_title: str
+    source_title: str
+
+
+class PublishJobsResponse(_ApiModel):
+    jobs: list[PublishJobRowResponse]
 
 
 class PendingReviewDraftResponse(_ApiModel):
@@ -262,6 +288,7 @@ def create_app(
     pipeline_runs_lister: Callable[..., PipelineRunHistoryResult] | None = None,
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
     article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
+    publish_jobs_lister: Callable[..., PublishJobListResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
     review_draft_detail_fetcher: Callable[..., ReviewDraftDetailResult] | None = None,
     draft_approver: Callable[..., ReviewDraftResult] | None = None,
@@ -287,6 +314,10 @@ def create_app(
         from app.workflows.history_queries import list_article_statuses as default_article_statuses_lister
 
         article_statuses_lister = default_article_statuses_lister
+    if publish_jobs_lister is None:
+        from app.workflows.history_queries import list_publish_jobs as default_publish_jobs_lister
+
+        publish_jobs_lister = default_publish_jobs_lister
     if pending_review_drafts_lister is None:
         from app.workflows.review_queue import list_pending_review_drafts as default_pending_review_drafts_lister
 
@@ -455,6 +486,25 @@ def create_app(
             articles=[_build_article_status_response(row) for row in result.articles],
         )
 
+    @application.get("/publish-jobs", response_model=PublishJobsResponse, tags=["publish"])
+    def get_publish_jobs(
+        database_url: str | None = Query(default=None),
+        state: PublishJobState | None = Query(default=None),
+        account_key: str | None = Query(default=None),
+        channel: str | None = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> PublishJobsResponse:
+        result = publish_jobs_lister(
+            database_url=database_url,
+            state=state,
+            account_key=account_key,
+            channel=channel,
+            limit=limit,
+        )
+        return PublishJobsResponse(
+            jobs=[_build_publish_job_response(row) for row in result.jobs],
+        )
+
     @application.get("/reviews/pending", response_model=PendingReviewDraftsResponse, tags=["reviews"])
     def get_pending_review_drafts(
         database_url: str | None = Query(default=None),
@@ -603,6 +653,28 @@ def _build_article_status_response(row: ArticleStatusRow) -> ArticleStatusRespon
         extract_status=row.extract_status,
         summarize_status=row.summarize_status,
         last_failure_message=row.last_failure_message,
+    )
+
+
+def _build_publish_job_response(row: PublishJobListRow) -> PublishJobRowResponse:
+    return PublishJobRowResponse(
+        publish_job_id=row.publish_job_id,
+        draft_id=row.draft_id,
+        brief_id=row.brief_id,
+        account_key=row.account_key,
+        channel=row.channel,
+        state=row.state,
+        scheduled_for=row.scheduled_for.isoformat() if row.scheduled_for else None,
+        published_at=row.published_at.isoformat() if row.published_at else None,
+        created_at=row.created_at.isoformat(),
+        updated_at=row.updated_at.isoformat(),
+        attempt_count=row.attempt_count,
+        external_post_id=row.external_post_id,
+        last_error=row.last_error,
+        variant_index=row.variant_index,
+        draft_state=row.draft_state,
+        brief_title=row.brief_title,
+        source_title=row.source_title,
     )
 
 
