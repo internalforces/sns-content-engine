@@ -18,7 +18,9 @@ from app.storage import (
     DraftVariant,
     DraftVariantRepository,
     DraftVariantState,
+    PublishJob,
     PublishJobRepository,
+    PublishJobState,
     PipelineRun,
     PipelineRunRepository,
     PipelineRunStatus,
@@ -245,6 +247,130 @@ def test_articles_endpoint_returns_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"articles": []}
+
+
+def test_publish_jobs_endpoint_returns_filtered_rows(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        scheduled_draft = _create_draft_variant(
+            session,
+            account_key="ai_tools_daily",
+            brief_title="Queued AI brief",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+        failed_draft = _create_draft_variant(
+            session,
+            account_key="ai_tools_daily",
+            brief_title="Failed AI brief",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 5, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+        published_draft = _create_draft_variant(
+            session,
+            account_key="finance_news_daily",
+            channel="linkedin",
+            brief_title="Published finance brief",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+
+        jobs = PublishJobRepository(session)
+        scheduled_job = jobs.add(
+            PublishJob(
+                draft_variant=scheduled_draft,
+                channel="x",
+                idempotency_key="scheduled-job",
+                scheduled_for=datetime(2026, 3, 18, 12, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        failed_job = jobs.add(
+            PublishJob(
+                draft_variant=failed_draft,
+                channel="x",
+                idempotency_key="failed-job",
+                scheduled_for=datetime(2026, 3, 18, 12, 30, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 5, tzinfo=timezone.utc),
+            )
+        )
+        jobs.transition_state(failed_job, PublishJobState.FAILED, last_error="publisher rejected draft")
+        published_job = jobs.add(
+            PublishJob(
+                draft_variant=published_draft,
+                channel="linkedin",
+                idempotency_key="published-job",
+                scheduled_for=datetime(2026, 3, 18, 13, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            )
+        )
+        jobs.transition_state(published_job, PublishJobState.PUBLISHING)
+        jobs.transition_state(
+            published_job,
+            PublishJobState.PUBLISHED,
+            external_post_id="li:123",
+            occurred_at=datetime(2026, 3, 18, 13, 5, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+
+    filtered_response = client.get(
+        "/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}",
+            "account_key": "ai_tools_daily",
+            "channel": "x",
+            "limit": 1,
+        },
+    )
+
+    assert filtered_response.status_code == 200
+    filtered_payload = filtered_response.json()
+    assert [job["publish_job_id"] for job in filtered_payload["jobs"]] == [failed_job.id]
+    assert filtered_payload["jobs"][0]["draft_id"] == failed_draft.id
+    assert filtered_payload["jobs"][0]["account_key"] == "ai_tools_daily"
+    assert filtered_payload["jobs"][0]["channel"] == "x"
+    assert filtered_payload["jobs"][0]["state"] == "failed"
+    assert filtered_payload["jobs"][0]["last_error"] == "publisher rejected draft"
+    assert filtered_payload["jobs"][0]["variant_index"] == 0
+    assert filtered_payload["jobs"][0]["draft_state"] == "approved"
+    assert filtered_payload["jobs"][0]["brief_title"] == "Failed AI brief"
+    assert filtered_payload["jobs"][0]["source_title"].startswith("Draft source ")
+
+    published_response = client.get(
+        "/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}",
+            "state": "published",
+        },
+    )
+
+    assert published_response.status_code == 200
+    published_payload = published_response.json()
+    assert [job["publish_job_id"] for job in published_payload["jobs"]] == [published_job.id]
+    assert published_payload["jobs"][0]["account_key"] == "finance_news_daily"
+    assert published_payload["jobs"][0]["channel"] == "linkedin"
+    assert published_payload["jobs"][0]["state"] == "published"
+    assert published_payload["jobs"][0]["external_post_id"] == "li:123"
+    assert published_payload["jobs"][0]["published_at"] == "2026-03-18T13:05:00+00:00"
+    assert published_payload["jobs"][0]["brief_title"] == "Published finance brief"
+    assert scheduled_job.id not in [job["publish_job_id"] for job in published_payload["jobs"]]
+
+
+def test_publish_jobs_endpoint_returns_empty_state(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/publish-jobs",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"jobs": []}
 
 
 def test_pending_review_endpoint_returns_pending_drafts(tmp_path: Path) -> None:
@@ -747,6 +873,9 @@ def _write_file(path: Path, content: str) -> None:
 def _create_draft_variant(
     session,
     *,
+    account_key: str = "ai_tools_daily",
+    channel: str = "x",
+    brief_title: str = "Brief for draft",
     variant_index: int,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
     created_at: datetime,
@@ -784,8 +913,8 @@ def _create_draft_variant(
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,
-            account_key="ai_tools_daily",
-            title="Brief for draft",
+            account_key=account_key,
+            title=brief_title,
             summary="Summary for review",
             key_points=["Point one"],
             landing_url="https://gilgop.cloud/ai-tools",
@@ -798,7 +927,7 @@ def _create_draft_variant(
     draft = repository.add(
         DraftVariant(
             content_brief_id=brief.id,
-            channel="x",
+            channel=channel,
             variant_index=variant_index,
             body=body,
             created_at=created_at,

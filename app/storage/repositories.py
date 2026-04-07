@@ -572,6 +572,38 @@ class PublishJobRepository:
     def list(self) -> list[PublishJob]:
         return list(self.session.scalars(select(PublishJob).order_by(PublishJob.id)))
 
+    def list_for_operator(
+        self,
+        *,
+        state: PublishJobState | None = None,
+        account_key: str | None = None,
+        channel: str | None = None,
+        limit: int = 50,
+    ) -> list[PublishJob]:
+        normalized_account_key = account_key.strip() if account_key is not None else None
+        normalized_channel = channel.strip() if channel is not None else None
+
+        statement = (
+            select(PublishJob)
+            .options(
+                joinedload(PublishJob.draft_variant)
+                .joinedload(DraftVariant.content_brief)
+                .joinedload(ContentBrief.source_item)
+            )
+            .join(PublishJob.draft_variant)
+            .join(DraftVariant.content_brief)
+            .order_by(PublishJob.created_at.desc(), PublishJob.id.desc())
+        )
+
+        if state is not None:
+            statement = statement.where(PublishJob.state == state)
+        if normalized_account_key:
+            statement = statement.where(ContentBrief.account_key == normalized_account_key)
+        if normalized_channel:
+            statement = statement.where(PublishJob.channel == normalized_channel)
+
+        return list(self.session.scalars(statement.limit(limit)))
+
     def list_due_scheduled(self, *, as_of: datetime) -> list[PublishJob]:
         statement = (
             select(PublishJob)
