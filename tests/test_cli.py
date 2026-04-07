@@ -135,6 +135,7 @@ def test_healthcheck_command_reports_outdated_database_schema(tmp_path: Path) ->
     assert result.exit_code == 1
     assert "event=healthcheck component=cli status=failed check=database" in result.output
     assert "missing required tables" in result.output
+    assert "Run `sns-engine db upgrade`" in result.output
 
 
 def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
@@ -157,11 +158,45 @@ def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
             "publish_jobs",
             "publish_logs",
             "review_actions",
+            "schema_migrations",
             "source_item_recent_fingerprint_claims",
             "source_items",
         }
     finally:
         engine.dispose()
+
+
+def test_db_upgrade_command_upgrades_legacy_sqlite_database(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cli-upgrade.db'}"
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            _create_legacy_upgrade_fixture(connection)
+    finally:
+        engine.dispose()
+
+    result = runner.invoke(app, ["db", "upgrade", "--database-url", database_url])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == f"database upgraded: {database_url} (schema_version=1->2)"
+
+    engine = create_engine(database_url)
+    try:
+        assert "schema_migrations" in set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+
+def test_db_upgrade_command_reports_current_schema(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'cli-upgrade-current.db'}"
+    init_result = runner.invoke(app, ["db", "init", "--database-url", database_url])
+
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(app, ["db", "upgrade", "--database-url", database_url])
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == f"database already current: {database_url} (schema_version=2)"
 
 
 def test_discover_command_reports_summary(monkeypatch) -> None:
@@ -825,6 +860,21 @@ def test_db_init_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     assert "database schema is outdated" in result.output
 
 
+def test_db_upgrade_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "upgrade_database_schema",
+        lambda database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema upgrade failed")
+        ),
+    )
+
+    result = runner.invoke(app, ["db", "upgrade"])
+
+    assert result.exit_code == 1
+    assert "database schema upgrade failed" in result.output
+
+
 def test_help_command_is_available() -> None:
     result = runner.invoke(app, ["--help"])
 
@@ -851,6 +901,208 @@ def test_main_runs_the_typer_app(monkeypatch) -> None:
     cli_module.main()
 
     assert called is True
+
+
+def _create_legacy_upgrade_fixture(connection) -> None:
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE source_items (
+            id INTEGER PRIMARY KEY,
+            source_key VARCHAR(100) NOT NULL,
+            external_id VARCHAR(255) NOT NULL,
+            source_url VARCHAR(2048) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            published_at DATETIME,
+            raw_payload JSON,
+            state VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO source_items (
+            id,
+            source_key,
+            external_id,
+            source_url,
+            title,
+            summary,
+            published_at,
+            raw_payload,
+            state,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            'legacy_feed',
+            'legacy-1',
+            'https://example.com/posts/legacy?utm_source=newsletter',
+            'Legacy AI update',
+            'Legacy summary',
+            '2026-03-18T09:00:00+00:00',
+            '{}',
+            'INGESTED',
+            '2026-03-18T09:05:00+00:00',
+            '2026-03-18T09:05:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE pipeline_runs (
+            id INTEGER PRIMARY KEY,
+            workflow_name VARCHAR(100) NOT NULL,
+            trigger_mode VARCHAR(50) NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            started_at DATETIME NOT NULL,
+            completed_at DATETIME,
+            source_count INTEGER NOT NULL,
+            discovered_count INTEGER NOT NULL,
+            saved_count INTEGER NOT NULL,
+            enriched_count INTEGER NOT NULL,
+            summarized_count INTEGER NOT NULL,
+            draft_count INTEGER NOT NULL,
+            failure_count INTEGER NOT NULL,
+            latest_error_code VARCHAR(100),
+            latest_error_message TEXT,
+            summary_json JSON,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE content_briefs (
+            id INTEGER PRIMARY KEY,
+            source_item_id INTEGER NOT NULL,
+            account_key VARCHAR(100) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            landing_url VARCHAR(2048) NOT NULL,
+            tags JSON NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO content_briefs (
+            id,
+            source_item_id,
+            account_key,
+            title,
+            summary,
+            landing_url,
+            tags,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'ai_tools_daily',
+            'Legacy AI update',
+            'Legacy summary',
+            'https://gilgop.cloud/ai-tools',
+            '["ai"]',
+            '2026-03-18T09:06:00+00:00',
+            '2026-03-18T09:06:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE draft_variants (
+            id INTEGER PRIMARY KEY,
+            content_brief_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            variant_index INTEGER NOT NULL,
+            body TEXT NOT NULL,
+            state VARCHAR(32) NOT NULL,
+            rejection_reason TEXT,
+            reviewed_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO draft_variants (
+            id,
+            content_brief_id,
+            channel,
+            variant_index,
+            body,
+            state,
+            rejection_reason,
+            reviewed_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            0,
+            'Legacy draft body',
+            'PENDING_REVIEW',
+            NULL,
+            NULL,
+            '2026-03-18T09:07:00+00:00',
+            '2026-03-18T09:07:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE publish_jobs (
+            id INTEGER PRIMARY KEY,
+            draft_variant_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            scheduled_for DATETIME,
+            state VARCHAR(32) NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            external_post_id VARCHAR(255),
+            last_error TEXT,
+            published_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO publish_jobs (
+            id,
+            draft_variant_id,
+            channel,
+            scheduled_for,
+            state,
+            attempt_count,
+            external_post_id,
+            last_error,
+            published_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            '2026-03-20T09:00:00+00:00',
+            'SCHEDULED',
+            0,
+            NULL,
+            NULL,
+            NULL,
+            '2026-03-18T09:08:00+00:00',
+            '2026-03-18T09:08:00+00:00'
+        )
+        """
+    )
 
 
 def _write_minimal_project_config(path: Path) -> None:

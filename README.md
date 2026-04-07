@@ -157,12 +157,13 @@ export X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-use
 sns-engine scheduler publish-due --live
 ```
 
-If you already have an older SQLite file from a previous milestone, delete it and recreate it with `sns-engine db init` before running `ingest`. The MVP does not apply automatic schema migrations yet.
+If you already have an older SQLite file from a previous milestone, run `sns-engine db upgrade --database-url ...` before `ingest` or `run-local`. Fresh databases should still start with `sns-engine db init`.
 
 Initialize the schema through the thin script wrapper:
 
 ```bash
 python scripts/create_db.py
+python scripts/create_db.py --database-url sqlite:///data/sns_content_engine.db --upgrade
 ```
 
 ## Operations
@@ -189,7 +190,7 @@ sns-engine scheduler run --config-dir config --database-url sqlite:///data/sns_c
 
 Operational notes:
 
-- `healthcheck` is readiness only. If it reports a database failure, recreate the SQLite file or run `sns-engine db init` against a fresh database.
+- `healthcheck` is readiness only. If it reports an outdated SQLite schema, run `sns-engine db upgrade`. Use `sns-engine db init` only for fresh databases.
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.

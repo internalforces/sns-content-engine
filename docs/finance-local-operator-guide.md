@@ -21,6 +21,8 @@
 4. Run the pipeline with `sns-engine run-local`.
 5. Inspect results with `sns-engine history runs`, `sns-engine history failures`, and `sns-engine review list`.
 
+If you are reusing an older local SQLite file from a previous milestone, run `sns-engine db upgrade --database-url ...` before `run-local`.
+
 ## Local command sequence
 ```bash
 sns-engine db init --database-url sqlite:///data/sns_content_engine.db

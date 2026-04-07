@@ -55,9 +55,44 @@ def test_create_db_script_bootstraps_the_database(tmp_path: Path) -> None:
             "publish_jobs",
             "publish_logs",
             "review_actions",
+            "schema_migrations",
             "source_item_recent_fingerprint_claims",
             "source_items",
         }
+    finally:
+        engine.dispose()
+
+
+def test_create_db_script_upgrades_legacy_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "script-upgrade.db"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            _create_legacy_upgrade_fixture(connection)
+    finally:
+        engine.dispose()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts/create_db.py"),
+            "--database-url",
+            database_url,
+            "--upgrade",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == f"database upgraded: {database_url} (schema_version=1->2)"
+
+    engine = create_engine(database_url)
+    try:
+        assert "schema_migrations" in set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
 
@@ -124,6 +159,208 @@ def test_operations_smoke_cli_flow(tmp_path: Path) -> None:
     assert "executor mode: fake dry-run (no state changes)" in publish_due_result.stdout
     assert "event=publish_job component=publisher status=dry_run workflow=publish_due" in (
         publish_due_result.stderr
+    )
+
+
+def _create_legacy_upgrade_fixture(connection) -> None:
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE source_items (
+            id INTEGER PRIMARY KEY,
+            source_key VARCHAR(100) NOT NULL,
+            external_id VARCHAR(255) NOT NULL,
+            source_url VARCHAR(2048) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            published_at DATETIME,
+            raw_payload JSON,
+            state VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO source_items (
+            id,
+            source_key,
+            external_id,
+            source_url,
+            title,
+            summary,
+            published_at,
+            raw_payload,
+            state,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            'legacy_feed',
+            'legacy-1',
+            'https://example.com/posts/legacy?utm_source=newsletter',
+            'Legacy AI update',
+            'Legacy summary',
+            '2026-03-18T09:00:00+00:00',
+            '{}',
+            'INGESTED',
+            '2026-03-18T09:05:00+00:00',
+            '2026-03-18T09:05:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE pipeline_runs (
+            id INTEGER PRIMARY KEY,
+            workflow_name VARCHAR(100) NOT NULL,
+            trigger_mode VARCHAR(50) NOT NULL,
+            status VARCHAR(32) NOT NULL,
+            started_at DATETIME NOT NULL,
+            completed_at DATETIME,
+            source_count INTEGER NOT NULL,
+            discovered_count INTEGER NOT NULL,
+            saved_count INTEGER NOT NULL,
+            enriched_count INTEGER NOT NULL,
+            summarized_count INTEGER NOT NULL,
+            draft_count INTEGER NOT NULL,
+            failure_count INTEGER NOT NULL,
+            latest_error_code VARCHAR(100),
+            latest_error_message TEXT,
+            summary_json JSON,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE content_briefs (
+            id INTEGER PRIMARY KEY,
+            source_item_id INTEGER NOT NULL,
+            account_key VARCHAR(100) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            summary TEXT,
+            landing_url VARCHAR(2048) NOT NULL,
+            tags JSON NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO content_briefs (
+            id,
+            source_item_id,
+            account_key,
+            title,
+            summary,
+            landing_url,
+            tags,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'ai_tools_daily',
+            'Legacy AI update',
+            'Legacy summary',
+            'https://gilgop.cloud/ai-tools',
+            '["ai"]',
+            '2026-03-18T09:06:00+00:00',
+            '2026-03-18T09:06:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE draft_variants (
+            id INTEGER PRIMARY KEY,
+            content_brief_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            variant_index INTEGER NOT NULL,
+            body TEXT NOT NULL,
+            state VARCHAR(32) NOT NULL,
+            rejection_reason TEXT,
+            reviewed_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO draft_variants (
+            id,
+            content_brief_id,
+            channel,
+            variant_index,
+            body,
+            state,
+            rejection_reason,
+            reviewed_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            0,
+            'Legacy draft body',
+            'PENDING_REVIEW',
+            NULL,
+            NULL,
+            '2026-03-18T09:07:00+00:00',
+            '2026-03-18T09:07:00+00:00'
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE publish_jobs (
+            id INTEGER PRIMARY KEY,
+            draft_variant_id INTEGER NOT NULL,
+            channel VARCHAR(50) NOT NULL,
+            scheduled_for DATETIME,
+            state VARCHAR(32) NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            external_post_id VARCHAR(255),
+            last_error TEXT,
+            published_at DATETIME,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO publish_jobs (
+            id,
+            draft_variant_id,
+            channel,
+            scheduled_for,
+            state,
+            attempt_count,
+            external_post_id,
+            last_error,
+            published_at,
+            created_at,
+            updated_at
+        ) VALUES (
+            1,
+            1,
+            'x',
+            '2026-03-20T09:00:00+00:00',
+            'SCHEDULED',
+            0,
+            NULL,
+            NULL,
+            NULL,
+            '2026-03-18T09:08:00+00:00',
+            '2026-03-18T09:08:00+00:00'
+        )
+        """
     )
 
 
