@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         PipelineFailureHistoryResult,
         PipelineFailureRow,
         PipelinePolicySkipRow,
+        PublishJobDetailResult,
         PublishJobListResult,
         PublishJobListRow,
         PipelineRunHistoryResult,
@@ -246,6 +247,43 @@ class ReviewDraftDetailResponse(_ApiModel):
     sibling_variants: list[ReviewDraftSiblingVariantResponse]
 
 
+class PublishJobDraftResponse(_ApiModel):
+    draft_id: int
+    variant_index: int
+    body: str
+    draft_state: str
+    rejection_reason: str | None
+    created_at: str
+    reviewed_at: str | None
+
+
+class PublishJobLogEntryResponse(_ApiModel):
+    log_id: int
+    event_type: str
+    message: str
+    payload: dict[str, Any] | None
+    created_at: str
+
+
+class PublishJobDetailResponse(_ApiModel):
+    publish_job_id: int
+    account_key: str
+    channel: str
+    state: str
+    scheduled_for: str | None
+    published_at: str | None
+    created_at: str
+    updated_at: str
+    attempt_count: int
+    external_post_id: str | None
+    last_error: str | None
+    draft: PublishJobDraftResponse
+    provenance: ReviewDraftProvenanceResponse
+    brief: ReviewDraftBriefResponse
+    source_item: ReviewDraftSourceItemResponse
+    publish_logs: list[PublishJobLogEntryResponse]
+
+
 class ReviewActionContextRequest(_ApiModel):
     reviewer: str | None = None
     config_dir: str = "config"
@@ -289,6 +327,7 @@ def create_app(
     pipeline_failures_lister: Callable[..., PipelineFailureHistoryResult] | None = None,
     article_statuses_lister: Callable[..., ArticleStatusResult] | None = None,
     publish_jobs_lister: Callable[..., PublishJobListResult] | None = None,
+    publish_job_detail_fetcher: Callable[..., PublishJobDetailResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
     review_draft_detail_fetcher: Callable[..., ReviewDraftDetailResult] | None = None,
     draft_approver: Callable[..., ReviewDraftResult] | None = None,
@@ -318,6 +357,12 @@ def create_app(
         from app.workflows.history_queries import list_publish_jobs as default_publish_jobs_lister
 
         publish_jobs_lister = default_publish_jobs_lister
+    if publish_job_detail_fetcher is None:
+        from app.workflows.history_queries import (
+            get_publish_job_detail as default_publish_job_detail_fetcher,
+        )
+
+        publish_job_detail_fetcher = default_publish_job_detail_fetcher
     if pending_review_drafts_lister is None:
         from app.workflows.review_queue import list_pending_review_drafts as default_pending_review_drafts_lister
 
@@ -348,6 +393,7 @@ def create_app(
         version="0.1.0",
     )
 
+    from app.workflows.history_queries import PublishJobNotFoundError
     from app.workflows.review_queue import (
         DraftNotFoundError,
         DraftReviewStateError,
@@ -380,6 +426,16 @@ def create_app(
         return _build_api_error_response(
             status_code=404,
             error_code="draft_not_found",
+            message=str(exc),
+        )
+
+    @application.exception_handler(PublishJobNotFoundError)
+    async def handle_publish_job_not_found(
+        _request: Request, exc: PublishJobNotFoundError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=404,
+            error_code="publish_job_not_found",
             message=str(exc),
         )
 
@@ -504,6 +560,17 @@ def create_app(
         return PublishJobsResponse(
             jobs=[_build_publish_job_response(row) for row in result.jobs],
         )
+
+    @application.get("/publish-jobs/{publish_job_id}", response_model=PublishJobDetailResponse, tags=["publish"])
+    def get_publish_job_detail(
+        publish_job_id: int,
+        database_url: str | None = Query(default=None),
+    ) -> PublishJobDetailResponse:
+        detail = publish_job_detail_fetcher(
+            publish_job_id,
+            database_url=database_url,
+        )
+        return _build_publish_job_detail_response(detail)
 
     @application.get("/reviews/pending", response_model=PendingReviewDraftsResponse, tags=["reviews"])
     def get_pending_review_drafts(
@@ -675,6 +742,77 @@ def _build_publish_job_response(row: PublishJobListRow) -> PublishJobRowResponse
         draft_state=row.draft_state,
         brief_title=row.brief_title,
         source_title=row.source_title,
+    )
+
+
+def _build_publish_job_detail_response(detail: PublishJobDetailResult) -> PublishJobDetailResponse:
+    job = detail.job
+    draft = job.draft_variant
+    content_brief = draft.content_brief
+    source_item = content_brief.source_item
+    return PublishJobDetailResponse(
+        publish_job_id=job.id,
+        account_key=content_brief.account_key,
+        channel=job.channel,
+        state=job.state.value,
+        scheduled_for=job.scheduled_for.isoformat() if job.scheduled_for else None,
+        published_at=job.published_at.isoformat() if job.published_at else None,
+        created_at=job.created_at.isoformat(),
+        updated_at=job.updated_at.isoformat(),
+        attempt_count=job.attempt_count,
+        external_post_id=job.external_post_id,
+        last_error=job.last_error,
+        draft=PublishJobDraftResponse(
+            draft_id=draft.id,
+            variant_index=draft.variant_index,
+            body=draft.body,
+            draft_state=draft.state.value,
+            rejection_reason=draft.rejection_reason,
+            created_at=draft.created_at.isoformat(),
+            reviewed_at=draft.reviewed_at.isoformat() if draft.reviewed_at else None,
+        ),
+        provenance=ReviewDraftProvenanceResponse(
+            source_name=draft.source_name,
+            source_url=draft.source_url,
+            article_url=draft.article_url,
+            source_published_at=draft.source_published_at.isoformat()
+            if draft.source_published_at
+            else None,
+            source_policy_mode=draft.source_policy_mode.value if draft.source_policy_mode else None,
+        ),
+        brief=ReviewDraftBriefResponse(
+            brief_id=content_brief.id,
+            title=content_brief.title,
+            summary=content_brief.summary,
+            key_points=list(content_brief.key_points),
+            landing_url=content_brief.landing_url,
+            tags=list(content_brief.tags),
+            angle=content_brief.angle,
+            language=content_brief.language,
+        ),
+        source_item=ReviewDraftSourceItemResponse(
+            source_item_id=source_item.id,
+            source_key=source_item.source_key,
+            external_id=source_item.external_id,
+            title=source_item.title,
+            summary=source_item.summary,
+            source_url=source_item.source_url,
+            canonical_url=source_item.canonical_url,
+            published_at=source_item.published_at.isoformat() if source_item.published_at else None,
+            policy_mode=source_item.policy_mode.value,
+            require_attribution=source_item.require_attribution,
+        ),
+        publish_logs=[_build_publish_job_log_entry_response(log) for log in detail.publish_logs],
+    )
+
+
+def _build_publish_job_log_entry_response(log) -> PublishJobLogEntryResponse:
+    return PublishJobLogEntryResponse(
+        log_id=log.id,
+        event_type=log.event_type,
+        message=log.message,
+        payload=log.payload,
+        created_at=log.created_at.isoformat(),
     )
 
 

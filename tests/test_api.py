@@ -20,6 +20,7 @@ from app.storage import (
     DraftVariantState,
     PublishJob,
     PublishJobRepository,
+    PublishLogRepository,
     PublishJobState,
     PipelineRun,
     PipelineRunRepository,
@@ -371,6 +372,191 @@ def test_publish_jobs_endpoint_returns_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"jobs": []}
+
+
+def test_publish_job_detail_endpoint_returns_published_job_timeline(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+            include_provenance=True,
+        )
+        jobs = PublishJobRepository(session)
+        logs = PublishLogRepository(session)
+        job = jobs.add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="detail-published-job",
+                scheduled_for=datetime(2026, 3, 18, 12, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        logs.record(
+            job,
+            event_type="scheduled",
+            message="publish job queued for operator review",
+            payload={"scheduled_for": "2026-03-18T12:00:00+00:00"},
+        )
+        jobs.transition_state(job, PublishJobState.PUBLISHING)
+        logs.record(
+            job,
+            event_type="publishing",
+            message="publisher execution started",
+            payload={"attempt_count": 1, "channel": "x"},
+        )
+        jobs.transition_state(
+            job,
+            PublishJobState.PUBLISHED,
+            external_post_id="tweet:detail-1",
+            occurred_at=datetime(2026, 3, 18, 12, 5, tzinfo=timezone.utc),
+        )
+        logs.record(
+            job,
+            event_type="published",
+            message="publish job completed successfully",
+            payload={"external_post_id": "tweet:detail-1"},
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/publish-jobs/{job.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["publish_job_id"] == job.id
+    assert payload["account_key"] == "ai_tools_daily"
+    assert payload["channel"] == "x"
+    assert payload["state"] == "published"
+    assert payload["scheduled_for"] == "2026-03-18T12:00:00+00:00"
+    assert payload["published_at"] == "2026-03-18T12:05:00+00:00"
+    assert payload["attempt_count"] == 1
+    assert payload["external_post_id"] == "tweet:detail-1"
+    assert payload["last_error"] is None
+    assert payload["draft"]["draft_id"] == draft.id
+    assert payload["draft"]["variant_index"] == 0
+    assert payload["draft"]["draft_state"] == "approved"
+    assert payload["provenance"]["source_name"] == "AI Tools Daily"
+    assert payload["brief"]["title"] == "Brief for draft"
+    assert payload["source_item"]["title"].startswith("Draft source ")
+    assert [entry["event_type"] for entry in payload["publish_logs"]] == [
+        "scheduled",
+        "publishing",
+        "published",
+    ]
+    assert payload["publish_logs"][2]["payload"] == {"external_post_id": "tweet:detail-1"}
+
+
+def test_publish_job_detail_endpoint_returns_failed_job_context(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 15, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+        jobs = PublishJobRepository(session)
+        logs = PublishLogRepository(session)
+        job = jobs.add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="detail-failed-job",
+                scheduled_for=datetime(2026, 3, 18, 12, 30, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 15, tzinfo=timezone.utc),
+            )
+        )
+        jobs.transition_state(job, PublishJobState.PUBLISHING)
+        logs.record(
+            job,
+            event_type="publishing",
+            message="publisher execution started",
+            payload={"attempt_count": 1},
+        )
+        jobs.transition_state(
+            job,
+            PublishJobState.FAILED,
+            last_error="missing access token",
+            occurred_at=datetime(2026, 3, 18, 12, 31, tzinfo=timezone.utc),
+        )
+        logs.record(
+            job,
+            event_type="failed",
+            message="publish job failed: missing access token",
+            payload={"error_message": "missing access token", "status": "failed"},
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/publish-jobs/{job.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["publish_job_id"] == job.id
+    assert payload["state"] == "failed"
+    assert payload["attempt_count"] == 1
+    assert payload["external_post_id"] is None
+    assert payload["last_error"] == "missing access token"
+    assert payload["draft"]["draft_state"] == "approved"
+    assert [entry["event_type"] for entry in payload["publish_logs"]] == ["publishing", "failed"]
+    assert payload["publish_logs"][1]["message"] == "publish job failed: missing access token"
+
+
+def test_publish_job_detail_endpoint_returns_empty_log_timeline(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="detail-empty-log-job",
+                scheduled_for=datetime(2026, 3, 18, 13, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc),
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/publish-jobs/{job.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["publish_job_id"] == job.id
+    assert payload["state"] == "scheduled"
+    assert payload["publish_logs"] == []
+    assert payload["last_error"] is None
+
+
+def test_publish_job_detail_endpoint_returns_not_found_error(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/publish-jobs/999",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error_code": "publish_job_not_found",
+        "message": "publish job 999 was not found",
+    }
 
 
 def test_pending_review_endpoint_returns_pending_drafts(tmp_path: Path) -> None:

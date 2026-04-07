@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
-- Current task: `03_publish_job_list_endpoint`
-- Active status: `done`
-- Last updated: `2026-04-07 17:00 KST`
-- Active branch: `codex/task-03-publish-job-list-endpoint`
+- Current task: `04_publish_job_detail_and_log_timeline`
+- Active status: `in_progress`
+- Last updated: `2026-04-07 17:09 KST`
+- Active branch: `codex/task-04-publish-job-detail-log-timeline`
 - Latest task commit: `pending_task_commit`
 
 ## Scope For Current Task
-- Goal: `Expose publish jobs through the API with practical operator filters and enough linked draft metadata to identify queued and completed work without opening the database`
-- In scope: `Storage-backed publish-job list reads, additive API serialization, modest state/account/channel/limit filters, and focused API coverage`
-- Out of scope: `Publish-job detail/log timeline reads, scheduler action endpoints, auth, and frontend implementation`
+- Goal: `Expose one publish job with readable execution status, linked draft/source context, and ordered publish-log history for an operator detail screen`
+- In scope: `Repository-backed publish-job detail reads, additive API serialization for job metadata plus publish-log timeline, and focused API coverage for success/failure/no-log cases`
+- Out of scope: `Scheduler action endpoints, auth, frontend implementation, and any change to publish execution behavior`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -30,7 +30,7 @@ Keep updates short, factual, and current.
 | 01 | Review-draft detail endpoint | done | 2026-04-07 14:29 KST | Added `GET /reviews/{draft_id}` with repository-backed linked brief/source/enrichment detail and passing API/review regression tests |
 | 02 | Review audit and sibling-variant visibility | done | 2026-04-07 16:47 KST | Extended `GET /reviews/{draft_id}` with stored review-action timeline data and same-brief/channel sibling variants plus passing API/workflow coverage |
 | 03 | Publish-job list endpoint | done | 2026-04-07 17:00 KST | Added `GET /publish-jobs` with storage-backed state/account/channel/limit filters and linked draft metadata plus passing API/scheduler regression coverage |
-| 04 | Publish-job detail and log timeline | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
+| 04 | Publish-job detail and log timeline | in_progress | 2026-04-07 17:04 KST | Started detail-read implementation for one publish job with linked draft/source metadata and ordered publish-log timeline |
 | 05 | Scheduler action API wrappers | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 | 06 | Control-plane API docs and regression coverage | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 
@@ -66,6 +66,10 @@ Status values:
 - `2026-04-07 16:58 KST` Added a repository-backed publish-job operator list helper plus a readable query adapter so the API can filter by state, account, channel, and limit without introducing a separate read model
 - `2026-04-07 16:58 KST` Extended the FastAPI contract with `GET /publish-jobs` and linked draft metadata fields, then added focused API coverage for filtered mixed-state results and the empty-state response
 - `2026-04-07 17:00 KST` Verified Task `03` with focused publish-job API coverage plus the broader API/scheduler regression slice, and marked the publish-job list endpoint complete pending its focused task commit
+- `2026-04-07 17:04 KST` Started Task `04` on branch `codex/task-04-publish-job-detail-log-timeline` with scope limited to a repository-backed publish-job detail read, thin API wiring, and focused API coverage for success, failure, and no-log paths
+- `2026-04-07 17:07 KST` Added `PublishJobRepository.get_detail` plus a history-query detail helper so the API can load one publish job with linked draft, brief, source-item context, and ordered persisted publish logs without changing scheduler behavior
+- `2026-04-07 17:08 KST` Extended the FastAPI contract with `GET /publish-jobs/{publish_job_id}` including nested draft/provenance/brief/source context, readable publish-log timeline entries, and a dedicated not-found API error
+- `2026-04-07 17:08 KST` Added focused API coverage for published, failed, empty-log, and not-found publish-job detail paths while keeping the new surface read-only
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
@@ -82,6 +86,9 @@ Status values:
 - `2026-04-07 16:58 KST` `python -m pytest tests/test_api.py -k "publish_jobs"` -> `passed`
 - `2026-04-07 16:58 KST` `git diff --check` -> `passed`
 - `2026-04-07 16:59 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
+- `2026-04-07 17:07 KST` `git diff --check` -> `passed`
+- `2026-04-07 17:07 KST` `python -m pytest tests/test_api.py -k "publish_job_detail"` -> `passed`
+- `2026-04-07 17:08 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
 
 ## Blockers
 - `None currently`
