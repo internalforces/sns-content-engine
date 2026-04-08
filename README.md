@@ -73,6 +73,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
+- [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, publish-job visibility, and scheduler-safe HTTP actions.
 
 ## CLI Usage
 
