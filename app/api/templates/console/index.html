@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Shell readiness</p>
+        <h2>Console foundation is in place</h2>
+      </div>
+      <span class="console-badge">Task 01</span>
+    </div>
+    <p class="console-card-copy">
+      This landing page establishes the shared browser shell for the operator console so later tasks can plug live run history, article status, review queue, publish visibility, and scheduler actions into one stable layout.
+    </p>
+  </section>
+
+  <section class="console-grid">
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Operator context</p>
+          <h2>Current routing inputs</h2>
+        </div>
+      </div>
+      <dl class="console-definition-list">
+        <div>
+          <dt>Config directory</dt>
+          <dd>{{ operator_context.config_dir }}</dd>
+        </div>
+        <div>
+          <dt>Database URL</dt>
+          <dd>{{ operator_context.database_url or "default resolution" }}</dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Safety defaults</p>
+          <h2>Existing workflow guarantees stay intact</h2>
+        </div>
+      </div>
+      <ul class="console-checklist">
+        <li>Manual review remains the required gate before publish scheduling.</li>
+        <li>Browser work stays additive on top of the current FastAPI backend.</li>
+        <li>Publish execution keeps dry-run as the default browser path.</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="console-grid">
+    {% for section in console_sections %}
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Implementation notes</p>
+            <h2>{{ section.title }}</h2>
+          </div>
+        </div>
+        <p class="console-card-copy">{{ section.copy }}</p>
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}

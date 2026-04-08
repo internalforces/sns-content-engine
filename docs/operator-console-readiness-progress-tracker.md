@@ -25,12 +25,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M1_read_only_console_foundation`
 - Current task: `01_console_shell_and_template_infrastructure`
-- Active status: `pending`
-- Last updated: `2026-04-08 17:44 KST`
+- Active status: `in_progress`
+- Last updated: `2026-04-08 18:31 KST`
 - Base branch: `master`
-- Active branch: `not_started`
+- Active branch: `codex/task-01-console-shell`
 - Latest task commit: `not_created`
-- Resume decision: `pick_next_task`
+- Resume decision: `started_task_01`
 - Stop reason: `none`
 
 ## Scope For Current Task
@@ -50,7 +50,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Roadmap Status
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M1 | 01 | Console shell and template infrastructure | pending | 2026-04-08 17:40 KST | Next recommended task; establish the browser shell without adding a separate frontend stack |
+| M1 | 01 | Console shell and template infrastructure | in_progress | 2026-04-08 18:26 KST | Started implementation on `codex/task-01-console-shell`; wiring console routes, templates, static assets, and focused shell coverage |
 | M1 | 02 | Run overview and failure dashboard pages | pending | 2026-04-08 17:40 KST | Build the first operator dashboard on top of existing run and failure queries |
 | M1 | 03 | Article status and pending-review queue pages | pending | 2026-04-08 17:40 KST | Expose current article and queue data in table-friendly browser pages |
 | M2 | 04 | Review draft detail page | pending | 2026-04-08 17:40 KST | Reuse the current operator-ready review detail contract in one browser page |
@@ -66,15 +66,28 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `none yet`
+- `docs/operator-console-readiness-progress-tracker.md`
+- `app/api/app.py`
+- `app/api/console.py`
+- `app/api/templates/base.html`
+- `app/api/templates/console/index.html`
+- `app/api/static/console.css`
+- `tests/test_console.py`
 
 ## Progress Log
 - `2026-04-08 17:40 KST` Created the operator console readiness roadmap, execution guide, and progress tracker after confirming the backend control-plane roadmap is complete and no frontend stack exists in the repository
 - `2026-04-08 17:40 KST` Chose a FastAPI plus Jinja2 server-rendered console as the smallest next stage because the operator API is already in place and `jinja2` is already a project dependency
 - `2026-04-08 17:40 KST` Left all implementation tasks in `pending` and set Task `01` as the next recommended work item so implementation can begin from the browser shell
+- `2026-04-08 18:26 KST` Started Task `01` on `codex/task-01-console-shell`; keeping scope to additive console route wiring, shared templates, lightweight static assets, and focused shell tests
+- `2026-04-08 18:34 KST` Added a dedicated `app.api.console` module with a `/console` redirect, `/console/` landing page, shared Jinja template shell, mounted static assets, and focused console-shell tests so later page tasks can extend one browser entrypoint
+- `2026-04-08 18:31 KST` Verified the new console shell against focused browser coverage plus a small API regression slice to confirm the shared FastAPI app wiring still serves health, runs, failures, and article endpoints unchanged
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
+- `2026-04-08 18:30 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell"` -> `passed`
+- `2026-04-08 18:30 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "health"` -> `passed`
+- `2026-04-08 18:31 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "runs or failures or articles"` -> `passed`
+- `2026-04-08 18:31 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Should the first console stay fully server-rendered for all interactions, or should later tasks allow small progressive-enhancement fetch calls while still avoiding a separate SPA?`
