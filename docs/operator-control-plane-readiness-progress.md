@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
-- Current task: `04_publish_job_detail_and_log_timeline`
+- Current task: `05_scheduler_action_api_wrappers`
 - Active status: `done`
-- Last updated: `2026-04-07 17:10 KST`
-- Active branch: `codex/task-04-publish-job-detail-log-timeline`
-- Latest task commit: `76eeace`
+- Last updated: `2026-04-08 17:09 KST`
+- Active branch: `codex/task-05-scheduler-action-api-wrappers`
+- Latest task commit: `pending`
 
 ## Scope For Current Task
-- Goal: `Expose one publish job with readable execution status, linked draft/source context, and ordered publish-log history for an operator detail screen`
-- In scope: `Repository-backed publish-job detail reads, additive API serialization for job metadata plus publish-log timeline, and focused API coverage for success/failure/no-log cases`
-- Out of scope: `Scheduler action endpoints, auth, frontend implementation, and any change to publish execution behavior`
+- Goal: `Expose safe HTTP action wrappers for scheduler discover, backfill, and publish-due workflows without weakening current review or publish guardrails`
+- In scope: `Thin API request/response wiring around the existing scheduler helpers, explicit dry-run defaults for publish-due, and focused API coverage for discover/backfill/publish action responses`
+- Out of scope: `Scheduler runtime redesign, auth, frontend implementation, and any default change that would make live publishing implicit`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -31,7 +31,7 @@ Keep updates short, factual, and current.
 | 02 | Review audit and sibling-variant visibility | done | 2026-04-07 16:47 KST | Extended `GET /reviews/{draft_id}` with stored review-action timeline data and same-brief/channel sibling variants plus passing API/workflow coverage |
 | 03 | Publish-job list endpoint | done | 2026-04-07 17:00 KST | Added `GET /publish-jobs` with storage-backed state/account/channel/limit filters and linked draft metadata plus passing API/scheduler regression coverage |
 | 04 | Publish-job detail and log timeline | done | 2026-04-07 17:10 KST | Added `GET /publish-jobs/{publish_job_id}` with storage-backed draft/source detail, ordered publish-log timeline, and passing API/scheduler regression coverage |
-| 05 | Scheduler action API wrappers | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
+| 05 | Scheduler action API wrappers | done | 2026-04-08 17:09 KST | Added `POST /scheduler/discover`, `/scheduler/backfill`, and `/scheduler/publish-due` with scheduler-backed summaries, explicit live opt-in, and passing API/scheduler regression coverage |
 | 06 | Control-plane API docs and regression coverage | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
 
 Status values:
@@ -42,9 +42,6 @@ Status values:
 
 ## Changed Files For Active Task
 - `docs/operator-control-plane-readiness-progress.md`
-- `app/storage/repositories.py`
-- `app/workflows/history_queries.py`
-- `app/workflows/__init__.py`
 - `app/api/app.py`
 - `tests/test_api.py`
 
@@ -71,6 +68,10 @@ Status values:
 - `2026-04-07 17:08 KST` Extended the FastAPI contract with `GET /publish-jobs/{publish_job_id}` including nested draft/provenance/brief/source context, readable publish-log timeline entries, and a dedicated not-found API error
 - `2026-04-07 17:08 KST` Added focused API coverage for published, failed, empty-log, and not-found publish-job detail paths while keeping the new surface read-only
 - `2026-04-07 17:10 KST` Committed Task `04` as `76eeace` (`Add publish job detail API endpoint`) after the focused publish-job detail API slice and broader API/scheduler regression slice passed
+- `2026-04-08 17:04 KST` Started Task `05` on branch `codex/task-05-scheduler-action-api-wrappers` with scope limited to thin API wrappers for scheduler discover, backfill, and publish-due plus focused API coverage for safe defaults
+- `2026-04-08 17:07 KST` Added scheduler action request and response models plus thin FastAPI wrappers so the API can expose existing discover, backfill, and publish-due helpers without adding a parallel control-plane workflow layer
+- `2026-04-08 17:08 KST` Kept `publish-due` safe by default through an explicit `live` opt-in flag that maps to the existing scheduler helper's `dry_run` behavior instead of changing publish execution defaults
+- `2026-04-08 17:09 KST` Added focused API coverage for scheduler action serialization, real backfill creation, default dry-run publish behavior, and explicit live opt-in wiring, then marked Task `05` complete after the focused and broader regression slices passed
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
@@ -90,6 +91,11 @@ Status values:
 - `2026-04-07 17:07 KST` `git diff --check` -> `passed`
 - `2026-04-07 17:07 KST` `python -m pytest tests/test_api.py -k "publish_job_detail"` -> `passed`
 - `2026-04-07 17:08 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
+- `2026-04-08 17:05 KST` `git diff --check` -> `passed`
+- `2026-04-08 17:06 KST` `python -m pytest tests/test_api.py -k "scheduler_discover_endpoint or scheduler_backfill_endpoint or scheduler_publish_due_endpoint"` -> `failed` (`backfill` uses the current clock, so the fixed scheduled timestamp assertion was too strict; relaxed the expectation to assert a scheduled UTC slot instead and reran)
+- `2026-04-08 17:07 KST` `git diff --check` -> `passed`
+- `2026-04-08 17:07 KST` `python -m pytest tests/test_api.py -k "scheduler_discover_endpoint or scheduler_backfill_endpoint or scheduler_publish_due_endpoint"` -> `passed`
+- `2026-04-08 17:08 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
 
 ## Blockers
 - `None currently`
@@ -102,3 +108,4 @@ Status values:
 - `Task 02 complete: `GET /reviews/{draft_id}` now also exposes stored review-action history and same-brief/channel sibling variants with stable ordering and empty-state coverage`
 - `Task 03 complete: `GET /publish-jobs` now exposes stored publish jobs with state/account/channel/limit filters plus linked draft, brief, and source metadata for operator list views`
 - `Task 04 complete: `GET /publish-jobs/{publish_job_id}` now exposes one publish job with readable state/timestamps, linked draft and source context, and ordered persisted publish-log events for operator detail views`
+- `Task 05 complete: the API now exposes `POST /scheduler/discover`, `POST /scheduler/backfill`, and `POST /scheduler/publish-due` as thin wrappers around the existing scheduler helpers while preserving default dry-run publish safety through an explicit live opt-in`

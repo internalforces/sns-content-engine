@@ -10,6 +10,11 @@ from textwrap import dedent
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.scheduler import (
+    PublishDueOutcome,
+    PublishDueResult,
+    SchedulerDiscoverResult,
+)
 from app.storage import (
     ArticleEnrichment,
     ArticleEnrichmentRepository,
@@ -559,6 +564,193 @@ def test_publish_job_detail_endpoint_returns_not_found_error(tmp_path: Path) -> 
     }
 
 
+def test_scheduler_discover_endpoint_returns_summary_payload() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_scheduler_discover(*, config_dir: str) -> SchedulerDiscoverResult:
+        captured["config_dir"] = config_dir
+        return SchedulerDiscoverResult(
+            discovered_count=3,
+            processed_sources=("ai_tools_rss", "manual_csv"),
+            failure_messages=("manual_csv: feed parse failed",),
+        )
+
+    client = TestClient(create_app(scheduler_discover_runner=stub_scheduler_discover))
+    response = client.post(
+        "/scheduler/discover",
+        json={"config_dir": "/tmp/operator-config"},
+    )
+
+    assert response.status_code == 200
+    assert captured == {"config_dir": "/tmp/operator-config"}
+    assert response.json() == {
+        "discovered_count": 3,
+        "processed_sources": ["ai_tools_rss", "manual_csv"],
+        "failure_count": 1,
+        "failure_messages": ["manual_csv: feed parse failed"],
+    }
+
+
+def test_scheduler_backfill_endpoint_creates_jobs_from_existing_workflow(tmp_path: Path) -> None:
+    _write_scheduler_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/scheduler/backfill",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed_channel_count"] == 1
+    assert payload["created_count"] == 1
+    assert payload["existing_count"] == 0
+    assert payload["skipped_count"] == 0
+    assert payload["outcomes"] == [
+        {
+            "account_key": "ai_tools_daily",
+            "channel": "x",
+            "backlog_target": 1,
+            "existing_future_job_count": 0,
+            "eligible_draft_count": 1,
+            "planned_slot_count": 1,
+            "created_job_ids": [1],
+            "created_count": 1,
+            "skipped_slot_count": 0,
+        }
+    ]
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+        logs = PublishLogRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].state is PublishJobState.SCHEDULED
+    assert jobs[0].scheduled_for is not None
+    assert jobs[0].scheduled_for.tzinfo is timezone.utc
+    assert [log.event_type for log in logs] == ["scheduled"]
+
+
+def test_scheduler_publish_due_endpoint_defaults_to_dry_run(tmp_path: Path) -> None:
+    _write_scheduler_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 7, 45, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="x",
+                idempotency_key="api-dry-run-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/scheduler/publish-due",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["dry_run"] is True
+    assert payload["processed_count"] == 1
+    assert payload["published_count"] == 0
+    assert payload["failed_count"] == 0
+    assert payload["dry_run_count"] == 1
+    assert payload["skipped_count"] == 0
+    assert payload["outcomes"] == [
+        {
+            "publish_job_id": job_id,
+            "status": "dry_run",
+            "state": "scheduled",
+            "message": "dry-run only; no state changes were applied",
+            "external_post_id": f"dry-run:{job_id}",
+        }
+    ]
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.SCHEDULED
+    assert stored_job.attempt_count == 0
+    assert stored_job.external_post_id is None
+
+
+def test_scheduler_publish_due_endpoint_requires_explicit_live_opt_in() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_publish_due_runner(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+        dry_run: bool,
+    ) -> PublishDueResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=42,
+                    status="published",
+                    state=PublishJobState.PUBLISHED,
+                    message="published successfully",
+                    external_post_id="tweet:42",
+                ),
+            ),
+            dry_run=dry_run,
+        )
+
+    client = TestClient(create_app(scheduler_publish_due_runner=stub_publish_due_runner))
+    response = client.post(
+        "/scheduler/publish-due",
+        params={"database_url": "sqlite+pysqlite:////tmp/operator.db"},
+        json={"config_dir": "/tmp/operator-config", "live": True},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+        "dry_run": False,
+    }
+    assert response.json() == {
+        "dry_run": False,
+        "processed_count": 1,
+        "published_count": 1,
+        "failed_count": 0,
+        "dry_run_count": 0,
+        "skipped_count": 0,
+        "outcomes": [
+            {
+                "publish_job_id": 42,
+                "status": "published",
+                "state": "published",
+                "message": "published successfully",
+                "external_post_id": "tweet:42",
+            }
+        ],
+    }
+
+
 def test_pending_review_endpoint_returns_pending_drafts(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     with session_scope(session_factory) as session:
@@ -1049,6 +1241,68 @@ def _write_minimal_project_config(
             sources:
               - ai_tools_rss
         """.format(source_url=source_url),
+    )
+
+
+def _write_scheduler_project_config(path: Path) -> None:
+    _write_file(
+        path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            matching:
+              include_keywords:
+                - ai
+                - automation
+              source_tags:
+                - ai
+                - automation
+              strict_topic_guard: true
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+        """,
+    )
+    _write_file(
+        path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "system"
+            user_template: "user"
+        """,
+    )
+    _write_file(
+        path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
     )
 
 
