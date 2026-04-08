@@ -25,12 +25,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M1_read_only_console_foundation`
 - Current task: `01_console_shell_and_template_infrastructure`
-- Active status: `in_progress`
-- Last updated: `2026-04-08 18:31 KST`
+- Active status: `done`
+- Last updated: `2026-04-08 18:32 KST`
 - Base branch: `master`
 - Active branch: `codex/task-01-console-shell`
-- Latest task commit: `not_created`
-- Resume decision: `started_task_01`
+- Latest task commit: `2e373ce`
+- Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
@@ -50,7 +50,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Roadmap Status
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M1 | 01 | Console shell and template infrastructure | in_progress | 2026-04-08 18:26 KST | Started implementation on `codex/task-01-console-shell`; wiring console routes, templates, static assets, and focused shell coverage |
+| M1 | 01 | Console shell and template infrastructure | done | 2026-04-08 18:32 KST | Added a FastAPI-served console shell with shared templates, mounted static assets, and passing focused browser coverage on `codex/task-01-console-shell` |
 | M1 | 02 | Run overview and failure dashboard pages | pending | 2026-04-08 17:40 KST | Build the first operator dashboard on top of existing run and failure queries |
 | M1 | 03 | Article status and pending-review queue pages | pending | 2026-04-08 17:40 KST | Expose current article and queue data in table-friendly browser pages |
 | M2 | 04 | Review draft detail page | pending | 2026-04-08 17:40 KST | Reuse the current operator-ready review detail contract in one browser page |
@@ -81,6 +81,7 @@ Status values:
 - `2026-04-08 18:26 KST` Started Task `01` on `codex/task-01-console-shell`; keeping scope to additive console route wiring, shared templates, lightweight static assets, and focused shell tests
 - `2026-04-08 18:34 KST` Added a dedicated `app.api.console` module with a `/console` redirect, `/console/` landing page, shared Jinja template shell, mounted static assets, and focused console-shell tests so later page tasks can extend one browser entrypoint
 - `2026-04-08 18:31 KST` Verified the new console shell against focused browser coverage plus a small API regression slice to confirm the shared FastAPI app wiring still serves health, runs, failures, and article endpoints unchanged
+- `2026-04-08 18:32 KST` Committed Task `01` as `2e373ce` (`Add operator console shell`) after the focused console coverage and shared API regression slice passed
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -96,7 +97,8 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `If console implementation later needs dependencies beyond the current FastAPI/Jinja2 stack, confirm that package install scope before adding a new toolchain or lockfile`
+- `Task 02 can now attach run and failure data to the shared console shell without revisiting route or asset infrastructure`
 
 ## Completion Summary
-- `Tracker initialized for the operator console readiness initiative; no implementation task has started yet`
+- `Task 01 complete: the FastAPI app now serves a dedicated `/console` namespace with a canonical landing page, shared Jinja layout, and mounted static assets for future browser surfaces`
+- `Task 01 complete: focused browser coverage now protects the console redirect, landing-page rendering, and static asset delivery while shared API regression confirms existing operator routes still behave as before`
