@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page_title %}{{ page_title }} · {% endif %}sns-content-engine</title>
+    <link rel="stylesheet" href="{{ console_asset_css_url }}">
+  </head>
+  <body class="console-shell">
+    <div class="console-background" aria-hidden="true"></div>
+    <div class="console-frame">
+      <header class="console-hero">
+        <div class="console-hero-copy">
+          <p class="console-kicker">sns-content-engine</p>
+          <h1>{{ page_title }}</h1>
+          <p class="console-lede">{{ page_description }}</p>
+        </div>
+        <div class="console-hero-status">
+          <span class="console-pill">Manual review required</span>
+          <span class="console-pill console-pill-muted">Dry-run publish is the browser default</span>
+        </div>
+      </header>
+
+      <div class="console-layout">
+        <aside class="console-sidebar" aria-label="Operator console sections">
+          <div class="console-sidebar-card">
+            <p class="console-sidebar-label">Navigation</p>
+            <ul class="console-nav-list">
+              {% for item in console_nav_items %}
+                <li class="console-nav-item{% if item.active %} is-active{% endif %}">
+                  <div class="console-nav-row">
+                    {% if item.href %}
+                      <a href="{{ item.href }}">{{ item.label }}</a>
+                    {% else %}
+                      <span>{{ item.label }}</span>
+                    {% endif %}
+                    <span class="console-nav-status">{{ item.status }}</span>
+                  </div>
+                  <p>{{ item.description }}</p>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </aside>
+
+        <main class="console-main">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

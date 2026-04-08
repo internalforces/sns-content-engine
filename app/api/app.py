@@ -468,6 +468,7 @@ def create_app(
         version="0.1.0",
     )
 
+    from app.api.console import console_router, mount_console_static
     from app.workflows.history_queries import PublishJobNotFoundError
     from app.workflows.review_queue import (
         DraftNotFoundError,
@@ -477,6 +478,9 @@ def create_app(
         ReviewQueueError,
         ReviewerIdentityError,
     )
+
+    mount_console_static(application)
+    application.include_router(console_router)
 
     @application.exception_handler(DatabaseSchemaError)
     async def handle_database_schema_error(
