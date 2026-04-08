@@ -13,16 +13,16 @@ Keep updates short, factual, and current.
 
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
-- Current task: `05_scheduler_action_api_wrappers`
+- Current task: `06_control_plane_api_docs_and_regression_coverage`
 - Active status: `done`
-- Last updated: `2026-04-08 17:09 KST`
-- Active branch: `codex/task-05-scheduler-action-api-wrappers`
+- Last updated: `2026-04-08 17:20 KST`
+- Active branch: `codex/task-06-control-plane-api-docs`
 - Latest task commit: `pending`
 
 ## Scope For Current Task
-- Goal: `Expose safe HTTP action wrappers for scheduler discover, backfill, and publish-due workflows without weakening current review or publish guardrails`
-- In scope: `Thin API request/response wiring around the existing scheduler helpers, explicit dry-run defaults for publish-due, and focused API coverage for discover/backfill/publish action responses`
-- Out of scope: `Scheduler runtime redesign, auth, frontend implementation, and any default change that would make live publishing implicit`
+- Goal: `Document the operator-facing control-plane API surfaces and add regression coverage that protects the linked-data contract across review, publish-job, and scheduler endpoints`
+- In scope: `A concise operator API reference, README linkage to that reference, and focused API regression coverage using realistic linked draft and publish fixtures`
+- Out of scope: `Auth, frontend implementation, deployment-guide expansion, scheduler redesign, and any change to manual review or dry-run publish defaults`
 
 ## Roadmap Status
 | Task | Name | Status | Last update | Notes |
@@ -32,7 +32,7 @@ Keep updates short, factual, and current.
 | 03 | Publish-job list endpoint | done | 2026-04-07 17:00 KST | Added `GET /publish-jobs` with storage-backed state/account/channel/limit filters and linked draft metadata plus passing API/scheduler regression coverage |
 | 04 | Publish-job detail and log timeline | done | 2026-04-07 17:10 KST | Added `GET /publish-jobs/{publish_job_id}` with storage-backed draft/source detail, ordered publish-log timeline, and passing API/scheduler regression coverage |
 | 05 | Scheduler action API wrappers | done | 2026-04-08 17:09 KST | Added `POST /scheduler/discover`, `/scheduler/backfill`, and `/scheduler/publish-due` with scheduler-backed summaries, explicit live opt-in, and passing API/scheduler regression coverage |
-| 06 | Control-plane API docs and regression coverage | pending | 2026-04-07 13:57 KST | Roadmap created; implementation not started |
+| 06 | Control-plane API docs and regression coverage | done | 2026-04-08 17:20 KST | Added `docs/operator-control-plane-api.md`, linked it from `README.md`, and added passing linked-data API regression coverage for review and publish surfaces |
 
 Status values:
 - `pending`
@@ -41,8 +41,9 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
+- `README.md`
+- `docs/operator-control-plane-api.md`
 - `docs/operator-control-plane-readiness-progress.md`
-- `app/api/app.py`
 - `tests/test_api.py`
 
 ## Progress Log
@@ -72,6 +73,9 @@ Status values:
 - `2026-04-08 17:07 KST` Added scheduler action request and response models plus thin FastAPI wrappers so the API can expose existing discover, backfill, and publish-due helpers without adding a parallel control-plane workflow layer
 - `2026-04-08 17:08 KST` Kept `publish-due` safe by default through an explicit `live` opt-in flag that maps to the existing scheduler helper's `dry_run` behavior instead of changing publish execution defaults
 - `2026-04-08 17:09 KST` Added focused API coverage for scheduler action serialization, real backfill creation, default dry-run publish behavior, and explicit live opt-in wiring, then marked Task `05` complete after the focused and broader regression slices passed
+- `2026-04-08 17:17 KST` Started Task `06` on branch `codex/task-06-control-plane-api-docs` with scope limited to concise operator-facing API contract docs and tighter regression coverage for the new control-plane surfaces
+- `2026-04-08 17:19 KST` Added `docs/operator-control-plane-api.md` as a concise operator reference that distinguishes read-only review/publish routes from scheduler-triggering action routes and reiterates the manual-review plus dry-run safety defaults
+- `2026-04-08 17:19 KST` Linked the new control-plane API guide from `README.md` and extended `tests/test_api.py` with a shared linked-data regression that keeps review detail and publish-job responses aligned on draft, brief, provenance, and source context
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
@@ -96,6 +100,11 @@ Status values:
 - `2026-04-08 17:07 KST` `git diff --check` -> `passed`
 - `2026-04-08 17:07 KST` `python -m pytest tests/test_api.py -k "scheduler_discover_endpoint or scheduler_backfill_endpoint or scheduler_publish_due_endpoint"` -> `passed`
 - `2026-04-08 17:08 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
+- `2026-04-08 17:18 KST` `git diff --check` -> `passed`
+- `2026-04-08 17:18 KST` `python -m pytest tests/test_api.py -k "control_plane_read_endpoints_share_consistent_linked_context"` -> `failed` (`include_article_enrichment=True` made source attribution mandatory for scheduling; updated the fixture body to include the required attribution and reran)
+- `2026-04-08 17:19 KST` `git diff --check` -> `passed`
+- `2026-04-08 17:19 KST` `python -m pytest tests/test_api.py -k "control_plane_read_endpoints_share_consistent_linked_context"` -> `passed`
+- `2026-04-08 17:19 KST` `python -m pytest tests/test_api.py tests/test_scheduler.py` -> `passed`
 
 ## Blockers
 - `None currently`
@@ -109,3 +118,4 @@ Status values:
 - `Task 03 complete: `GET /publish-jobs` now exposes stored publish jobs with state/account/channel/limit filters plus linked draft, brief, and source metadata for operator list views`
 - `Task 04 complete: `GET /publish-jobs/{publish_job_id}` now exposes one publish job with readable state/timestamps, linked draft and source context, and ordered persisted publish-log events for operator detail views`
 - `Task 05 complete: the API now exposes `POST /scheduler/discover`, `POST /scheduler/backfill`, and `POST /scheduler/publish-due` as thin wrappers around the existing scheduler helpers while preserving default dry-run publish safety through an explicit live opt-in`
+- `Task 06 complete: the repository now has a focused operator control-plane API guide plus shared linked-data regression coverage that protects the documented review-detail, publish-job, and scheduler safety contract`

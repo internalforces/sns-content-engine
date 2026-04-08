@@ -564,6 +564,116 @@ def test_publish_job_detail_endpoint_returns_not_found_error(tmp_path: Path) -> 
     }
 
 
+def test_control_plane_read_endpoints_share_consistent_linked_context(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    attributed_body = (
+        "Useful AI automation workflows for operators via AI Tools Daily "
+        "example.com https://gilgop.cloud/ai-tools"
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=attributed_body,
+            include_provenance=True,
+            include_article_enrichment=True,
+        )
+
+    approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    schedule_result = schedule_draft(
+        draft.id,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        reviewer="scheduler-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+
+    with session_scope(session_factory) as session:
+        job = PublishJobRepository(session).get(schedule_result.publish_job_id)
+        assert job is not None
+        PublishLogRepository(session).record(
+            job,
+            event_type="scheduled",
+            message="publish job queued from review action",
+            payload={"scheduled_for": job.scheduled_for.isoformat() if job.scheduled_for else None},
+        )
+
+    client = TestClient(create_app())
+    review_response = client.get(
+        f"/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+    publish_list_response = client.get(
+        "/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}",
+            "state": "scheduled",
+            "account_key": "ai_tools_daily",
+        },
+    )
+    publish_detail_response = client.get(
+        f"/publish-jobs/{schedule_result.publish_job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert review_response.status_code == 200
+    assert publish_list_response.status_code == 200
+    assert publish_detail_response.status_code == 200
+
+    review_payload = review_response.json()
+    publish_list_payload = publish_list_response.json()
+    publish_detail_payload = publish_detail_response.json()
+
+    assert [action["action_type"] for action in review_payload["review_actions"]] == [
+        "approve",
+        "schedule",
+    ]
+    assert len(publish_list_payload["jobs"]) == 1
+    publish_row = publish_list_payload["jobs"][0]
+
+    assert review_payload["draft_id"] == draft.id
+    assert publish_row["draft_id"] == draft.id
+    assert publish_detail_payload["draft"]["draft_id"] == draft.id
+    assert review_payload["draft_state"] == "approved"
+    assert publish_row["draft_state"] == "approved"
+    assert publish_detail_payload["draft"]["draft_state"] == "approved"
+    assert publish_row["publish_job_id"] == schedule_result.publish_job_id
+    assert publish_detail_payload["publish_job_id"] == schedule_result.publish_job_id
+    assert publish_row["state"] == "scheduled"
+    assert publish_detail_payload["state"] == "scheduled"
+    assert review_payload["brief"]["title"] == publish_row["brief_title"] == publish_detail_payload["brief"]["title"]
+    assert (
+        review_payload["source_item"]["title"]
+        == publish_row["source_title"]
+        == publish_detail_payload["source_item"]["title"]
+    )
+    assert review_payload["provenance"]["source_url"] == publish_detail_payload["provenance"]["source_url"]
+    assert review_payload["article_enrichment"]["article_url"] == review_payload["source_item"]["source_url"].replace(
+        "/drafts/",
+        "/articles/",
+    )
+    assert [entry["event_type"] for entry in publish_detail_payload["publish_logs"]] == ["scheduled"]
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+        stored_job = PublishJobRepository(session).get(schedule_result.publish_job_id)
+        stored_logs = PublishLogRepository(session).list()
+
+    assert stored_draft is not None
+    assert stored_job is not None
+    assert stored_draft.state is DraftVariantState.APPROVED
+    assert stored_job.state is PublishJobState.SCHEDULED
+    assert stored_job.attempt_count == 0
+    assert [log.event_type for log in stored_logs] == ["scheduled"]
+
+
 def test_scheduler_discover_endpoint_returns_summary_payload() -> None:
     captured: dict[str, object] = {}
 
