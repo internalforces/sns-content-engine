@@ -15,9 +15,9 @@ Keep updates short, factual, and current.
 - Current milestone: `phase_1_operator_control_plane_basics`
 - Current task: `06_control_plane_api_docs_and_regression_coverage`
 - Active status: `done`
-- Last updated: `2026-04-08 17:20 KST`
+- Last updated: `2026-04-08 17:22 KST`
 - Active branch: `codex/task-06-control-plane-api-docs`
-- Latest task commit: `pending`
+- Latest task commit: `3bda655`
 
 ## Scope For Current Task
 - Goal: `Document the operator-facing control-plane API surfaces and add regression coverage that protects the linked-data contract across review, publish-job, and scheduler endpoints`
@@ -76,6 +76,7 @@ Status values:
 - `2026-04-08 17:17 KST` Started Task `06` on branch `codex/task-06-control-plane-api-docs` with scope limited to concise operator-facing API contract docs and tighter regression coverage for the new control-plane surfaces
 - `2026-04-08 17:19 KST` Added `docs/operator-control-plane-api.md` as a concise operator reference that distinguishes read-only review/publish routes from scheduler-triggering action routes and reiterates the manual-review plus dry-run safety defaults
 - `2026-04-08 17:19 KST` Linked the new control-plane API guide from `README.md` and extended `tests/test_api.py` with a shared linked-data regression that keeps review detail and publish-job responses aligned on draft, brief, provenance, and source context
+- `2026-04-08 17:22 KST` Committed Task `06` as `3bda655` (`Document control-plane API contract`) after the focused contract test and broader API/scheduler regression slice passed
 
 ## Test Log
 - `2026-04-07 13:57 KST` `git diff --check` -> `passed`
