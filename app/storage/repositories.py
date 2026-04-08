@@ -569,6 +569,18 @@ class PublishJobRepository:
     def get(self, job_id: int) -> PublishJob | None:
         return self.session.get(PublishJob, job_id)
 
+    def get_detail(self, job_id: int) -> PublishJob | None:
+        statement = (
+            select(PublishJob)
+            .options(
+                joinedload(PublishJob.draft_variant)
+                .joinedload(DraftVariant.content_brief)
+                .joinedload(ContentBrief.source_item)
+            )
+            .where(PublishJob.id == job_id)
+        )
+        return self.session.scalar(statement)
+
     def list(self) -> list[PublishJob]:
         return list(self.session.scalars(select(PublishJob).order_by(PublishJob.id)))
 

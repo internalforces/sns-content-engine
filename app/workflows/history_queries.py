@@ -11,6 +11,9 @@ from app.storage import (
     ArticleEnrichment,
     ArticleEnrichmentRepository,
     PipelineRunRepository,
+    PublishJob,
+    PublishLog,
+    PublishLogRepository,
     PublishJobRepository,
     PublishJobState,
     SourceItem,
@@ -20,6 +23,10 @@ from app.storage import (
     ensure_database_schema_is_current,
     session_scope,
 )
+
+
+class PublishJobNotFoundError(ValueError):
+    """Raised when a referenced publish job does not exist."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +136,12 @@ class PublishJobListRow:
 @dataclass(frozen=True, slots=True)
 class PublishJobListResult:
     jobs: tuple[PublishJobListRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PublishJobDetailResult:
+    job: PublishJob
+    publish_logs: tuple[PublishLog, ...]
 
 
 def list_pipeline_runs(*, database_url: str | None = None, session_factory=None, limit: int = 20) -> PipelineRunHistoryResult:
@@ -318,6 +331,37 @@ def list_publish_jobs(
             owned_engine.dispose()
 
     return PublishJobListResult(jobs=jobs)
+
+
+def get_publish_job_detail(
+    publish_job_id: int,
+    *,
+    database_url: str | None = None,
+    session_factory=None,
+) -> PublishJobDetailResult:
+    owned_engine = None
+    if session_factory is None:
+        owned_engine = create_database_engine(database_url)
+        ensure_database_schema_is_current(owned_engine)
+        session_factory = create_session_factory(owned_engine)
+    else:
+        bound_engine = getattr(session_factory, "kw", {}).get("bind")
+        if bound_engine is not None:
+            ensure_database_schema_is_current(bound_engine)
+
+    try:
+        with session_scope(session_factory) as session:
+            jobs = PublishJobRepository(session)
+            job = jobs.get_detail(publish_job_id)
+            if job is None:
+                raise PublishJobNotFoundError(f"publish job {publish_job_id} was not found")
+
+            publish_logs = tuple(PublishLogRepository(session).list_for_job(publish_job_id))
+    finally:
+        if owned_engine is not None:
+            owned_engine.dispose()
+
+    return PublishJobDetailResult(job=job, publish_logs=publish_logs)
 
 
 def _normalize_policy_mode_counts(summary_json: dict | None) -> dict[str, int]:
