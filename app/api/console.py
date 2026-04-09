@@ -11,6 +11,7 @@ from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from app.workflows.review_queue import DraftNotFoundError
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -186,6 +187,7 @@ def get_console_pending_review(
 ) -> HTMLResponse:
     """Render the current manual-review queue in the console."""
 
+    query_params = _extract_console_query_params(request)
     result = request.app.state.console_pending_review_drafts_lister(
         database_url=database_url,
     )
@@ -201,7 +203,12 @@ def get_console_pending_review(
         {
             "pending_review_metrics": _build_pending_review_metrics(result.drafts),
             "pending_review_rows": [
-                _build_pending_review_row(position, row)
+                _build_pending_review_row(
+                    request,
+                    query_params,
+                    position,
+                    row,
+                )
                 for position, row in enumerate(result.drafts, start=1)
             ],
         }
@@ -209,6 +216,81 @@ def get_console_pending_review(
     return _TEMPLATES.TemplateResponse(
         request=request,
         name="console/pending_review.html",
+        context=context,
+    )
+
+
+@console_router.get(
+    "/console/reviews/{draft_id}",
+    response_class=HTMLResponse,
+    name="console_review_detail",
+)
+def get_console_review_detail(
+    draft_id: int,
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Render one review draft with provenance, audit history, and sibling variants."""
+
+    query_params = _extract_console_query_params(request)
+    pending_review_href = _append_query_params(
+        str(request.url_for("console_pending_review")),
+        query_params,
+    )
+
+    try:
+        detail = request.app.state.console_review_draft_detail_fetcher(
+            draft_id,
+            database_url=database_url,
+        )
+    except DraftNotFoundError as exc:
+        context = _build_console_context(
+            request,
+            page_title="Review Draft Not Found",
+            page_description="The requested draft detail could not be loaded for this operator context.",
+            active_nav_key="pending_review",
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+        context.update(
+            {
+                "pending_review_href": pending_review_href,
+                "review_detail_missing": {
+                    "message": str(exc),
+                    "draft_id": draft_id,
+                },
+            }
+        )
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="console/review_detail.html",
+            context=context,
+            status_code=404,
+        )
+
+    context = _build_console_context(
+        request,
+        page_title=f"Review Draft {detail.draft.id}",
+        page_description="Read-only draft workspace with provenance, brief, enrichment, audit trail, and sibling variants from the shared review detail helper.",
+        active_nav_key="pending_review",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "pending_review_href": pending_review_href,
+            "review_detail": _build_review_detail(
+                request,
+                query_params,
+                detail,
+            ),
+            "review_detail_missing": None,
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/review_detail.html",
         context=context,
     )
 
@@ -269,7 +351,7 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="Pending Review",
-            description="Current review queue visibility before the browser draft-detail workspace lands.",
+            description="Current review queue and draft-detail workspace for manual review context.",
             status="Ready",
             href=_append_query_params(str(request.url_for("console_pending_review")), query_params),
             active=active_nav_key == "pending_review",
@@ -488,7 +570,12 @@ def _build_pending_review_metrics(rows) -> list[dict[str, str]]:
     ]
 
 
-def _build_pending_review_row(position: int, row) -> dict[str, str]:
+def _build_pending_review_row(
+    request: Request,
+    query_params: dict[str, str],
+    position: int,
+    row,
+) -> dict[str, str]:
     return {
         "queue_position": str(position),
         "draft_label": f"Draft {row.draft_id}",
@@ -498,6 +585,133 @@ def _build_pending_review_row(position: int, row) -> dict[str, str]:
         "created_at": _format_datetime(row.created_at, none_label="Not recorded"),
         "title": row.title,
         "body_preview": _truncate_text(row.body, limit=180),
+        "detail_href": _append_query_params(
+            str(request.url_for("console_review_detail", draft_id=row.draft_id)),
+            query_params,
+        ),
+    }
+
+
+def _build_review_detail(
+    request: Request,
+    query_params: dict[str, str],
+    detail,
+) -> dict[str, object]:
+    draft = detail.draft
+    content_brief = draft.content_brief
+    source_item = content_brief.source_item
+    article_enrichment = source_item.article_enrichment
+    return {
+        "draft_label": f"Draft {draft.id}",
+        "channel": _humanize_label(draft.channel),
+        "variant_label": f"Variant {draft.variant_index}",
+        "account_key": content_brief.account_key,
+        "draft_state": _humanize_label(draft.state.value),
+        "rejection_reason": draft.rejection_reason or "No rejection recorded.",
+        "created_at": _format_datetime(draft.created_at, none_label="Not recorded"),
+        "reviewed_at": _format_datetime(draft.reviewed_at, none_label="Not reviewed yet"),
+        "body": draft.body,
+        "provenance": {
+            "source_name": draft.source_name or "Not recorded",
+            "source_url": draft.source_url,
+            "article_url": draft.article_url,
+            "source_published_at": _format_datetime(
+                draft.source_published_at,
+                none_label="Not recorded",
+            ),
+            "source_policy_mode": _humanize_label(
+                draft.source_policy_mode.value if draft.source_policy_mode else None
+            ),
+        },
+        "brief": {
+            "brief_id": content_brief.id,
+            "title": content_brief.title,
+            "summary": content_brief.summary or "No summary recorded.",
+            "key_points": list(content_brief.key_points),
+            "landing_url": content_brief.landing_url,
+            "tags": list(content_brief.tags),
+            "angle": _humanize_label(content_brief.angle),
+            "language": content_brief.language,
+        },
+        "source_item": {
+            "source_item_id": source_item.id,
+            "source_key": source_item.source_key,
+            "external_id": source_item.external_id,
+            "title": source_item.title,
+            "summary": source_item.summary or "No source summary recorded.",
+            "source_url": source_item.source_url,
+            "canonical_url": source_item.canonical_url,
+            "published_at": _format_datetime(source_item.published_at, none_label="Not recorded"),
+            "policy_mode": _humanize_label(source_item.policy_mode.value),
+            "require_attribution": "Required" if source_item.require_attribution else "Not required",
+        },
+        "article_enrichment": (
+            {
+                "article_enrichment_id": article_enrichment.id,
+                "source_name": article_enrichment.source_name or "Not recorded",
+                "article_url": article_enrichment.article_url,
+                "published_at": _format_datetime(
+                    article_enrichment.published_at,
+                    none_label="Not recorded",
+                ),
+                "discovered_at": _format_datetime(
+                    article_enrichment.discovered_at,
+                    none_label="Not recorded",
+                ),
+                "regenerated_summary": (
+                    article_enrichment.regenerated_summary
+                    or "No regenerated summary recorded."
+                ),
+                "regenerated_key_points": list(article_enrichment.regenerated_key_points),
+                "classification": _humanize_label(article_enrichment.classification),
+            }
+            if article_enrichment is not None
+            else None
+        ),
+        "review_actions": [
+            _build_review_action_row(action)
+            for action in detail.review_actions
+        ],
+        "sibling_variants": [
+            _build_sibling_variant_row(request, query_params, variant)
+            for variant in detail.sibling_variants
+        ],
+    }
+
+
+def _build_review_action_row(action) -> dict[str, str]:
+    return {
+        "action_id": str(action.id),
+        "action_type": _humanize_label(action.action_type.value),
+        "reviewer": action.reviewer,
+        "created_at": _format_datetime(action.created_at, none_label="Not recorded"),
+        "before_text": action.before_text,
+        "after_text": action.after_text,
+        "draft_state_before": _humanize_label(action.draft_state_before.value),
+        "draft_state_after": _humanize_label(action.draft_state_after.value),
+        "rejection_reason": action.rejection_reason or "No rejection recorded.",
+        "scheduled_for": _format_datetime(action.scheduled_for, none_label="Not scheduled"),
+        "publish_job_id": str(action.publish_job_id) if action.publish_job_id else "Not created",
+    }
+
+
+def _build_sibling_variant_row(
+    request: Request,
+    query_params: dict[str, str],
+    draft,
+) -> dict[str, str]:
+    return {
+        "draft_label": f"Draft {draft.id}",
+        "detail_href": _append_query_params(
+            str(request.url_for("console_review_detail", draft_id=draft.id)),
+            query_params,
+        ),
+        "variant_label": f"Variant {draft.variant_index}",
+        "draft_state": _humanize_label(draft.state.value),
+        "rejection_reason": draft.rejection_reason or "No rejection recorded.",
+        "created_at": _format_datetime(draft.created_at, none_label="Not recorded"),
+        "reviewed_at": _format_datetime(draft.reviewed_at, none_label="Not reviewed yet"),
+        "body": draft.body,
     }
 
 

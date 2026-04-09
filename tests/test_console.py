@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from itertools import count
 from pathlib import Path
+from textwrap import dedent
 
 from fastapi.testclient import TestClient
 
@@ -30,6 +31,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
+from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
 
 _DRAFT_SOURCE_COUNTER = count()
 
@@ -277,7 +279,7 @@ def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Pending Review" in response.text
-    assert "Task 04 will add per-draft browser detail" in response.text
+    assert "Each queue row now links into one draft workspace" in response.text
     assert "No drafts are currently waiting for manual review." in response.text
 
 
@@ -312,8 +314,117 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
     assert "Variant 0" in response.text
     assert "ai_tools_daily" in response.text
     assert "Useful AI automation workflows for operators" in response.text
+    assert f'/console/reviews/{pending_draft.id}' in response.text
     assert "Hidden approved draft" not in response.text
     assert "This approved draft should not appear in the pending queue" not in response.text
+
+
+def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    attributed_body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=attributed_body,
+            include_provenance=True,
+            include_article_enrichment=True,
+        )
+
+    edited_body = "AI Tools Daily via example.com: Edited AI automation workflow summary for operators https://gilgop.cloud/ai-tools"
+    edit_draft(
+        draft.id,
+        body=edited_body,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    approve_draft(
+        draft.id,
+        reviewer="editor-b",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    schedule_result = schedule_draft(
+        draft.id,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        reviewer="scheduler-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+
+    with session_scope(session_factory) as session:
+        repository = DraftVariantRepository(session)
+        stored_draft = repository.get(draft.id)
+        assert stored_draft is not None
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=2,
+                body="Variant two for deeper operator analysis",
+                created_at=datetime(2026, 3, 18, 9, 20, tzinfo=timezone.utc),
+            )
+        )
+        sibling = repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="x",
+                variant_index=1,
+                body="Variant one with a shorter operator hook",
+                created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            )
+        )
+        repository.add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel="linkedin",
+                variant_index=0,
+                body="Different channel variant should stay hidden",
+                created_at=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc),
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert f"Review Draft {draft.id}" in response.text
+    assert f"Draft {draft.id}" in response.text
+    assert "Brief for draft" in response.text
+    assert "AI Tools Daily" in response.text
+    assert "Regenerated article summary for operators" in response.text
+    assert "Detail point one" in response.text
+    assert "editor-a" in response.text
+    assert "editor-b" in response.text
+    assert "scheduler-a" in response.text
+    assert attributed_body in response.text
+    assert edited_body in response.text
+    assert f"Publish job {schedule_result.publish_job_id}" in response.text
+    assert "Variant one with a shorter operator hook" in response.text
+    assert "Variant two for deeper operator analysis" in response.text
+    assert f'/console/reviews/{sibling.id}' in response.text
+    assert "Different channel variant should stay hidden" not in response.text
+
+
+def test_review_detail_page_returns_browser_friendly_not_found(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/console/reviews/999",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 404
+    assert "Review Draft Not Found" in response.text
+    assert "draft 999 was not found" in response.text
+    assert "/console/reviews/pending" in response.text
 
 
 def _build_session_factory(tmp_path: Path):
@@ -366,3 +477,150 @@ def _create_pending_review_draft(
     if draft_state is DraftVariantState.APPROVED:
         repository.transition_state(draft, DraftVariantState.APPROVED)
     return draft
+
+
+def _create_review_detail_draft(
+    session,
+    *,
+    account_key: str = "ai_tools_daily",
+    channel: str = "x",
+    brief_title: str = "Brief for draft",
+    variant_index: int,
+    draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
+    created_at: datetime,
+    body: str = "Useful AI automation workflows for operators",
+    include_provenance: bool = False,
+    include_article_enrichment: bool = False,
+) -> DraftVariant:
+    source_number = next(_DRAFT_SOURCE_COUNTER)
+    source_item = SourceItemRepository(session).add(
+        SourceItem(
+            source_key="ai_tools_rss",
+            external_id=f"draft-entry-{source_number}",
+            source_url=f"https://example.com/drafts/{source_number}",
+            title=f"Draft source {source_number}",
+            summary="RSS summary for review" if include_article_enrichment else None,
+            published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+            if include_article_enrichment
+            else None,
+            require_attribution=include_article_enrichment,
+        )
+    )
+    if include_article_enrichment:
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                source_name="AI Tools Daily",
+                article_url=f"https://example.com/articles/{source_number}",
+                published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
+                discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
+                regenerated_summary="Regenerated article summary for operators",
+                regenerated_key_points=["Detail point one", "Detail point two"],
+                classification="analysis",
+            )
+        )
+    brief = ContentBriefRepository(session).add(
+        ContentBrief(
+            source_item_id=source_item.id,
+            account_key=account_key,
+            title=brief_title,
+            summary="Summary for review",
+            key_points=["Point one"],
+            landing_url="https://gilgop.cloud/ai-tools",
+            tags=["ai"],
+            angle="topic_takeaway",
+            language="en",
+        )
+    )
+    repository = DraftVariantRepository(session)
+    draft = repository.add(
+        DraftVariant(
+            content_brief_id=brief.id,
+            channel=channel,
+            variant_index=variant_index,
+            body=body,
+            created_at=created_at,
+            source_name="AI Tools Daily" if include_provenance else None,
+            source_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            article_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            source_published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+            if include_provenance
+            else None,
+            source_policy_mode=SourcePolicyMode.REUSABLE if include_provenance else None,
+        )
+    )
+    if draft_state is DraftVariantState.APPROVED:
+        repository.transition_state(draft, DraftVariantState.APPROVED)
+    elif draft_state is DraftVariantState.REJECTED:
+        repository.transition_state(
+            draft,
+            DraftVariantState.REJECTED,
+            rejection_reason="Rejected during test setup",
+        )
+    return draft
+
+
+def _write_minimal_project_config(path: Path) -> None:
+    _write_file(
+        path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            matching:
+              include_keywords:
+                - ai
+                - automation
+              source_tags:
+                - ai
+                - automation
+              strict_topic_guard: true
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+        """,
+    )
+    _write_file(
+        path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "system"
+            user_template: "user"
+        """,
+    )
+    _write_file(
+        path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+
+
+def _write_file(path: Path, content: str) -> None:
+    path.write_text(dedent(content).strip() + "\n", encoding="utf-8")

@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Review workspace</p>
+        {% if review_detail_missing %}
+          <h2>Draft could not be loaded</h2>
+        {% else %}
+          <h2>{{ review_detail.draft_label }} · {{ review_detail.variant_label }}</h2>
+        {% endif %}
+      </div>
+      <span class="console-badge">{% if review_detail_missing %}404{% else %}Task 04{% endif %}</span>
+    </div>
+    <p class="console-card-copy">
+      <a class="console-link" href="{{ pending_review_href }}">Back to pending review queue</a>
+    </p>
+    {% if review_detail_missing %}
+      <p class="console-empty">{{ review_detail_missing.message }}</p>
+      <p class="console-card-copy">
+        The draft may not exist in this database, or it may belong to a different operator context than the current query parameters.
+      </p>
+    {% else %}
+      <div class="console-panel-grid">
+        <article class="console-panel">
+          <p class="console-card-label">Draft status</p>
+          <h3>{{ review_detail.draft_label }}</h3>
+          <dl class="console-definition-list">
+            <div>
+              <dt>Account key</dt>
+              <dd>{{ review_detail.account_key }}</dd>
+            </div>
+            <div>
+              <dt>Channel</dt>
+              <dd>{{ review_detail.channel }}</dd>
+            </div>
+            <div>
+              <dt>Variant</dt>
+              <dd>{{ review_detail.variant_label }}</dd>
+            </div>
+            <div>
+              <dt>State</dt>
+              <dd>{{ review_detail.draft_state }}</dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>{{ review_detail.created_at }}</dd>
+            </div>
+            <div>
+              <dt>Reviewed</dt>
+              <dd>{{ review_detail.reviewed_at }}</dd>
+            </div>
+            <div>
+              <dt>Rejection reason</dt>
+              <dd>{{ review_detail.rejection_reason }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="console-panel">
+          <p class="console-card-label">Draft body</p>
+          <h3>Current text</h3>
+          <p class="console-card-copy">{{ review_detail.body }}</p>
+        </article>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if review_detail %}
+    <section class="console-grid">
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Provenance</p>
+            <h2>Stored source context</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Source name</dt>
+            <dd>{{ review_detail.provenance.source_name }}</dd>
+          </div>
+          <div>
+            <dt>Source URL</dt>
+            <dd>
+              {% if review_detail.provenance.source_url %}
+                <a class="console-link" href="{{ review_detail.provenance.source_url }}">{{ review_detail.provenance.source_url }}</a>
+              {% else %}
+                Not recorded
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Article URL</dt>
+            <dd>
+              {% if review_detail.provenance.article_url %}
+                <a class="console-link" href="{{ review_detail.provenance.article_url }}">{{ review_detail.provenance.article_url }}</a>
+              {% else %}
+                Not recorded
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{{ review_detail.provenance.source_published_at }}</dd>
+          </div>
+          <div>
+            <dt>Policy mode</dt>
+            <dd>{{ review_detail.provenance.source_policy_mode }}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Brief</p>
+            <h2>{{ review_detail.brief.title }}</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Brief ID</dt>
+            <dd>{{ review_detail.brief.brief_id }}</dd>
+          </div>
+          <div>
+            <dt>Summary</dt>
+            <dd>{{ review_detail.brief.summary }}</dd>
+          </div>
+          <div>
+            <dt>Landing URL</dt>
+            <dd><a class="console-link" href="{{ review_detail.brief.landing_url }}">{{ review_detail.brief.landing_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Angle</dt>
+            <dd>{{ review_detail.brief.angle }}</dd>
+          </div>
+          <div>
+            <dt>Language</dt>
+            <dd>{{ review_detail.brief.language }}</dd>
+          </div>
+          <div>
+            <dt>Tags</dt>
+            <dd>{{ review_detail.brief.tags | join(", ") if review_detail.brief.tags else "No tags recorded." }}</dd>
+          </div>
+        </dl>
+        {% if review_detail.brief.key_points %}
+          <ul class="console-checklist">
+            {% for point in review_detail.brief.key_points %}
+              <li>{{ point }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="console-grid">
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Source item</p>
+            <h2>{{ review_detail.source_item.title }}</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Source item ID</dt>
+            <dd>{{ review_detail.source_item.source_item_id }}</dd>
+          </div>
+          <div>
+            <dt>Source key</dt>
+            <dd>{{ review_detail.source_item.source_key }}</dd>
+          </div>
+          <div>
+            <dt>External ID</dt>
+            <dd>{{ review_detail.source_item.external_id }}</dd>
+          </div>
+          <div>
+            <dt>Summary</dt>
+            <dd>{{ review_detail.source_item.summary }}</dd>
+          </div>
+          <div>
+            <dt>Source URL</dt>
+            <dd><a class="console-link" href="{{ review_detail.source_item.source_url }}">{{ review_detail.source_item.source_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Canonical URL</dt>
+            <dd><a class="console-link" href="{{ review_detail.source_item.canonical_url }}">{{ review_detail.source_item.canonical_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{{ review_detail.source_item.published_at }}</dd>
+          </div>
+          <div>
+            <dt>Policy</dt>
+            <dd>{{ review_detail.source_item.policy_mode }} / Attribution {{ review_detail.source_item.require_attribution }}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Article enrichment</p>
+            <h2>{% if review_detail.article_enrichment %}Linked enrichment{% else %}No enrichment linked{% endif %}</h2>
+          </div>
+        </div>
+        {% if review_detail.article_enrichment %}
+          <dl class="console-definition-list">
+            <div>
+              <dt>Enrichment ID</dt>
+              <dd>{{ review_detail.article_enrichment.article_enrichment_id }}</dd>
+            </div>
+            <div>
+              <dt>Source name</dt>
+              <dd>{{ review_detail.article_enrichment.source_name }}</dd>
+            </div>
+            <div>
+              <dt>Article URL</dt>
+              <dd><a class="console-link" href="{{ review_detail.article_enrichment.article_url }}">{{ review_detail.article_enrichment.article_url }}</a></dd>
+            </div>
+            <div>
+              <dt>Published</dt>
+              <dd>{{ review_detail.article_enrichment.published_at }}</dd>
+            </div>
+            <div>
+              <dt>Discovered</dt>
+              <dd>{{ review_detail.article_enrichment.discovered_at }}</dd>
+            </div>
+            <div>
+              <dt>Classification</dt>
+              <dd>{{ review_detail.article_enrichment.classification }}</dd>
+            </div>
+            <div>
+              <dt>Regenerated summary</dt>
+              <dd>{{ review_detail.article_enrichment.regenerated_summary }}</dd>
+            </div>
+          </dl>
+          {% if review_detail.article_enrichment.regenerated_key_points %}
+            <ul class="console-checklist">
+              {% for point in review_detail.article_enrichment.regenerated_key_points %}
+                <li>{{ point }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% else %}
+          <p class="console-empty">No article enrichment is linked to this draft yet.</p>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Audit trail</p>
+          <h2>Recorded review actions</h2>
+        </div>
+      </div>
+      {% if review_detail.review_actions %}
+        <div class="console-table-wrap">
+          <table class="console-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Reviewer</th>
+                <th>State change</th>
+                <th>Text diff</th>
+                <th>Scheduling</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for action in review_detail.review_actions %}
+                <tr>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ action.action_type }}</strong>
+                      <span>Action {{ action.action_id }}</span>
+                      <span>{{ action.created_at }}</span>
+                    </div>
+                  </td>
+                  <td>{{ action.reviewer }}</td>
+                  <td>
+                    <div class="console-stack">
+                      <span>{{ action.draft_state_before }} → {{ action.draft_state_after }}</span>
+                      <span>{{ action.rejection_reason }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="console-stack">
+                      <span>Before: {{ action.before_text }}</span>
+                      <span>After: {{ action.after_text }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="console-stack">
+                      <span>Scheduled {{ action.scheduled_for }}</span>
+                      <span>Publish job {{ action.publish_job_id }}</span>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="console-empty">No review actions have been recorded for this draft yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Sibling variants</p>
+          <h2>Same brief and channel</h2>
+        </div>
+      </div>
+      {% if review_detail.sibling_variants %}
+        <div class="console-table-wrap">
+          <table class="console-table">
+            <thead>
+              <tr>
+                <th>Draft</th>
+                <th>State</th>
+                <th>Body</th>
+                <th>Timing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for variant in review_detail.sibling_variants %}
+                <tr>
+                  <td>
+                    <div class="console-stack">
+                      <a class="console-link" href="{{ variant.detail_href }}">{{ variant.draft_label }}</a>
+                      <span>{{ variant.variant_label }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ variant.draft_state }}</strong>
+                      <span>{{ variant.rejection_reason }}</span>
+                    </div>
+                  </td>
+                  <td>{{ variant.body }}</td>
+                  <td>
+                    <div class="console-stack">
+                      <span>Created {{ variant.created_at }}</span>
+                      <span>Reviewed {{ variant.reviewed_at }}</span>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="console-empty">No sibling variants are available for this brief and channel yet.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}
