@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Article visibility</p>
+        <h2>Stored article and enrichment status</h2>
+      </div>
+      <span class="console-badge">Task 03</span>
+    </div>
+    <p class="console-card-copy">
+      This page stays read-only and reuses the same article-status helper behind the operator API, so the browser reflects stored source-item and enrichment state without adding a parallel data path.
+    </p>
+    <p class="console-card-copy">
+      Showing up to {{ article_limit }} recent source items in stored discovery order for the current operator context.
+    </p>
+  </section>
+
+  <section class="console-metric-grid">
+    {% for metric in article_metrics %}
+      <article class="console-card console-metric-card">
+        <p class="console-metric-label">{{ metric.label }}</p>
+        <p class="console-metric-value">{{ metric.value }}</p>
+        <p class="console-card-copy">{{ metric.detail }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Article rows</p>
+        <h2>Recent stored source items</h2>
+      </div>
+    </div>
+    {% if article_rows %}
+      <div class="console-table-wrap">
+        <table class="console-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Article</th>
+              <th>Timing</th>
+              <th>Enrichment</th>
+              <th>Failure</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in article_rows %}
+              <tr>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.source_name }}</strong>
+                    <span>{{ row.source_item_label }}</span>
+                    <span>{{ row.article_enrichment_label }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.title }}</strong>
+                    <a class="console-link" href="{{ row.original_url }}">{{ row.original_url }}</a>
+                    {% if row.article_url %}
+                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
+                    {% else %}
+                      <span>Resolved article not recorded yet.</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <span>Published {{ row.published_at }}</span>
+                    <span>Discovered {{ row.discovered_at }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.enrichment_state }}</strong>
+                    <span>{{ row.stage_summary }}</span>
+                  </div>
+                </td>
+                <td>{{ row.last_failure_message }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="console-empty">No stored article rows are available for this operator context yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}

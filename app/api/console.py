@@ -17,6 +17,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _CONTEXT_QUERY_KEYS = ("config_dir", "database_url")
 _DEFAULT_DASHBOARD_RUN_LIMIT = 6
 _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
+_DEFAULT_ARTICLE_LIMIT = 25
 
 console_router = APIRouter(include_in_schema=False)
 
@@ -138,6 +139,80 @@ def get_console_dashboard(
     )
 
 
+@console_router.get("/console/articles", response_class=HTMLResponse, name="console_articles")
+def get_console_articles(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+    limit: int = Query(default=_DEFAULT_ARTICLE_LIMIT, ge=1, le=100),
+) -> HTMLResponse:
+    """Render recent article status rows in a browser-friendly table."""
+
+    result = request.app.state.console_article_statuses_lister(
+        database_url=database_url,
+        limit=limit,
+    )
+    context = _build_console_context(
+        request,
+        page_title="Article Status",
+        page_description="Recent stored source items and enrichment state pulled from the same helper that powers the operator article API.",
+        active_nav_key="articles",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "article_limit": limit,
+            "article_metrics": _build_article_metrics(result.articles),
+            "article_rows": [_build_article_row(row) for row in result.articles],
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/articles.html",
+        context=context,
+    )
+
+
+@console_router.get(
+    "/console/reviews/pending",
+    response_class=HTMLResponse,
+    name="console_pending_review",
+)
+def get_console_pending_review(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Render the current manual-review queue in the console."""
+
+    result = request.app.state.console_pending_review_drafts_lister(
+        database_url=database_url,
+    )
+    context = _build_console_context(
+        request,
+        page_title="Pending Review",
+        page_description="Current manual-review workload from the shared review-queue helper, without changing approval or publish safety semantics.",
+        active_nav_key="pending_review",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "pending_review_metrics": _build_pending_review_metrics(result.drafts),
+            "pending_review_rows": [
+                _build_pending_review_row(position, row)
+                for position, row in enumerate(result.drafts, start=1)
+            ],
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/pending_review.html",
+        context=context,
+    )
+
+
 def _build_console_context(
     request: Request,
     *,
@@ -187,13 +262,17 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="Articles",
-            description="Upcoming article status table that reuses existing history query helpers.",
-            status="Task 03",
+            description="Read-only article status table backed by the shared operator article-status helper.",
+            status="Ready",
+            href=_append_query_params(str(request.url_for("console_articles")), query_params),
+            active=active_nav_key == "articles",
         ),
         ConsoleNavItem(
             label="Pending Review",
-            description="Upcoming queue page for the current manual review workload.",
-            status="Task 03",
+            description="Current review queue visibility before the browser draft-detail workspace lands.",
+            status="Ready",
+            href=_append_query_params(str(request.url_for("console_pending_review")), query_params),
+            active=active_nav_key == "pending_review",
         ),
         ConsoleNavItem(
             label="Publish Jobs",
@@ -314,6 +393,114 @@ def _build_dashboard_policy_skip_row(row) -> dict[str, str]:
     }
 
 
+def _build_article_metrics(rows) -> list[dict[str, str]]:
+    pending_or_active = sum(
+        1
+        for row in rows
+        if row.enrichment_state in {"pending", "in_progress"}
+    )
+    enriched = sum(1 for row in rows if row.enrichment_state == "enriched")
+    needs_attention = sum(
+        1
+        for row in rows
+        if row.enrichment_state in {"failed", "skipped"}
+    )
+    latest_discovered = (
+        _format_datetime(rows[0].discovered_at, none_label="Not recorded")
+        if rows
+        else "Waiting for stored discovery rows"
+    )
+    return [
+        {
+            "label": "Visible rows",
+            "value": str(len(rows)),
+            "detail": "Recent stored source items in table order for this operator context.",
+        },
+        {
+            "label": "Pending or active",
+            "value": str(pending_or_active),
+            "detail": f"Latest discovery timestamp {latest_discovered}",
+        },
+        {
+            "label": "Enriched",
+            "value": str(enriched),
+            "detail": "Rows that completed summary regeneration successfully.",
+        },
+        {
+            "label": "Needs attention",
+            "value": str(needs_attention),
+            "detail": "Failed or policy-skipped rows remain visible without changing workflow state.",
+        },
+    ]
+
+
+def _build_article_row(row) -> dict[str, str | None]:
+    return {
+        "source_name": row.source_name,
+        "source_item_label": f"Source item {row.source_item_id}",
+        "article_enrichment_label": (
+            f"Enrichment {row.article_enrichment_id}"
+            if row.article_enrichment_id is not None
+            else "Enrichment not created yet"
+        ),
+        "title": row.title,
+        "original_url": row.original_url,
+        "article_url": row.article_url,
+        "published_at": _format_datetime(row.published_at, none_label="Not recorded"),
+        "discovered_at": _format_datetime(row.discovered_at, none_label="Not recorded"),
+        "enrichment_state": _humanize_label(row.enrichment_state),
+        "stage_summary": (
+            f"Fetch {_humanize_label(row.fetch_status)} / "
+            f"Extract {_humanize_label(row.extract_status)} / "
+            f"Summarize {_humanize_label(row.summarize_status)}"
+        ),
+        "last_failure_message": row.last_failure_message or "No readable failure recorded.",
+    }
+
+
+def _build_pending_review_metrics(rows) -> list[dict[str, str]]:
+    account_keys = sorted({row.account_key for row in rows})
+    channels = sorted({row.channel.upper() for row in rows if row.channel})
+    oldest_created = (
+        min((row.created_at for row in rows), default=None)
+    )
+    return [
+        {
+            "label": "Pending drafts",
+            "value": str(len(rows)),
+            "detail": "Current manual-review items still waiting for an operator decision.",
+        },
+        {
+            "label": "Account routes",
+            "value": str(len(account_keys)),
+            "detail": _format_list(account_keys, fallback="No accounts waiting"),
+        },
+        {
+            "label": "Channels",
+            "value": _format_list(channels, fallback="None"),
+            "detail": "Channel mix currently visible in the review queue.",
+        },
+        {
+            "label": "Oldest queued",
+            "value": _format_datetime(oldest_created, none_label="Nothing queued"),
+            "detail": "Useful when the browser queue is triaging stale work first.",
+        },
+    ]
+
+
+def _build_pending_review_row(position: int, row) -> dict[str, str]:
+    return {
+        "queue_position": str(position),
+        "draft_label": f"Draft {row.draft_id}",
+        "variant_label": f"Variant {row.variant_index}",
+        "account_key": row.account_key,
+        "channel": row.channel.upper(),
+        "created_at": _format_datetime(row.created_at, none_label="Not recorded"),
+        "title": row.title,
+        "body_preview": _truncate_text(row.body, limit=180),
+    }
+
+
 def _extract_console_query_params(request: Request) -> dict[str, str]:
     return {
         key: value
@@ -337,9 +524,9 @@ def _append_query_params(url: str, query_params: dict[str, str]) -> str:
     )
 
 
-def _format_datetime(value: datetime | None) -> str:
+def _format_datetime(value: datetime | None, *, none_label: str = "Still running") -> str:
     if value is None:
-        return "Still running"
+        return none_label
     return value.isoformat()
 
 
@@ -363,3 +550,10 @@ def _format_list(values, *, fallback: str) -> str:
     if not items:
         return fallback
     return ", ".join(items)
+
+
+def _truncate_text(value: str, *, limit: int) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."
