@@ -24,23 +24,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M1_read_only_console_foundation`
-- Current task: `01_console_shell_and_template_infrastructure`
-- Active status: `done`
-- Last updated: `2026-04-08 18:32 KST`
+- Current task: `02_run_overview_and_failure_dashboard_pages`
+- Active status: `in_progress`
+- Last updated: `2026-04-09 12:33 KST`
 - Base branch: `master`
-- Active branch: `codex/task-01-console-shell`
-- Latest task commit: `2e373ce`
-- Resume decision: `pick_next_task`
+- Active branch: `codex/task-02-console-dashboard`
+- Latest task commit: `not_created`
+- Resume decision: `started_task_02`
 - Stop reason: `none`
 
 ## Scope For Current Task
-- Goal: `Add a minimal FastAPI-served console shell with templates, navigation, and static assets so later browser pages have one stable entrypoint`
-- In scope: `Dedicated console route namespace, base template/layout, minimal static assets, and focused route coverage for the shell`
-- Out of scope: `Review mutations, publish-job pages, scheduler controls, auth, and any separate frontend build stack`
-- Dependencies: `Existing FastAPI app wiring in app/api/app.py and the current operator API/query surfaces`
+- Goal: `Expose recent pipeline runs, failures, and policy skips in a browser-friendly dashboard page built on the console shell`
+- In scope: `One read-only dashboard page, thin reuse of history query helpers, focused browser coverage for empty and populated states`
+- Out of scope: `Article tables, review queue pages, mutations, publish-job pages, scheduler controls, auth, and any separate frontend build stack`
+- Dependencies: `Task 01 console shell plus existing run/failure helpers in app/workflows/history_queries.py`
 - Verification commands:
-  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell"`
-  - `PYTHONPATH=$PWD pytest tests/test_api.py -k "health"`
+  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "dashboard"`
+  - `PYTHONPATH=$PWD pytest tests/test_history_queries.py tests/test_api.py -k "runs or failures"`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -51,7 +51,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Console shell and template infrastructure | done | 2026-04-08 18:32 KST | Added a FastAPI-served console shell with shared templates, mounted static assets, and passing focused browser coverage on `codex/task-01-console-shell` |
-| M1 | 02 | Run overview and failure dashboard pages | pending | 2026-04-08 17:40 KST | Build the first operator dashboard on top of existing run and failure queries |
+| M1 | 02 | Run overview and failure dashboard pages | in_progress | 2026-04-09 12:22 KST | Started implementation on `codex/task-02-console-dashboard`; wiring one read-only dashboard page to shared run and failure query helpers |
 | M1 | 03 | Article status and pending-review queue pages | pending | 2026-04-08 17:40 KST | Expose current article and queue data in table-friendly browser pages |
 | M2 | 04 | Review draft detail page | pending | 2026-04-08 17:40 KST | Reuse the current operator-ready review detail contract in one browser page |
 | M2 | 05 | Review action forms and safe mutation feedback | pending | 2026-04-08 17:40 KST | Keep browser mutations routed through existing review validation |
@@ -69,9 +69,9 @@ Status values:
 - `docs/operator-console-readiness-progress-tracker.md`
 - `app/api/app.py`
 - `app/api/console.py`
-- `app/api/templates/base.html`
-- `app/api/templates/console/index.html`
 - `app/api/static/console.css`
+- `app/api/templates/console/index.html`
+- `app/api/templates/console/dashboard.html`
 - `tests/test_console.py`
 
 ## Progress Log
@@ -82,6 +82,8 @@ Status values:
 - `2026-04-08 18:34 KST` Added a dedicated `app.api.console` module with a `/console` redirect, `/console/` landing page, shared Jinja template shell, mounted static assets, and focused console-shell tests so later page tasks can extend one browser entrypoint
 - `2026-04-08 18:31 KST` Verified the new console shell against focused browser coverage plus a small API regression slice to confirm the shared FastAPI app wiring still serves health, runs, failures, and article endpoints unchanged
 - `2026-04-08 18:32 KST` Committed Task `01` as `2e373ce` (`Add operator console shell`) after the focused console coverage and shared API regression slice passed
+- `2026-04-09 12:22 KST` Started Task `02` on `codex/task-02-console-dashboard`; keeping scope to one dashboard page that reuses existing history-query helpers for recent runs, failures, and policy skips without changing API semantics
+- `2026-04-09 12:28 KST` Added a dedicated `/console/dashboard` page, wired the console shell to shared run/failure listers through FastAPI app state, and shaped one read-only dashboard template with recent-run, failure, and policy-skip sections plus focused browser tests for empty and populated states
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -89,6 +91,12 @@ Status values:
 - `2026-04-08 18:30 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "health"` -> `passed`
 - `2026-04-08 18:31 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "runs or failures or articles"` -> `passed`
 - `2026-04-08 18:31 KST` `git diff --check` -> `passed`
+- `2026-04-09 12:29 KST` `PYTHONPATH=$PWD python -m compileall app/api tests/test_console.py` -> `passed`
+- `2026-04-09 12:30 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "dashboard"` -> `failed` (`policy_mode_counts` are rendered in deterministic sorted order on the dashboard, so the populated-state assertion expected the wrong label order; updated the assertion and reran)
+- `2026-04-09 12:31 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "dashboard"` -> `passed`
+- `2026-04-09 12:32 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell or dashboard"` -> `passed`
+- `2026-04-09 12:33 KST` `PYTHONPATH=$PWD pytest tests/test_history_queries.py tests/test_api.py -k "runs or failures"` -> `passed`
+- `2026-04-09 12:33 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Should the first console stay fully server-rendered for all interactions, or should later tasks allow small progressive-enhancement fetch calls while still avoiding a separate SPA?`

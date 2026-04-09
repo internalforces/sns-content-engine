@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -14,6 +15,8 @@ from fastapi.templating import Jinja2Templates
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _CONTEXT_QUERY_KEYS = ("config_dir", "database_url")
+_DEFAULT_DASHBOARD_RUN_LIMIT = 6
+_DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 
 console_router = APIRouter(include_in_schema=False)
 
@@ -58,31 +61,32 @@ def get_console_home(
 ) -> HTMLResponse:
     """Render the initial operator console shell."""
 
-    query_params = _extract_console_query_params(request)
-    context = {
-        "page_title": "Operator Console",
-        "page_description": "Server-rendered browser shell for run visibility, review work, and safe operator actions.",
-        "console_asset_css_url": str(request.url_for("console_static", path="/console.css")),
-        "console_nav_items": _build_console_nav_items(request, query_params),
-        "operator_context": {
-            "config_dir": config_dir,
-            "database_url": database_url,
-        },
-        "console_sections": [
-            {
-                "title": "Read-only rollout",
-                "copy": "This first shell keeps the browser surface additive while Tasks 02 and 03 wire run, failure, article, and review queue data into the same layout.",
-            },
-            {
-                "title": "Safety model",
-                "copy": "Manual review stays required and publish-due remains dry-run first. The shell is only exposing operator visibility, not bypassing existing workflow gates.",
-            },
-            {
-                "title": "Implementation shape",
-                "copy": "FastAPI serves Jinja templates and lightweight static assets directly, so later console work can reuse the existing backend without a separate frontend build chain.",
-            },
-        ],
-    }
+    context = _build_console_context(
+        request,
+        page_title="Operator Console",
+        page_description="Server-rendered browser shell for run visibility, review work, and safe operator actions.",
+        active_nav_key="home",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "console_sections": [
+                {
+                    "title": "Read-only rollout",
+                    "copy": "This first shell keeps the browser surface additive while Tasks 02 and 03 wire run, failure, article, and review queue data into the same layout.",
+                },
+                {
+                    "title": "Safety model",
+                    "copy": "Manual review stays required and publish-due remains dry-run first. The shell is only exposing operator visibility, not bypassing existing workflow gates.",
+                },
+                {
+                    "title": "Implementation shape",
+                    "copy": "FastAPI serves Jinja templates and lightweight static assets directly, so later console work can reuse the existing backend without a separate frontend build chain.",
+                },
+            ],
+        }
+    )
     return _TEMPLATES.TemplateResponse(
         request=request,
         name="console/index.html",
@@ -90,19 +94,96 @@ def get_console_home(
     )
 
 
-def _build_console_nav_items(request: Request, query_params: dict[str, str]) -> list[ConsoleNavItem]:
+@console_router.get("/console/dashboard", response_class=HTMLResponse, name="console_dashboard")
+def get_console_dashboard(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Render a read-only dashboard of recent runs, failures, and policy skips."""
+
+    runs_result = request.app.state.console_pipeline_runs_lister(
+        database_url=database_url,
+        limit=_DEFAULT_DASHBOARD_RUN_LIMIT,
+    )
+    failures_result = request.app.state.console_pipeline_failures_lister(
+        database_url=database_url,
+        limit=_DEFAULT_DASHBOARD_FAILURE_LIMIT,
+    )
+    latest_run = runs_result.runs[0] if runs_result.runs else None
+
+    context = _build_console_context(
+        request,
+        page_title="Run Dashboard",
+        page_description="Recent pipeline activity, visible technical failures, and intentional policy skips from the shared operator history helpers.",
+        active_nav_key="dashboard",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "dashboard_metrics": _build_dashboard_metrics(runs_result, failures_result),
+            "dashboard_latest_run": _build_dashboard_latest_run(latest_run),
+            "dashboard_runs": [_build_dashboard_run_row(row) for row in runs_result.runs],
+            "dashboard_failures": [_build_dashboard_failure_row(row) for row in failures_result.failures],
+            "dashboard_policy_skips": [
+                _build_dashboard_policy_skip_row(row) for row in failures_result.policy_skips
+            ],
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/dashboard.html",
+        context=context,
+    )
+
+
+def _build_console_context(
+    request: Request,
+    *,
+    page_title: str,
+    page_description: str,
+    active_nav_key: str,
+    config_dir: str,
+    database_url: str | None,
+) -> dict[str, object]:
+    query_params = _extract_console_query_params(request)
+    return {
+        "page_title": page_title,
+        "page_description": page_description,
+        "console_asset_css_url": str(request.url_for("console_static", path="/console.css")),
+        "console_nav_items": _build_console_nav_items(
+            request,
+            query_params,
+            active_nav_key=active_nav_key,
+        ),
+        "operator_context": {
+            "config_dir": config_dir,
+            "database_url": database_url,
+        },
+    }
+
+
+def _build_console_nav_items(
+    request: Request,
+    query_params: dict[str, str],
+    *,
+    active_nav_key: str,
+) -> list[ConsoleNavItem]:
     return [
         ConsoleNavItem(
             label="Console Home",
             description="Shared shell, operator context, and roadmap framing for the browser surface.",
             status="Ready",
             href=_append_query_params(str(request.url_for("console_home")), query_params),
-            active=True,
+            active=active_nav_key == "home",
         ),
         ConsoleNavItem(
             label="Runs & Failures",
-            description="Next shell extension for recent pipeline activity and readable failure rows.",
-            status="Task 02",
+            description="Read-only dashboard for recent pipeline runs, technical failures, and intentional policy skips.",
+            status="Ready",
+            href=_append_query_params(str(request.url_for("console_dashboard")), query_params),
+            active=active_nav_key == "dashboard",
         ),
         ConsoleNavItem(
             label="Articles",
@@ -127,6 +208,112 @@ def _build_console_nav_items(request: Request, query_params: dict[str, str]) -> 
     ]
 
 
+def _build_dashboard_metrics(runs_result, failures_result) -> list[dict[str, str]]:
+    latest_run = runs_result.runs[0] if runs_result.runs else None
+    latest_status = _humanize_label(latest_run.status) if latest_run else "No runs yet"
+    latest_detail = (
+        f"{latest_run.workflow_name} / {_format_datetime(latest_run.started_at)}"
+        if latest_run
+        else "The dashboard will populate after the next stored pipeline run."
+    )
+    return [
+        {
+            "label": "Latest run",
+            "value": latest_status,
+            "detail": latest_detail,
+        },
+        {
+            "label": "Recent runs",
+            "value": str(len(runs_result.runs)),
+            "detail": "Visible from the shared pipeline run history helper.",
+        },
+        {
+            "label": "Technical failures",
+            "value": str(len(failures_result.failures)),
+            "detail": "Unreadable or blocked content fetch/extract failures.",
+        },
+        {
+            "label": "Policy skips",
+            "value": str(len(failures_result.policy_skips)),
+            "detail": "Intentional policy constraints recorded separately from failures.",
+        },
+    ]
+
+
+def _build_dashboard_latest_run(run) -> dict[str, object] | None:
+    if run is None:
+        return None
+    return {
+        "workflow_name": run.workflow_name,
+        "status": _humanize_label(run.status),
+        "trigger_mode": _humanize_label(run.trigger_mode),
+        "started_at": _format_datetime(run.started_at),
+        "completed_at": _format_datetime(run.completed_at),
+        "counts": [
+            {"label": "Discovered", "value": str(run.discovered_count)},
+            {"label": "Saved", "value": str(run.saved_count)},
+            {"label": "Enriched", "value": str(run.enriched_count)},
+            {"label": "Briefs", "value": str(run.brief_count)},
+            {"label": "Drafts", "value": str(run.draft_count)},
+            {"label": "Failures", "value": str(run.failure_count)},
+        ],
+        "policy_summary": _format_policy_mode_counts(run.policy_mode_counts),
+        "policy_guardrails": (
+            f"Policy skips {run.policy_skipped_count} / Attribution required {run.attribution_required_count}"
+        ),
+        "rewrite_providers": _format_list(run.rewrite_providers, fallback="Not recorded"),
+        "latest_error_code": run.latest_error_code or "None",
+    }
+
+
+def _build_dashboard_run_row(row) -> dict[str, str]:
+    return {
+        "workflow_name": row.workflow_name,
+        "status": _humanize_label(row.status),
+        "trigger_mode": _humanize_label(row.trigger_mode),
+        "started_at": _format_datetime(row.started_at),
+        "completed_at": _format_datetime(row.completed_at),
+        "counts_summary": (
+            f"Discovered {row.discovered_count} / Saved {row.saved_count} / "
+            f"Enriched {row.enriched_count} / Briefs {row.brief_count} / "
+            f"Drafts {row.draft_count} / Failures {row.failure_count}"
+        ),
+        "policy_summary": _format_policy_mode_counts(row.policy_mode_counts),
+        "policy_guardrails": (
+            f"Policy skips {row.policy_skipped_count} / Attribution required {row.attribution_required_count}"
+        ),
+        "rewrite_providers": _format_list(row.rewrite_providers, fallback="Not recorded"),
+        "latest_error_code": row.latest_error_code or "None",
+    }
+
+
+def _build_dashboard_failure_row(row) -> dict[str, str]:
+    return {
+        "title": row.title,
+        "source_name": row.source_name or "Unknown source",
+        "article_url": row.article_url,
+        "failure_code": row.failure_code,
+        "failure_stage": _humanize_label(row.failure_stage),
+        "failure_message": row.failure_message,
+        "policy_mode": _humanize_label(row.source_policy_mode),
+        "require_attribution": "Required" if row.require_attribution else "Not required",
+        "updated_at": _format_datetime(row.updated_at),
+    }
+
+
+def _build_dashboard_policy_skip_row(row) -> dict[str, str]:
+    return {
+        "title": row.title,
+        "source_name": row.source_name or "Unknown source",
+        "article_url": row.article_url,
+        "skipped_stage": _humanize_label(row.skipped_stage),
+        "policy_decision_reason": row.policy_decision_reason,
+        "policy_mode": _humanize_label(row.source_policy_mode),
+        "require_attribution": "Required" if row.require_attribution else "Not required",
+        "updated_at": _format_datetime(row.updated_at),
+    }
+
+
 def _extract_console_query_params(request: Request) -> dict[str, str]:
     return {
         key: value
@@ -148,3 +335,31 @@ def _append_query_params(url: str, query_params: dict[str, str]) -> str:
             parts.fragment,
         )
     )
+
+
+def _format_datetime(value: datetime | None) -> str:
+    if value is None:
+        return "Still running"
+    return value.isoformat()
+
+
+def _humanize_label(value: str | None) -> str:
+    if not value:
+        return "Not recorded"
+    return value.replace("_", " ").title()
+
+
+def _format_policy_mode_counts(policy_mode_counts: dict[str, int]) -> str:
+    if not policy_mode_counts:
+        return "No policy-mode summary"
+    return " / ".join(
+        f"{_humanize_label(mode)} {count}"
+        for mode, count in sorted(policy_mode_counts.items())
+    )
+
+
+def _format_list(values, *, fallback: str) -> str:
+    items = [str(value) for value in values if value]
+    if not items:
+        return fallback
+    return ", ".join(items)
