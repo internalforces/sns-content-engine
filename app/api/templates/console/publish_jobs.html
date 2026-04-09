@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Publish visibility</p>
+        <h2>Queued and completed publish jobs</h2>
+      </div>
+      <span class="console-badge">Task 06</span>
+    </div>
+    <p class="console-card-copy">
+      Showing up to {{ publish_job_filters.limit }} publish jobs for state {{ publish_job_filters.state }}, account {{ publish_job_filters.account_key }}, and channel {{ publish_job_filters.channel }}.
+    </p>
+  </section>
+
+  <section class="console-metric-grid">
+    {% for metric in publish_job_metrics %}
+      <article class="console-card console-metric-card">
+        <p class="console-metric-label">{{ metric.label }}</p>
+        <p class="console-metric-value">{{ metric.value }}</p>
+        <p class="console-card-copy">{{ metric.detail }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Publish queue</p>
+        <h2>Stored operator publish history</h2>
+      </div>
+    </div>
+    {% if publish_job_rows %}
+      <div class="console-table-wrap">
+        <table class="console-table">
+          <thead>
+            <tr>
+              <th>Publish job</th>
+              <th>Draft</th>
+              <th>Delivery state</th>
+              <th>Timing</th>
+              <th>Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in publish_job_rows %}
+              <tr>
+                <td>
+                  <div class="console-stack">
+                    <a class="console-link" href="{{ row.detail_href }}">{{ row.publish_job_label }}</a>
+                    <span>{{ row.account_key }} / {{ row.channel }}</span>
+                    <span>{{ row.brief_label }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <a class="console-link" href="{{ row.review_detail_href }}">{{ row.draft_label }}</a>
+                    <span>{{ row.variant_label }} / {{ row.draft_state }}</span>
+                    <strong>{{ row.brief_title }}</strong>
+                    <span>{{ row.source_title }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.state }}</strong>
+                    <span>Attempts {{ row.attempt_count }}</span>
+                    <span>{{ row.last_error }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <span>Scheduled {{ row.scheduled_for }}</span>
+                    <span>Published {{ row.published_at }}</span>
+                    <span>Created {{ row.created_at }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <span>External post {{ row.external_post_id }}</span>
+                    <span>Updated {{ row.updated_at }}</span>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="console-empty">No publish jobs are stored for this operator context yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}

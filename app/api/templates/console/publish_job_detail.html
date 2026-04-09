@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Publish job detail</p>
+        {% if publish_job_detail_missing %}
+          <h2>Publish job could not be loaded</h2>
+        {% else %}
+          <h2>{{ publish_job_detail.job_label }}</h2>
+        {% endif %}
+      </div>
+      <span class="console-badge">{% if publish_job_detail_missing %}404{% else %}Task 06{% endif %}</span>
+    </div>
+    <p class="console-card-copy">
+      <a class="console-link" href="{{ publish_jobs_href }}">Back to publish jobs</a>
+    </p>
+    {% if publish_job_detail_missing %}
+      <p class="console-empty">{{ publish_job_detail_missing.message }}</p>
+      <p class="console-card-copy">
+        The publish job may not exist in this database, or it may belong to a different operator context than the current query parameters.
+      </p>
+    {% else %}
+      <div class="console-panel-grid">
+        <article class="console-panel">
+          <p class="console-card-label">Delivery status</p>
+          <h3>{{ publish_job_detail.job_label }}</h3>
+          <dl class="console-definition-list">
+            <div>
+              <dt>Account key</dt>
+              <dd>{{ publish_job_detail.account_key }}</dd>
+            </div>
+            <div>
+              <dt>Channel</dt>
+              <dd>{{ publish_job_detail.channel }}</dd>
+            </div>
+            <div>
+              <dt>State</dt>
+              <dd>{{ publish_job_detail.state }}</dd>
+            </div>
+            <div>
+              <dt>Scheduled</dt>
+              <dd>{{ publish_job_detail.scheduled_for }}</dd>
+            </div>
+            <div>
+              <dt>Published</dt>
+              <dd>{{ publish_job_detail.published_at }}</dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>{{ publish_job_detail.created_at }}</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>{{ publish_job_detail.updated_at }}</dd>
+            </div>
+            <div>
+              <dt>Attempt count</dt>
+              <dd>{{ publish_job_detail.attempt_count }}</dd>
+            </div>
+            <div>
+              <dt>External post ID</dt>
+              <dd>{{ publish_job_detail.external_post_id }}</dd>
+            </div>
+            <div>
+              <dt>Last error</dt>
+              <dd>{{ publish_job_detail.last_error }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="console-panel">
+          <p class="console-card-label">Linked draft</p>
+          <h3>{{ publish_job_detail.draft.draft_label }} · {{ publish_job_detail.draft.variant_label }}</h3>
+          <p class="console-card-copy">
+            <a class="console-link" href="{{ publish_job_detail.review_detail_href }}">Open review workspace</a>
+          </p>
+          <dl class="console-definition-list">
+            <div>
+              <dt>State</dt>
+              <dd>{{ publish_job_detail.draft.draft_state }}</dd>
+            </div>
+            <div>
+              <dt>Created</dt>
+              <dd>{{ publish_job_detail.draft.created_at }}</dd>
+            </div>
+            <div>
+              <dt>Reviewed</dt>
+              <dd>{{ publish_job_detail.draft.reviewed_at }}</dd>
+            </div>
+            <div>
+              <dt>Rejection reason</dt>
+              <dd>{{ publish_job_detail.draft.rejection_reason }}</dd>
+            </div>
+            <div>
+              <dt>Body</dt>
+              <dd>{{ publish_job_detail.draft.body }}</dd>
+            </div>
+          </dl>
+        </article>
+      </div>
+    {% endif %}
+  </section>
+
+  {% if publish_job_detail %}
+    <section class="console-grid">
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Provenance</p>
+            <h2>Stored source context</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Source name</dt>
+            <dd>{{ publish_job_detail.provenance.source_name }}</dd>
+          </div>
+          <div>
+            <dt>Source URL</dt>
+            <dd>
+              {% if publish_job_detail.provenance.source_url %}
+                <a class="console-link" href="{{ publish_job_detail.provenance.source_url }}">{{ publish_job_detail.provenance.source_url }}</a>
+              {% else %}
+                Not recorded
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Article URL</dt>
+            <dd>
+              {% if publish_job_detail.provenance.article_url %}
+                <a class="console-link" href="{{ publish_job_detail.provenance.article_url }}">{{ publish_job_detail.provenance.article_url }}</a>
+              {% else %}
+                Not recorded
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{{ publish_job_detail.provenance.source_published_at }}</dd>
+          </div>
+          <div>
+            <dt>Policy mode</dt>
+            <dd>{{ publish_job_detail.provenance.source_policy_mode }}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Brief</p>
+            <h2>{{ publish_job_detail.brief.title }}</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Brief ID</dt>
+            <dd>{{ publish_job_detail.brief.brief_id }}</dd>
+          </div>
+          <div>
+            <dt>Summary</dt>
+            <dd>{{ publish_job_detail.brief.summary }}</dd>
+          </div>
+          <div>
+            <dt>Landing URL</dt>
+            <dd><a class="console-link" href="{{ publish_job_detail.brief.landing_url }}">{{ publish_job_detail.brief.landing_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Angle</dt>
+            <dd>{{ publish_job_detail.brief.angle }}</dd>
+          </div>
+          <div>
+            <dt>Language</dt>
+            <dd>{{ publish_job_detail.brief.language }}</dd>
+          </div>
+          <div>
+            <dt>Tags</dt>
+            <dd>{{ publish_job_detail.brief.tags | join(", ") if publish_job_detail.brief.tags else "No tags recorded." }}</dd>
+          </div>
+        </dl>
+        {% if publish_job_detail.brief.key_points %}
+          <ul class="console-checklist">
+            {% for point in publish_job_detail.brief.key_points %}
+              <li>{{ point }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="console-grid">
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Source item</p>
+            <h2>{{ publish_job_detail.source_item.title }}</h2>
+          </div>
+        </div>
+        <dl class="console-definition-list">
+          <div>
+            <dt>Source item ID</dt>
+            <dd>{{ publish_job_detail.source_item.source_item_id }}</dd>
+          </div>
+          <div>
+            <dt>Source key</dt>
+            <dd>{{ publish_job_detail.source_item.source_key }}</dd>
+          </div>
+          <div>
+            <dt>External ID</dt>
+            <dd>{{ publish_job_detail.source_item.external_id }}</dd>
+          </div>
+          <div>
+            <dt>Summary</dt>
+            <dd>{{ publish_job_detail.source_item.summary }}</dd>
+          </div>
+          <div>
+            <dt>Source URL</dt>
+            <dd><a class="console-link" href="{{ publish_job_detail.source_item.source_url }}">{{ publish_job_detail.source_item.source_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Canonical URL</dt>
+            <dd><a class="console-link" href="{{ publish_job_detail.source_item.canonical_url }}">{{ publish_job_detail.source_item.canonical_url }}</a></dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{{ publish_job_detail.source_item.published_at }}</dd>
+          </div>
+          <div>
+            <dt>Policy</dt>
+            <dd>{{ publish_job_detail.source_item.policy_mode }} / Attribution {{ publish_job_detail.source_item.require_attribution }}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="console-card">
+        <div class="console-card-header">
+          <div>
+            <p class="console-card-label">Publish logs</p>
+            <h2>Recorded delivery timeline</h2>
+          </div>
+        </div>
+        {% if publish_job_detail.publish_logs %}
+          <div class="console-table-wrap">
+            <table class="console-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Message</th>
+                  <th>Payload</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for log in publish_job_detail.publish_logs %}
+                  <tr>
+                    <td>
+                      <div class="console-stack">
+                        <strong>{{ log.event_type }}</strong>
+                        <span>{{ log.log_label }}</span>
+                      </div>
+                    </td>
+                    <td>{{ log.message }}</td>
+                    <td>{{ log.payload }}</td>
+                    <td>{{ log.created_at }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="console-empty">No publish log events have been recorded for this job yet.</p>
+        {% endif %}
+      </article>
+    </section>
+  {% endif %}
+{% endblock %}

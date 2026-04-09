@@ -22,6 +22,9 @@ from app.storage import (
     PipelineRunRepository,
     PipelineRunStatus,
     PipelineStage,
+    PublishJob,
+    PublishJobState,
+    PublishLogRepository,
     PublishJobRepository,
     SourceItem,
     SourceItemRepository,
@@ -633,6 +636,173 @@ def test_review_actions_schedule_conflict_preserves_submitted_slot(tmp_path: Pat
     assert 'value="2026-03-18T10:00:00+09:00"' in response.text
 
 
+def test_publish_jobs_page_renders_empty_state(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/console/publish-jobs",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "Publish Jobs" in response.text
+    assert "Queued and completed publish jobs" in response.text
+    assert "No publish jobs are stored for this operator context yet." in response.text
+
+
+def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        scheduled_job = _create_publish_job(
+            session,
+            variant_index=0,
+            brief_title="Queued AI brief",
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 12, 0, tzinfo=timezone.utc),
+        )
+        failed_job = _create_publish_job(
+            session,
+            variant_index=1,
+            brief_title="Failed AI brief",
+            created_at=datetime(2026, 3, 18, 9, 5, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 12, 30, tzinfo=timezone.utc),
+            state=PublishJobState.FAILED,
+            last_error="missing access token",
+        )
+        published_job = _create_publish_job(
+            session,
+            account_key="finance_news_daily",
+            channel="linkedin",
+            variant_index=0,
+            brief_title="Published finance brief",
+            created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 13, 0, tzinfo=timezone.utc),
+            state=PublishJobState.PUBLISHED,
+            external_post_id="li:123",
+        )
+        scheduled_job_id = scheduled_job.id
+        scheduled_draft_id = scheduled_job.draft_variant_id
+        failed_job_id = failed_job.id
+        published_job_id = published_job.id
+
+    client = TestClient(create_app())
+    response = client.get(
+        "/console/publish-jobs",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "Visible jobs" in response.text
+    assert "Active queue" in response.text
+    assert "Needs attention" in response.text
+    assert "Queued AI brief" in response.text
+    assert "Failed AI brief" in response.text
+    assert "Published finance brief" in response.text
+    assert "missing access token" in response.text
+    assert "li:123" in response.text
+    assert f"/console/publish-jobs/{scheduled_job_id}" in response.text
+    assert f"/console/publish-jobs/{failed_job_id}" in response.text
+    assert f"/console/publish-jobs/{published_job_id}" in response.text
+    assert f"/console/reviews/{scheduled_draft_id}" in response.text
+
+
+def test_publish_jobs_detail_page_renders_published_timeline(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 12, 0, tzinfo=timezone.utc),
+            state=PublishJobState.PUBLISHED,
+            external_post_id="tweet:detail-1",
+            include_provenance=True,
+            log_events=[
+                (
+                    "scheduled",
+                    "publish job queued for operator review",
+                    {"scheduled_for": "2026-03-18T12:00:00+00:00"},
+                ),
+                (
+                    "publishing",
+                    "publisher execution started",
+                    {"attempt_count": 1, "channel": "x"},
+                ),
+                (
+                    "published",
+                    "publish job completed successfully",
+                    {"external_post_id": "tweet:detail-1"},
+                ),
+            ],
+        )
+        job_id = job.id
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/publish-jobs/{job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert f"Publish Job {job_id}" in response.text
+    assert "Back to publish jobs" in response.text
+    assert "Open review workspace" in response.text
+    assert "publish job completed successfully" in response.text
+    assert "publisher execution started" in response.text
+    assert "tweet:detail-1" in response.text
+    assert "AI Tools Daily" in response.text
+    assert "Stored source context" in response.text
+
+
+def test_publish_jobs_detail_page_renders_failed_context(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        job = _create_publish_job(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 15, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 12, 30, tzinfo=timezone.utc),
+            state=PublishJobState.FAILED,
+            last_error="missing access token",
+            log_events=[
+                ("publishing", "publisher execution started", {"attempt_count": 1}),
+                (
+                    "failed",
+                    "publish job failed: missing access token",
+                    {"error_message": "missing access token", "status": "failed"},
+                ),
+            ],
+        )
+        job_id = job.id
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/publish-jobs/{job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert f"Publish Job {job_id}" in response.text
+    assert "Failed" in response.text
+    assert "missing access token" in response.text
+    assert "publish job failed: missing access token" in response.text
+
+
+def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/console/publish-jobs/999",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 404
+    assert "Publish job could not be loaded" in response.text
+    assert "publish job 999 was not found" in response.text
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'console.db'}")
     create_all_tables(engine)
@@ -797,6 +967,73 @@ def _create_review_detail_draft(
             rejection_reason="Rejected during test setup",
         )
     return draft
+
+
+def _create_publish_job(
+    session,
+    *,
+    account_key: str = "ai_tools_daily",
+    channel: str = "x",
+    brief_title: str = "Brief for publish job",
+    variant_index: int,
+    created_at: datetime,
+    scheduled_for: datetime,
+    state: PublishJobState = PublishJobState.SCHEDULED,
+    last_error: str | None = None,
+    external_post_id: str | None = None,
+    include_provenance: bool = False,
+    log_events: list[tuple[str, str, dict | None]] | None = None,
+) -> PublishJob:
+    draft = _create_review_detail_draft(
+        session,
+        account_key=account_key,
+        channel=channel,
+        brief_title=brief_title,
+        variant_index=variant_index,
+        draft_state=DraftVariantState.APPROVED,
+        created_at=created_at,
+        include_provenance=include_provenance,
+    )
+    jobs = PublishJobRepository(session)
+    logs = PublishLogRepository(session)
+    job = jobs.add(
+        PublishJob(
+            draft_variant=draft,
+            channel=channel,
+            idempotency_key=f"publish-job-{next(_DRAFT_SOURCE_COUNTER)}",
+            scheduled_for=scheduled_for,
+            created_at=created_at,
+        )
+    )
+    if state is PublishJobState.PUBLISHED:
+        jobs.transition_state(job, PublishJobState.PUBLISHING)
+        jobs.transition_state(
+            job,
+            PublishJobState.PUBLISHED,
+            external_post_id=external_post_id or "external-post",
+            occurred_at=scheduled_for,
+        )
+    elif state is PublishJobState.FAILED:
+        jobs.transition_state(job, PublishJobState.PUBLISHING)
+        jobs.transition_state(
+            job,
+            PublishJobState.FAILED,
+            last_error=last_error or "publish failed",
+            occurred_at=scheduled_for,
+        )
+    elif state is PublishJobState.PUBLISHING:
+        jobs.transition_state(job, PublishJobState.PUBLISHING)
+    elif state is PublishJobState.CANCELLED:
+        jobs.transition_state(job, PublishJobState.CANCELLED, occurred_at=scheduled_for)
+
+    for event_type, message, payload in log_events or []:
+        logs.record(
+            job,
+            event_type=event_type,
+            message=message,
+            payload=payload,
+        )
+    return job
 
 
 def _write_minimal_project_config(path: Path) -> None:
