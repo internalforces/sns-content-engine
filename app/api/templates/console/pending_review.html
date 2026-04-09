@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Manual review queue</p>
+        <h2>Pending operator decisions</h2>
+      </div>
+      <span class="console-badge">Task 03</span>
+    </div>
+    <p class="console-card-copy">
+      This page exposes the current queue directly from the shared review workflow helper while keeping the existing manual-review gate untouched.
+    </p>
+    <p class="console-card-copy">
+      Task 04 will add per-draft browser detail, but this page already makes the current queue and routing mix visible without shell access.
+    </p>
+  </section>
+
+  <section class="console-metric-grid">
+    {% for metric in pending_review_metrics %}
+      <article class="console-card console-metric-card">
+        <p class="console-metric-label">{{ metric.label }}</p>
+        <p class="console-metric-value">{{ metric.value }}</p>
+        <p class="console-card-copy">{{ metric.detail }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Queue order</p>
+        <h2>Drafts awaiting review</h2>
+      </div>
+    </div>
+    {% if pending_review_rows %}
+      <div class="console-table-wrap">
+        <table class="console-table">
+          <thead>
+            <tr>
+              <th>Queue</th>
+              <th>Draft</th>
+              <th>Routing</th>
+              <th>Title</th>
+              <th>Body preview</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in pending_review_rows %}
+              <tr>
+                <td>#{{ row.queue_position }}</td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.draft_label }}</strong>
+                    <span>{{ row.variant_label }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.account_key }}</strong>
+                    <span>{{ row.channel }}</span>
+                  </div>
+                </td>
+                <td>{{ row.title }}</td>
+                <td>{{ row.body_preview }}</td>
+                <td>{{ row.created_at }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="console-empty">No drafts are currently waiting for manual review.</p>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -24,23 +24,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M1_read_only_console_foundation`
-- Current task: `02_run_overview_and_failure_dashboard_pages`
+- Current task: `03_article_status_and_pending_review_queue_pages`
 - Active status: `done`
-- Last updated: `2026-04-09 12:34 KST`
-- Base branch: `master`
-- Active branch: `codex/task-02-console-dashboard`
-- Latest task commit: `06ed520`
+- Last updated: `2026-04-09 13:57 KST`
+- Base branch: `codex/task-02-console-dashboard`
+- Active branch: `codex/task-03-console-queues`
+- Latest task commit: `pending_commit_creation`
 - Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
-- Goal: `Expose recent pipeline runs, failures, and policy skips in a browser-friendly dashboard page built on the console shell`
-- In scope: `One read-only dashboard page, thin reuse of history query helpers, focused browser coverage for empty and populated states`
-- Out of scope: `Article tables, review queue pages, mutations, publish-job pages, scheduler controls, auth, and any separate frontend build stack`
-- Dependencies: `Task 01 console shell plus existing run/failure helpers in app/workflows/history_queries.py`
+- Goal: `Render article status rows and pending-review queue data in browser pages that stay aligned with the current operator data contract`
+- In scope: `Read-only article status and pending-review pages, thin reuse of history and review-queue helpers, focused browser coverage for empty and populated states`
+- Out of scope: `Review detail, review mutations, publish-job pages, scheduler controls, auth, and any separate frontend build stack`
+- Dependencies: `Task 01 console shell, Task 02 dashboard wiring, app/workflows/history_queries.py, and app/workflows/review_queue.py`
 - Verification commands:
-  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "dashboard"`
-  - `PYTHONPATH=$PWD pytest tests/test_history_queries.py tests/test_api.py -k "runs or failures"`
+  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "articles or pending_review"`
+  - `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_review_queue_workflow.py -k "articles or pending_review"`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -52,7 +52,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Console shell and template infrastructure | done | 2026-04-08 18:32 KST | Added a FastAPI-served console shell with shared templates, mounted static assets, and passing focused browser coverage on `codex/task-01-console-shell` |
 | M1 | 02 | Run overview and failure dashboard pages | done | 2026-04-09 12:34 KST | Added `/console/dashboard` with recent run history, readable failures, policy skips, and passing focused browser plus shared query/API regression coverage on `codex/task-02-console-dashboard` |
-| M1 | 03 | Article status and pending-review queue pages | pending | 2026-04-08 17:40 KST | Expose current article and queue data in table-friendly browser pages |
+| M1 | 03 | Article status and pending-review queue pages | done | 2026-04-09 13:57 KST | Added `/console/articles` and `/console/reviews/pending` with shared helper reuse, live navigation links, and focused console plus API/workflow regression coverage on `codex/task-03-console-queues` |
 | M2 | 04 | Review draft detail page | pending | 2026-04-08 17:40 KST | Reuse the current operator-ready review detail contract in one browser page |
 | M2 | 05 | Review action forms and safe mutation feedback | pending | 2026-04-08 17:40 KST | Keep browser mutations routed through existing review validation |
 | M3 | 06 | Publish job list and detail pages | pending | 2026-04-08 17:40 KST | Surface publish queue visibility before adding more browser actions |
@@ -69,9 +69,9 @@ Status values:
 - `docs/operator-console-readiness-progress-tracker.md`
 - `app/api/app.py`
 - `app/api/console.py`
-- `app/api/static/console.css`
 - `app/api/templates/console/index.html`
-- `app/api/templates/console/dashboard.html`
+- `app/api/templates/console/articles.html`
+- `app/api/templates/console/pending_review.html`
 - `tests/test_console.py`
 
 ## Progress Log
@@ -85,6 +85,9 @@ Status values:
 - `2026-04-09 12:22 KST` Started Task `02` on `codex/task-02-console-dashboard`; keeping scope to one dashboard page that reuses existing history-query helpers for recent runs, failures, and policy skips without changing API semantics
 - `2026-04-09 12:28 KST` Added a dedicated `/console/dashboard` page, wired the console shell to shared run/failure listers through FastAPI app state, and shaped one read-only dashboard template with recent-run, failure, and policy-skip sections plus focused browser tests for empty and populated states
 - `2026-04-09 12:34 KST` Committed Task `02` as `06ed520` (`Add operator console dashboard`) after focused browser coverage and the shared runs/failures regression slice passed
+- `2026-04-09 13:51 KST` Started Task `03` on `codex/task-03-console-queues`; keeping scope to two read-only list pages that reuse existing article-status and pending-review helpers with focused console coverage for empty and populated states
+- `2026-04-09 13:56 KST` Added `/console/articles` and `/console/reviews/pending`, promoted the Task 03 navigation entries to live links, and shaped matching Jinja tables plus focused console tests without changing the underlying API or workflow helper contracts
+- `2026-04-09 13:57 KST` Verified the new read-only list pages with focused console coverage, shared API and review-workflow regression slices, and a full console navigation regression run after reusing the existing article-status and pending-review helpers
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -98,6 +101,11 @@ Status values:
 - `2026-04-09 12:32 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell or dashboard"` -> `passed`
 - `2026-04-09 12:33 KST` `PYTHONPATH=$PWD pytest tests/test_history_queries.py tests/test_api.py -k "runs or failures"` -> `passed`
 - `2026-04-09 12:33 KST` `git diff --check` -> `passed`
+- `2026-04-09 13:56 KST` `PYTHONPATH=$PWD python -m compileall app/api tests/test_console.py` -> `passed`
+- `2026-04-09 13:56 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "articles or pending_review"` -> `passed`
+- `2026-04-09 13:57 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_review_queue_workflow.py -k "articles or pending_review"` -> `passed`
+- `2026-04-09 13:57 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell or dashboard or articles or pending_review"` -> `passed`
+- `2026-04-09 13:57 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Should the first console stay fully server-rendered for all interactions, or should later tasks allow small progressive-enhancement fetch calls while still avoiding a separate SPA?`
@@ -106,10 +114,12 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 03 can now add article and pending-review list pages onto the same navigation, operator-context handling, and read-only table styling without revisiting dashboard wiring`
+- `Task 04 can now reuse the live pending-review page and shared console context to add one draft-detail browser workspace without revisiting article or queue list wiring`
 
 ## Completion Summary
 - `Task 01 complete: the FastAPI app now serves a dedicated `/console` namespace with a canonical landing page, shared Jinja layout, and mounted static assets for future browser surfaces`
 - `Task 01 complete: focused browser coverage now protects the console redirect, landing-page rendering, and static asset delivery while shared API regression confirms existing operator routes still behave as before`
 - `Task 02 complete: the console now exposes `/console/dashboard` with recent pipeline runs, technical failures, and policy skips rendered through the same history query helpers that power the operator API`
 - `Task 02 complete: focused browser coverage now protects empty and populated dashboard states while shared history-query and API regression confirms the linked run/failure data path still behaves as expected`
+- `Task 03 complete: the console now exposes `/console/articles` and `/console/reviews/pending` so operators can browse stored article status and current manual-review workload without shell access`
+- `Task 03 complete: focused browser coverage protects empty and populated article and pending-review states while shared API, review-workflow, and full-console regression slices confirm the reused data paths still behave as expected`

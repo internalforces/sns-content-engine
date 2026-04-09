@@ -482,6 +482,8 @@ def create_app(
     mount_console_static(application)
     application.state.console_pipeline_runs_lister = pipeline_runs_lister
     application.state.console_pipeline_failures_lister = pipeline_failures_lister
+    application.state.console_article_statuses_lister = article_statuses_lister
+    application.state.console_pending_review_drafts_lister = pending_review_drafts_lister
     application.include_router(console_router)
 
     @application.exception_handler(DatabaseSchemaError)
