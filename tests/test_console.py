@@ -10,6 +10,13 @@ from textwrap import dedent
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.scheduler import (
+    BackfillChannelResult,
+    BackfillResult,
+    PublishDueOutcome,
+    PublishDueResult,
+    SchedulerDiscoverResult,
+)
 from app.storage import (
     ArticleEnrichment,
     ArticleEnrichmentRepository,
@@ -803,6 +810,191 @@ def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:
     assert "publish job 999 was not found" in response.text
 
 
+def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/console/scheduler",
+        params={
+            "config_dir": "/tmp/operator-config",
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Scheduler" in response.text
+    assert "Discover, backfill, and publish due" in response.text
+    assert "No scheduler action has been triggered from this browser session yet." in response.text
+    assert "Run discover" in response.text
+    assert "Run backfill" in response.text
+    assert "Run publish due" in response.text
+    assert "Enable live publishing for this one run" in response.text
+    assert "/tmp/operator-config" in response.text
+
+
+def test_scheduler_actions_discover_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_scheduler_discover(*, config_dir: str) -> SchedulerDiscoverResult:
+        captured["config_dir"] = config_dir
+        return SchedulerDiscoverResult(
+            discovered_count=3,
+            processed_sources=("ai_tools_rss", "manual_csv"),
+            failure_messages=("manual_csv: feed parse failed",),
+        )
+
+    client = TestClient(create_app(scheduler_discover_runner=stub_scheduler_discover))
+    response = _post_console_scheduler_action(
+        client,
+        action="discover",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {"config_dir": "/tmp/operator-config"}
+    assert "Discover saved" in response.text
+    assert "Discover completed with 3 discovered items across 2 configured sources." in response.text
+    assert "ai_tools_rss" in response.text
+    assert "manual_csv: feed parse failed" in response.text
+
+
+def test_scheduler_actions_backfill_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_scheduler_backfill(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> BackfillResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return BackfillResult(
+            outcomes=(
+                BackfillChannelResult(
+                    account_key="ai_tools_daily",
+                    channel="x",
+                    backlog_target=3,
+                    existing_future_job_count=1,
+                    eligible_draft_count=4,
+                    planned_slot_count=2,
+                    created_job_ids=(12, 13),
+                    skipped_slot_count=0,
+                ),
+            )
+        )
+
+    client = TestClient(create_app(scheduler_backfill_runner=stub_scheduler_backfill))
+    response = _post_console_scheduler_action(
+        client,
+        action="backfill",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "Backfill saved" in response.text
+    assert "ai_tools_daily / X" in response.text
+    assert "Created jobs 12, 13" in response.text
+    assert "Routes checked" in response.text
+
+
+def test_scheduler_actions_publish_due_defaults_to_dry_run() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_publish_due(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+        dry_run: bool,
+    ) -> PublishDueResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=42,
+                    status="dry_run",
+                    state=PublishJobState.SCHEDULED,
+                    message="dry-run only; no state changes were applied",
+                    external_post_id="dry-run:42",
+                ),
+            ),
+            dry_run=dry_run,
+        )
+
+    client = TestClient(create_app(scheduler_publish_due_runner=stub_publish_due))
+    response = _post_console_scheduler_action(
+        client,
+        action="publish_due",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+        "dry_run": True,
+    }
+    assert "Publish Due saved" in response.text
+    assert "Dry run remained the default browser path" in response.text
+    assert "Publish mode:</strong> Dry run" in response.text
+    assert "dry-run only; no state changes were applied" in response.text
+
+
+def test_scheduler_actions_publish_due_live_opt_in_is_explicit() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_publish_due(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+        dry_run: bool,
+    ) -> PublishDueResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=43,
+                    status="published",
+                    state=PublishJobState.PUBLISHED,
+                    message="published successfully",
+                    external_post_id="tweet:43",
+                ),
+            ),
+            dry_run=dry_run,
+        )
+
+    client = TestClient(create_app(scheduler_publish_due_runner=stub_publish_due))
+    response = _post_console_scheduler_action(
+        client,
+        action="publish_due",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+        live=True,
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+        "dry_run": False,
+    }
+    assert "Publish Due saved" in response.text
+    assert "Live publish ran because the explicit browser opt-in was selected." in response.text
+    assert "Publish mode:</strong> Live publish" in response.text
+    assert "published successfully" in response.text
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'console.db'}")
     create_all_tables(engine)
@@ -838,6 +1030,28 @@ def _post_console_review_action(
     return client.post(
         f"/console/reviews/{draft_id}",
         params=params,
+        data=data,
+    )
+
+
+def _post_console_scheduler_action(
+    client: TestClient,
+    *,
+    action: str,
+    config_dir: str,
+    database_url: str,
+    live: bool = False,
+):
+    data = {"action": action}
+    if live:
+        data["live"] = "true"
+
+    return client.post(
+        "/console/scheduler",
+        params={
+            "config_dir": config_dir,
+            "database_url": database_url,
+        },
         data=data,
     )
 

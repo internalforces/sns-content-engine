@@ -485,6 +485,9 @@ def create_app(
     application.state.console_article_statuses_lister = article_statuses_lister
     application.state.console_publish_jobs_lister = publish_jobs_lister
     application.state.console_publish_job_detail_fetcher = publish_job_detail_fetcher
+    application.state.console_scheduler_discover_runner = scheduler_discover_runner
+    application.state.console_scheduler_backfill_runner = scheduler_backfill_runner
+    application.state.console_scheduler_publish_due_runner = scheduler_publish_due_runner
     application.state.console_pending_review_drafts_lister = pending_review_drafts_lister
     application.state.console_review_draft_detail_fetcher = review_draft_detail_fetcher
     application.state.console_draft_approver = draft_approver
