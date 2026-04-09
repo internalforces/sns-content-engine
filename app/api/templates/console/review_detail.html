@@ -11,7 +11,7 @@
           <h2>{{ review_detail.draft_label }} · {{ review_detail.variant_label }}</h2>
         {% endif %}
       </div>
-      <span class="console-badge">{% if review_detail_missing %}404{% else %}Task 04{% endif %}</span>
+      <span class="console-badge">{% if review_detail_missing %}404{% else %}Task 05{% endif %}</span>
     </div>
     <p class="console-card-copy">
       <a class="console-link" href="{{ pending_review_href }}">Back to pending review queue</a>
@@ -68,6 +68,89 @@
   </section>
 
   {% if review_detail %}
+    <section class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Review actions</p>
+          <h2>Workflow-aligned browser mutations</h2>
+        </div>
+      </div>
+      <p class="console-card-copy">{{ review_action_forms.state_hint }}</p>
+      {% if review_action_feedback %}
+        <div class="console-feedback console-feedback-{{ review_action_feedback.kind }}">
+          <strong>{{ review_action_feedback.title }}</strong>
+          <p>{{ review_action_feedback.message }}</p>
+        </div>
+      {% endif %}
+
+      {% if review_action_forms.show_pending_actions %}
+        <div class="console-action-grid">
+          <form class="console-action-card" method="post" action="{{ review_action_forms.action_href }}">
+            <input type="hidden" name="action" value="approve">
+            <p class="console-card-label">Approve</p>
+            <h3>Approve draft</h3>
+            <label class="console-field" for="approve-reviewer">
+              <span>Reviewer</span>
+              <input class="console-input" id="approve-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+            </label>
+            <button class="console-button" type="submit">Approve for scheduling</button>
+          </form>
+
+          <form class="console-action-card" method="post" action="{{ review_action_forms.action_href }}">
+            <input type="hidden" name="action" value="reject">
+            <p class="console-card-label">Reject</p>
+            <h3>Reject draft</h3>
+            <label class="console-field" for="reject-reviewer">
+              <span>Reviewer</span>
+              <input class="console-input" id="reject-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+            </label>
+            <label class="console-field" for="reject-reason">
+              <span>Reason</span>
+              <input class="console-input" id="reject-reason" name="reason" type="text" value="{{ review_action_forms.reject_reason }}">
+            </label>
+            <button class="console-button console-button-muted" type="submit">Reject draft</button>
+          </form>
+        </div>
+
+        <form class="console-action-card console-action-card-wide" method="post" action="{{ review_action_forms.action_href }}">
+          <input type="hidden" name="action" value="edit">
+          <p class="console-card-label">Edit</p>
+          <h3>Edit draft body</h3>
+          <div class="console-form-grid">
+            <label class="console-field" for="edit-reviewer">
+              <span>Reviewer</span>
+              <input class="console-input" id="edit-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+            </label>
+          </div>
+          <label class="console-field" for="edit-body">
+            <span>Updated body</span>
+            <textarea class="console-textarea" id="edit-body" name="body">{{ review_action_forms.edit_body }}</textarea>
+          </label>
+          <button class="console-button" type="submit">Save edited draft</button>
+        </form>
+      {% elif review_action_forms.show_schedule_action %}
+        <form class="console-action-card console-action-card-wide" method="post" action="{{ review_action_forms.action_href }}">
+          <input type="hidden" name="action" value="schedule">
+          <p class="console-card-label">Schedule</p>
+          <h3>Create a publish job</h3>
+          <div class="console-form-grid">
+            <label class="console-field" for="schedule-reviewer">
+              <span>Reviewer</span>
+              <input class="console-input" id="schedule-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+            </label>
+            <label class="console-field" for="schedule-datetime">
+              <span>Scheduled for</span>
+              <input class="console-input" id="schedule-datetime" name="scheduled_for" type="text" value="{{ review_action_forms.scheduled_for }}" placeholder="2026-03-18T09:00:00+09:00">
+            </label>
+          </div>
+          <p class="console-card-copy">Use an ISO 8601 timestamp with a timezone offset so the stored publish slot stays unambiguous.</p>
+          <button class="console-button" type="submit">Schedule draft</button>
+        </form>
+      {% else %}
+        <p class="console-empty">{{ review_action_forms.read_only_notice }}</p>
+      {% endif %}
+    </section>
+
     <section class="console-grid">
       <article class="console-card">
         <div class="console-card-header">

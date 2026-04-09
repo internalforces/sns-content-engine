@@ -5,13 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.workflows.review_queue import DraftNotFoundError
+from app.workflows.review_queue import (
+    DraftNotFoundError,
+    DraftReviewStateError,
+    DraftScheduleError,
+    DraftValidationFailedError,
+    ReviewQueueError,
+    ReviewerIdentityError,
+)
 
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -231,7 +238,144 @@ def get_console_review_detail(
     config_dir: str = Query(default="config"),
     database_url: str | None = Query(default=None),
 ) -> HTMLResponse:
-    """Render one review draft with provenance, audit history, and sibling variants."""
+    """Render one review draft with provenance, audit history, and workflow-aligned actions."""
+
+    return _render_console_review_detail_page(
+        request,
+        draft_id=draft_id,
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+
+
+@console_router.post(
+    "/console/reviews/{draft_id}",
+    response_class=HTMLResponse,
+    name="console_review_detail_action",
+)
+async def post_console_review_detail_action(
+    draft_id: int,
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Handle review actions from the draft detail page without bypassing workflow rules."""
+
+    form_data = await _parse_console_form_body(request)
+    action = (form_data.get("action") or "").strip().lower()
+    submitted_values = _normalize_review_action_form_data(form_data)
+
+    if action not in {"approve", "reject", "edit", "schedule"}:
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_review_action_feedback(
+                kind="error",
+                action_label="Review action",
+                message="Select one of the supported review actions before submitting the form.",
+            ),
+            form_values=submitted_values,
+        )
+
+    try:
+        result = _execute_console_review_action(
+            request,
+            draft_id=draft_id,
+            action=action,
+            submitted_values=submitted_values,
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    except DraftNotFoundError:
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=404,
+            form_values=submitted_values,
+        )
+    except DraftReviewStateError as exc:
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=409,
+            feedback=_build_review_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+            form_values=submitted_values,
+        )
+    except DraftValidationFailedError as exc:
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_review_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+            form_values=submitted_values,
+        )
+    except DraftScheduleError as exc:
+        message = str(exc)
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=409 if "already has an active publish job" in message else 422,
+            feedback=_build_review_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=message,
+            ),
+            form_values=submitted_values,
+        )
+    except (ReviewerIdentityError, ReviewQueueError) as exc:
+        return _render_console_review_detail_page(
+            request,
+            draft_id=draft_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_review_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+            form_values=submitted_values,
+        )
+
+    return _render_console_review_detail_page(
+        request,
+        draft_id=draft_id,
+        config_dir=config_dir,
+        database_url=database_url,
+        feedback=_build_review_action_success_feedback(result),
+    )
+
+
+def _render_console_review_detail_page(
+    request: Request,
+    *,
+    draft_id: int,
+    config_dir: str,
+    database_url: str | None,
+    status_code: int = 200,
+    feedback: dict[str, str] | None = None,
+    form_values: dict[str, str] | None = None,
+) -> HTMLResponse:
+    """Render the shared review detail page for both GET and POST flows."""
 
     query_params = _extract_console_query_params(request)
     pending_review_href = _append_query_params(
@@ -256,10 +400,13 @@ def get_console_review_detail(
         context.update(
             {
                 "pending_review_href": pending_review_href,
+                "review_detail": None,
                 "review_detail_missing": {
                     "message": str(exc),
                     "draft_id": draft_id,
                 },
+                "review_action_feedback": feedback,
+                "review_action_forms": None,
             }
         )
         return _TEMPLATES.TemplateResponse(
@@ -272,7 +419,7 @@ def get_console_review_detail(
     context = _build_console_context(
         request,
         page_title=f"Review Draft {detail.draft.id}",
-        page_description="Read-only draft workspace with provenance, brief, enrichment, audit trail, and sibling variants from the shared review detail helper.",
+        page_description="Draft workspace with provenance, audit history, and browser review actions that reuse the existing workflow validation and state guards.",
         active_nav_key="pending_review",
         config_dir=config_dir,
         database_url=database_url,
@@ -286,13 +433,111 @@ def get_console_review_detail(
                 detail,
             ),
             "review_detail_missing": None,
+            "review_action_feedback": feedback,
+            "review_action_forms": _build_review_action_form_state(
+                request,
+                query_params,
+                detail,
+                form_values=form_values,
+            ),
         }
     )
     return _TEMPLATES.TemplateResponse(
         request=request,
         name="console/review_detail.html",
         context=context,
+        status_code=status_code,
     )
+
+
+def _execute_console_review_action(
+    request: Request,
+    *,
+    draft_id: int,
+    action: str,
+    submitted_values: dict[str, str],
+    config_dir: str,
+    database_url: str | None,
+):
+    if action == "approve":
+        return request.app.state.console_draft_approver(
+            draft_id,
+            reviewer=submitted_values["reviewer"],
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "reject":
+        return request.app.state.console_draft_rejector(
+            draft_id,
+            reason=submitted_values["reject_reason"],
+            reviewer=submitted_values["reviewer"],
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "edit":
+        return request.app.state.console_draft_editor(
+            draft_id,
+            body=submitted_values["edit_body"],
+            reviewer=submitted_values["reviewer"],
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    return request.app.state.console_draft_scheduler(
+        draft_id,
+        scheduled_for=submitted_values["scheduled_for"],
+        reviewer=submitted_values["reviewer"],
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+
+
+async def _parse_console_form_body(request: Request) -> dict[str, str]:
+    raw_body = await request.body()
+    parsed = parse_qs(raw_body.decode("utf-8"), keep_blank_values=True)
+    return {
+        key: values[-1] if values else ""
+        for key, values in parsed.items()
+    }
+
+
+def _normalize_review_action_form_data(form_data: dict[str, str]) -> dict[str, str]:
+    return {
+        "reviewer": (form_data.get("reviewer") or "").strip(),
+        "reject_reason": form_data.get("reason") or "",
+        "edit_body": form_data.get("body") or "",
+        "scheduled_for": (form_data.get("scheduled_for") or "").strip(),
+    }
+
+
+def _build_review_action_success_feedback(result) -> dict[str, str]:
+    action_label = _humanize_label(result.action_type.value)
+    messages = {
+        "approve": "Draft approved. Scheduling is now available from this workspace.",
+        "reject": "Draft rejected. The rejection reason is now part of the recorded audit trail.",
+        "edit": "Draft body updated. The edit is now captured in the audit trail.",
+        "schedule": (
+            f"Draft scheduled for {_format_datetime(result.scheduled_for, none_label='Not scheduled')} "
+            f"as publish job {result.publish_job_id}."
+        ),
+    }
+    return _build_review_action_feedback(
+        kind="success",
+        action_label=action_label,
+        message=messages[result.action_type.value],
+    )
+
+
+def _build_review_action_feedback(
+    *,
+    kind: str,
+    action_label: str,
+    message: str,
+) -> dict[str, str]:
+    return {
+        "kind": kind,
+        "title": f"{action_label} {'saved' if kind == 'success' else 'blocked'}",
+        "message": message,
+    }
 
 
 def _build_console_context(
@@ -692,6 +937,52 @@ def _build_review_action_row(action) -> dict[str, str]:
         "rejection_reason": action.rejection_reason or "No rejection recorded.",
         "scheduled_for": _format_datetime(action.scheduled_for, none_label="Not scheduled"),
         "publish_job_id": str(action.publish_job_id) if action.publish_job_id else "Not created",
+    }
+
+
+def _build_review_action_form_state(
+    request: Request,
+    query_params: dict[str, str],
+    detail,
+    *,
+    form_values: dict[str, str] | None,
+) -> dict[str, str | bool]:
+    draft = detail.draft
+    state_value = draft.state.value
+    values = form_values or {}
+
+    if state_value == "pending_review":
+        state_hint = (
+            "Approve, reject, and edit remain available while this draft is still in manual review. "
+            "Scheduling unlocks only after approval."
+        )
+        read_only_notice = ""
+    elif state_value == "approved":
+        state_hint = (
+            "Approval is already recorded. Scheduling is the next allowed action in the shared review workflow."
+        )
+        read_only_notice = ""
+    else:
+        state_hint = (
+            "This draft is no longer actionable in the browser because the shared review workflow marks this state read-only."
+        )
+        read_only_notice = (
+            "No browser actions are available for this draft's current state. Use the audit trail below to confirm the final decision."
+        )
+
+    return {
+        "action_href": _append_query_params(
+            str(request.url_for("console_review_detail_action", draft_id=draft.id)),
+            query_params,
+        ),
+        "reviewer": values.get("reviewer", ""),
+        "reject_reason": values.get("reject_reason", ""),
+        "edit_body": values.get("edit_body", draft.body),
+        "scheduled_for": values.get("scheduled_for", ""),
+        "show_pending_actions": state_value == "pending_review",
+        "show_schedule_action": state_value == "approved",
+        "state_hint": state_hint,
+        "read_only_notice": read_only_notice,
     }
 
 

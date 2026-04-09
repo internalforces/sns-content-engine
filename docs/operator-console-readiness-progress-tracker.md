@@ -24,23 +24,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M2_review_workspace`
-- Current task: `04_review_draft_detail_page`
+- Current task: `05_review_action_forms_and_safe_mutation_feedback`
 - Active status: `done`
-- Last updated: `2026-04-09 14:09 KST`
-- Base branch: `codex/task-03-console-queues`
-- Active branch: `codex/task-04-review-detail-console`
-- Latest task commit: `pending_commit_creation`
+- Last updated: `2026-04-09 14:29 KST`
+- Base branch: `codex/task-04-review-detail-console`
+- Active branch: `codex/task-05-review-action-console`
+- Latest task commit: `a8e4842`
 - Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
-- Goal: `Add one browser detail page for a review draft that reuses the existing operator-ready review detail read path`
-- In scope: `One read-only review detail page, queue-to-detail linking, thin reuse of the review detail helper, and focused browser coverage for populated and not-found states`
-- Out of scope: `Review mutations, publish-job pages, scheduler controls, auth, and any separate frontend build stack`
-- Dependencies: `Task 03 pending-review page plus existing review detail API/workflow helpers in app/workflows/review_queue.py`
+- Goal: `Let operators approve, reject, edit, and schedule drafts from the console without bypassing the current review validation and state guardrails`
+- In scope: `Server-rendered review action forms on the draft detail page, readable success/error feedback, thin reuse of the existing review_queue mutation helpers, and focused browser coverage for representative success and failure states`
+- Out of scope: `Publish-job pages, scheduler console controls, auth, multi-user review ownership, and any separate frontend build stack`
+- Dependencies: `Task 04 review detail workspace plus existing review action routes and workflow helpers in app/workflows/review_queue.py`
 - Verification commands:
-  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "review_detail"`
-  - `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_review_queue_workflow.py -k "review_detail"`
+  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "review_actions"`
+  - `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_review_queue_workflow.py -k "approve or reject or edit or schedule"`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -54,7 +54,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run overview and failure dashboard pages | done | 2026-04-09 12:34 KST | Added `/console/dashboard` with recent run history, readable failures, policy skips, and passing focused browser plus shared query/API regression coverage on `codex/task-02-console-dashboard` |
 | M1 | 03 | Article status and pending-review queue pages | done | 2026-04-09 13:57 KST | Added `/console/articles` and `/console/reviews/pending` with shared helper reuse, live navigation links, and focused console plus API/workflow regression coverage on `codex/task-03-console-queues` |
 | M2 | 04 | Review draft detail page | done | 2026-04-09 14:09 KST | Added `/console/reviews/{draft_id}` with queue-to-detail links, browser-friendly not-found handling, and focused console plus shared review regression coverage on `codex/task-04-review-detail-console` |
-| M2 | 05 | Review action forms and safe mutation feedback | pending | 2026-04-08 17:40 KST | Keep browser mutations routed through existing review validation |
+| M2 | 05 | Review action forms and safe mutation feedback | done | 2026-04-09 14:29 KST | Added browser approve, reject, edit, and schedule actions with inline workflow feedback on `codex/task-05-review-action-console` |
 | M3 | 06 | Publish job list and detail pages | pending | 2026-04-08 17:40 KST | Surface publish queue visibility before adding more browser actions |
 | M3 | 07 | Scheduler action console with safe defaults | pending | 2026-04-08 17:40 KST | Dry-run publish remains the default browser action path |
 | M3 | 08 | Console operator docs and browser-facing regression coverage | pending | 2026-04-08 17:40 KST | Document the console only after the shipped browser surface exists |
@@ -66,11 +66,11 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `docs/operator-console-readiness-progress-tracker.md`
 - `app/api/app.py`
 - `app/api/console.py`
-- `app/api/templates/console/pending_review.html`
+- `app/api/static/console.css`
 - `app/api/templates/console/review_detail.html`
+- `docs/operator-console-readiness-progress-tracker.md`
 - `tests/test_console.py`
 
 ## Progress Log
@@ -90,6 +90,11 @@ Status values:
 - `2026-04-09 14:02 KST` Started Task `04` on `codex/task-04-review-detail-console`; keeping scope to one browser draft-detail page, a queue-to-detail entry path, and focused console coverage for populated and not-found states
 - `2026-04-09 14:05 KST` Added a dedicated `/console/reviews/{draft_id}` page, linked queue rows into the detail workspace, and kept the read path thin by reusing the existing review-detail helper plus a browser-friendly 404 template path
 - `2026-04-09 14:09 KST` Verified the detail page against populated and not-found browser states, shared API/workflow review-detail regressions, and a wider console navigation slice after linking pending-review rows into the new workspace
+- `2026-04-09 14:20 KST` Started Task `05` on `codex/task-05-review-action-console`; keeping scope to server-rendered approve, reject, edit, and schedule actions that reuse the current review_queue validation and conflict semantics without adding client-side state management
+- `2026-04-09 14:24 KST` Added a POST-backed review action flow on `/console/reviews/{draft_id}`, reusing the existing review_queue mutation helpers and rendering workflow-aligned success or error feedback directly in the draft workspace without introducing a second data path
+- `2026-04-09 14:25 KST` Expanded the review detail template and console stylesheet with state-aware action cards so pending drafts expose approve/reject/edit while approved drafts expose scheduling with browser-readable guardrail messaging
+- `2026-04-09 14:27 KST` Added focused console browser tests covering approve, reject, edit, and schedule success plus approval-validation and schedule-conflict feedback to keep the new mutation surface aligned with the existing review workflow rules
+- `2026-04-09 14:29 KST` Committed Task `05` as `a8e4842` (`Add browser review action console`) after focused console review-action coverage plus shared API/workflow and console regression slices passed
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -115,6 +120,11 @@ Status values:
 - `2026-04-09 14:08 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "pending_review or review_detail"` -> `passed`
 - `2026-04-09 14:09 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "console_shell or dashboard or articles or pending_review or review_detail"` -> `passed`
 - `2026-04-09 14:08 KST` `git diff --check` -> `passed`
+- `2026-04-09 14:25 KST` `PYTHONPATH=$PWD python -m compileall app/api tests/test_console.py` -> `passed`
+- `2026-04-09 14:26 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "review_actions"` -> `passed`
+- `2026-04-09 14:27 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_review_queue_workflow.py -k "approve or reject or edit or schedule"` -> `passed`
+- `2026-04-09 14:27 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "pending_review or review_detail or review_actions"` -> `passed`
+- `2026-04-09 14:27 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Should the first console stay fully server-rendered for all interactions, or should later tasks allow small progressive-enhancement fetch calls while still avoiding a separate SPA?`
@@ -123,7 +133,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 05 can now layer browser approve, reject, edit, and schedule forms onto the live draft-detail workspace without introducing a second draft read path`
+- `Task 06 can surface publish-job list and detail visibility next, now that the review workspace is ready to link browser scheduling outcomes into publish history`
 
 ## Completion Summary
 - `Task 01 complete: the FastAPI app now serves a dedicated `/console` namespace with a canonical landing page, shared Jinja layout, and mounted static assets for future browser surfaces`
@@ -134,3 +144,5 @@ Status values:
 - `Task 03 complete: focused browser coverage protects empty and populated article and pending-review states while shared API, review-workflow, and full-console regression slices confirm the reused data paths still behave as expected`
 - `Task 04 complete: the console now exposes `/console/reviews/{draft_id}` so operators can inspect one draft's body, provenance, brief, source-item, enrichment, audit history, and sibling variants from the browser`
 - `Task 04 complete: focused browser coverage protects populated and not-found detail states while shared review-detail regressions and a full console slice confirm the queue-to-detail path stays aligned with the current API and workflow helper behavior`
+- `Task 05 complete: the review workspace now exposes browser approve, reject, edit, and schedule actions that call the same review_queue helpers and preserve the existing validation, state-conflict, and scheduling guardrails`
+- `Task 05 complete: focused console browser coverage protects all four action paths plus representative validation/conflict feedback while shared API/workflow regressions confirm the mutation semantics still match the existing operator surfaces`

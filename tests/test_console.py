@@ -22,6 +22,7 @@ from app.storage import (
     PipelineRunRepository,
     PipelineRunStatus,
     PipelineStage,
+    PublishJobRepository,
     SourceItem,
     SourceItemRepository,
     SourcePolicyMode,
@@ -427,10 +428,248 @@ def test_review_detail_page_returns_browser_friendly_not_found(tmp_path: Path) -
     assert "/console/reviews/pending" in response.text
 
 
+def test_review_actions_approve_success_updates_detail_state(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        config_dir=tmp_path,
+        action="approve",
+        reviewer="editor-a",
+    )
+
+    assert response.status_code == 200
+    assert "Approve saved" in response.text
+    assert "Draft approved. Scheduling is now available from this workspace." in response.text
+    assert "Approved" in response.text
+    assert "Create a publish job" in response.text
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+
+    assert stored_draft is not None
+    assert stored_draft.state is DraftVariantState.APPROVED
+
+
+def test_review_actions_reject_success_records_reason(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="reject",
+        reviewer="editor-b",
+        reason="Off topic for this account",
+    )
+
+    assert response.status_code == 200
+    assert "Reject saved" in response.text
+    assert "Off topic for this account" in response.text
+    assert "No browser actions are available for this draft&#39;s current state." in response.text
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+
+    assert stored_draft is not None
+    assert stored_draft.state is DraftVariantState.REJECTED
+
+
+def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    updated_body = "Updated operator-ready draft body https://gilgop.cloud/ai-tools"
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="edit",
+        reviewer="editor-c",
+        body=updated_body,
+    )
+
+    assert response.status_code == 200
+    assert "Edit saved" in response.text
+    assert updated_body in response.text
+    assert "editor-c" in response.text
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+
+    assert stored_draft is not None
+    assert stored_draft.body == updated_body
+    assert stored_draft.state is DraftVariantState.PENDING_REVIEW
+
+
+def test_review_actions_schedule_success_creates_publish_job(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        config_dir=tmp_path,
+        action="schedule",
+        reviewer="scheduler-a",
+        scheduled_for="2026-03-18T09:00:00+09:00",
+    )
+
+    assert response.status_code == 200
+    assert "Schedule saved" in response.text
+    assert "Draft scheduled for 2026-03-18T00:00:00+00:00 as publish job 1." in response.text
+    assert "Action saved" not in response.text
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].draft_variant_id == draft.id
+
+
+def test_review_actions_approve_validation_error_stays_browser_readable(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body="Operator update for general readers https://gilgop.cloud/ai-tools",
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        config_dir=tmp_path,
+        action="approve",
+        reviewer="editor-a",
+    )
+
+    assert response.status_code == 422
+    assert "Approve blocked" in response.text
+    assert "topic_guard_failed" in response.text
+    assert "Approve draft" in response.text
+    assert "Edit draft body" in response.text
+
+
+def test_review_actions_schedule_conflict_preserves_submitted_slot(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    schedule_draft(
+        draft.id,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        reviewer="scheduler-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        config_dir=tmp_path,
+        action="schedule",
+        reviewer="scheduler-a",
+        scheduled_for="2026-03-18T10:00:00+09:00",
+    )
+
+    assert response.status_code == 409
+    assert "Schedule blocked" in response.text
+    assert "already has an active publish job" in response.text
+    assert 'value="2026-03-18T10:00:00+09:00"' in response.text
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'console.db'}")
     create_all_tables(engine)
     return create_session_factory(engine)
+
+
+def _post_console_review_action(
+    client: TestClient,
+    *,
+    draft_id: int,
+    database_url: str,
+    action: str,
+    reviewer: str | None = None,
+    config_dir: Path | None = None,
+    reason: str | None = None,
+    body: str | None = None,
+    scheduled_for: str | None = None,
+):
+    data = {"action": action}
+    if reviewer is not None:
+        data["reviewer"] = reviewer
+    if reason is not None:
+        data["reason"] = reason
+    if body is not None:
+        data["body"] = body
+    if scheduled_for is not None:
+        data["scheduled_for"] = scheduled_for
+
+    params = {"database_url": database_url}
+    if config_dir is not None:
+        params["config_dir"] = str(config_dir)
+
+    return client.post(
+        f"/console/reviews/{draft_id}",
+        params=params,
+        data=data,
+    )
 
 
 def _create_pending_review_draft(

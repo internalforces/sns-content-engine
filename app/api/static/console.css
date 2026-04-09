@@ -336,6 +336,110 @@ body.console-shell {
   text-decoration: underline;
 }
 
+.console-feedback {
+  margin: 18px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--console-border);
+  border-radius: 18px;
+}
+
+.console-feedback strong,
+.console-feedback p {
+  display: block;
+}
+
+.console-feedback p {
+  margin: 8px 0 0;
+  color: var(--console-ink);
+  line-height: 1.6;
+}
+
+.console-feedback-success {
+  background: rgba(104, 138, 96, 0.14);
+  border-color: rgba(104, 138, 96, 0.28);
+}
+
+.console-feedback-error {
+  background: rgba(177, 92, 45, 0.12);
+  border-color: rgba(177, 92, 45, 0.26);
+}
+
+.console-action-grid,
+.console-form-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.console-action-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 20px;
+}
+
+.console-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.console-action-card {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--console-border);
+  border-radius: calc(var(--console-radius) - 8px);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.console-action-card-wide {
+  display: grid;
+  gap: 16px;
+}
+
+.console-field {
+  display: grid;
+  gap: 8px;
+  color: var(--console-muted);
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.console-input,
+.console-textarea,
+.console-button {
+  font: inherit;
+}
+
+.console-input,
+.console-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(44, 38, 25, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 253, 246, 0.96);
+  color: var(--console-ink);
+}
+
+.console-textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.console-button {
+  width: fit-content;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--console-accent);
+  color: #fffdf8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.console-button-muted {
+  background: rgba(31, 26, 18, 0.82);
+}
+
+.console-button:hover {
+  opacity: 0.92;
+}
+
 @media (max-width: 860px) {
   .console-frame {
     width: min(100% - 20px, 1200px);
