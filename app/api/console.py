@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,8 @@ from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from app.storage import PublishJobState
+from app.workflows.history_queries import PublishJobNotFoundError
 from app.workflows.review_queue import (
     DraftNotFoundError,
     DraftReviewStateError,
@@ -26,6 +29,7 @@ _CONTEXT_QUERY_KEYS = ("config_dir", "database_url")
 _DEFAULT_DASHBOARD_RUN_LIMIT = 6
 _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 _DEFAULT_ARTICLE_LIMIT = 25
+_DEFAULT_PUBLISH_JOB_LIMIT = 25
 
 console_router = APIRouter(include_in_schema=False)
 
@@ -178,6 +182,155 @@ def get_console_articles(
     return _TEMPLATES.TemplateResponse(
         request=request,
         name="console/articles.html",
+        context=context,
+    )
+
+
+@console_router.get(
+    "/console/publish-jobs",
+    response_class=HTMLResponse,
+    name="console_publish_jobs",
+)
+def get_console_publish_jobs(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+    state: PublishJobState | None = Query(default=None),
+    account_key: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    limit: int = Query(default=_DEFAULT_PUBLISH_JOB_LIMIT, ge=1, le=100),
+) -> HTMLResponse:
+    """Render recent publish jobs and their linked draft context in the console."""
+
+    publish_job_query_params = _build_publish_job_query_params(
+        request,
+        state=state,
+        account_key=account_key,
+        channel=channel,
+        limit=limit,
+    )
+    result = request.app.state.console_publish_jobs_lister(
+        database_url=database_url,
+        state=state,
+        account_key=account_key,
+        channel=channel,
+        limit=limit,
+    )
+    context = _build_console_context(
+        request,
+        page_title="Publish Jobs",
+        page_description="Read-only publish queue and delivery visibility from the shared operator history helpers, without adding new browser mutation paths.",
+        active_nav_key="publish_jobs",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "publish_job_filters": _build_publish_job_filters(
+                state=state,
+                account_key=account_key,
+                channel=channel,
+                limit=limit,
+            ),
+            "publish_job_metrics": _build_publish_job_metrics(result.jobs),
+            "publish_job_rows": [
+                _build_publish_job_row(
+                    request,
+                    publish_job_query_params,
+                    row,
+                )
+                for row in result.jobs
+            ],
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/publish_jobs.html",
+        context=context,
+    )
+
+
+@console_router.get(
+    "/console/publish-jobs/{publish_job_id}",
+    response_class=HTMLResponse,
+    name="console_publish_job_detail",
+)
+def get_console_publish_job_detail(
+    publish_job_id: int,
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+    state: PublishJobState | None = Query(default=None),
+    account_key: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    limit: int = Query(default=_DEFAULT_PUBLISH_JOB_LIMIT, ge=1, le=100),
+) -> HTMLResponse:
+    """Render one publish job with linked draft context and publish logs."""
+
+    publish_job_query_params = _build_publish_job_query_params(
+        request,
+        state=state,
+        account_key=account_key,
+        channel=channel,
+        limit=limit,
+    )
+    publish_jobs_href = _append_query_params(
+        str(request.url_for("console_publish_jobs")),
+        publish_job_query_params,
+    )
+
+    try:
+        detail = request.app.state.console_publish_job_detail_fetcher(
+            publish_job_id,
+            database_url=database_url,
+        )
+    except PublishJobNotFoundError as exc:
+        context = _build_console_context(
+            request,
+            page_title="Publish Job Not Found",
+            page_description="The requested publish job detail could not be loaded for this operator context.",
+            active_nav_key="publish_jobs",
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+        context.update(
+            {
+                "publish_jobs_href": publish_jobs_href,
+                "publish_job_detail": None,
+                "publish_job_detail_missing": {
+                    "message": str(exc),
+                    "publish_job_id": publish_job_id,
+                },
+            }
+        )
+        return _TEMPLATES.TemplateResponse(
+            request=request,
+            name="console/publish_job_detail.html",
+            context=context,
+            status_code=404,
+        )
+
+    context = _build_console_context(
+        request,
+        page_title=f"Publish Job {publish_job_id}",
+        page_description="Publish timeline, linked draft context, and stored log events from the same operator-ready history helpers used by the API.",
+        active_nav_key="publish_jobs",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "publish_jobs_href": publish_jobs_href,
+            "publish_job_detail": _build_publish_job_detail(
+                request,
+                detail,
+            ),
+            "publish_job_detail_missing": None,
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/publish_job_detail.html",
         context=context,
     )
 
@@ -603,8 +756,10 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="Publish Jobs",
-            description="Planned browser visibility for publish history and queue state.",
-            status="Task 06",
+            description="Read-only publish queue, delivery state, and one-job timeline visibility.",
+            status="Ready",
+            href=_append_query_params(str(request.url_for("console_publish_jobs")), query_params),
+            active=active_nav_key == "publish_jobs",
         ),
         ConsoleNavItem(
             label="Scheduler",
@@ -785,6 +940,199 @@ def _build_article_row(row) -> dict[str, str | None]:
     }
 
 
+def _build_publish_job_query_params(
+    request: Request,
+    *,
+    state: PublishJobState | None,
+    account_key: str | None,
+    channel: str | None,
+    limit: int,
+) -> dict[str, str]:
+    query_params = dict(_extract_console_query_params(request))
+    normalized_account_key = account_key.strip() if account_key else ""
+    normalized_channel = channel.strip() if channel else ""
+
+    if state is not None:
+        query_params["state"] = state.value
+    if normalized_account_key:
+        query_params["account_key"] = normalized_account_key
+    if normalized_channel:
+        query_params["channel"] = normalized_channel
+    if limit != _DEFAULT_PUBLISH_JOB_LIMIT:
+        query_params["limit"] = str(limit)
+    return query_params
+
+
+def _build_publish_job_filters(
+    *,
+    state: PublishJobState | None,
+    account_key: str | None,
+    channel: str | None,
+    limit: int,
+) -> dict[str, str]:
+    normalized_account_key = account_key.strip() if account_key else ""
+    normalized_channel = channel.strip() if channel else ""
+    return {
+        "state": _humanize_label(state.value if state is not None else None),
+        "account_key": normalized_account_key or "All accounts",
+        "channel": normalized_channel.upper() if normalized_channel else "All channels",
+        "limit": str(limit),
+    }
+
+
+def _build_publish_job_metrics(rows) -> list[dict[str, str]]:
+    active_jobs = sum(1 for row in rows if row.state in {"scheduled", "publishing"})
+    published_jobs = sum(1 for row in rows if row.state == "published")
+    needs_attention = sum(1 for row in rows if row.state in {"failed", "cancelled"})
+    account_keys = sorted({row.account_key for row in rows})
+    return [
+        {
+            "label": "Visible jobs",
+            "value": str(len(rows)),
+            "detail": "Recent publish rows returned by the shared operator list helper.",
+        },
+        {
+            "label": "Active queue",
+            "value": str(active_jobs),
+            "detail": "Scheduled or publishing jobs still ahead of delivery.",
+        },
+        {
+            "label": "Published",
+            "value": str(published_jobs),
+            "detail": "Jobs that already reached a completed external publish state.",
+        },
+        {
+            "label": "Accounts visible",
+            "value": str(len(account_keys)),
+            "detail": _format_list(account_keys, fallback="No accounts visible"),
+        },
+        {
+            "label": "Needs attention",
+            "value": str(needs_attention),
+            "detail": "Failed or cancelled jobs remain visible without changing state.",
+        },
+    ]
+
+
+def _build_publish_job_row(
+    request: Request,
+    publish_job_query_params: dict[str, str],
+    row,
+) -> dict[str, str]:
+    return {
+        "publish_job_label": f"Publish job {row.publish_job_id}",
+        "detail_href": _append_query_params(
+            str(request.url_for("console_publish_job_detail", publish_job_id=row.publish_job_id)),
+            publish_job_query_params,
+        ),
+        "draft_label": f"Draft {row.draft_id}",
+        "review_detail_href": _append_query_params(
+            str(request.url_for("console_review_detail", draft_id=row.draft_id)),
+            _extract_console_query_params(request),
+        ),
+        "variant_label": f"Variant {row.variant_index}",
+        "brief_label": f"Brief {row.brief_id}",
+        "account_key": row.account_key,
+        "channel": row.channel.upper(),
+        "state": _humanize_label(row.state),
+        "draft_state": _humanize_label(row.draft_state),
+        "scheduled_for": _format_datetime(row.scheduled_for, none_label="Not scheduled"),
+        "published_at": _format_datetime(row.published_at, none_label="Not published yet"),
+        "created_at": _format_datetime(row.created_at, none_label="Not recorded"),
+        "updated_at": _format_datetime(row.updated_at, none_label="Not recorded"),
+        "attempt_count": str(row.attempt_count),
+        "external_post_id": row.external_post_id or "Not published yet",
+        "last_error": row.last_error or "No publish error recorded.",
+        "brief_title": row.brief_title,
+        "source_title": row.source_title,
+    }
+
+
+def _build_publish_job_detail(
+    request: Request,
+    detail,
+) -> dict[str, object]:
+    job = detail.job
+    draft = job.draft_variant
+    content_brief = draft.content_brief
+    source_item = content_brief.source_item
+    review_detail_href = _append_query_params(
+        str(request.url_for("console_review_detail", draft_id=draft.id)),
+        _extract_console_query_params(request),
+    )
+    return {
+        "job_label": f"Publish job {job.id}",
+        "account_key": content_brief.account_key,
+        "channel": job.channel.upper(),
+        "state": _humanize_label(job.state.value),
+        "scheduled_for": _format_datetime(job.scheduled_for, none_label="Not scheduled"),
+        "published_at": _format_datetime(job.published_at, none_label="Not published yet"),
+        "created_at": _format_datetime(job.created_at, none_label="Not recorded"),
+        "updated_at": _format_datetime(job.updated_at, none_label="Not recorded"),
+        "attempt_count": str(job.attempt_count),
+        "external_post_id": job.external_post_id or "Not published yet",
+        "last_error": job.last_error or "No publish error recorded.",
+        "review_detail_href": review_detail_href,
+        "draft": {
+            "draft_label": f"Draft {draft.id}",
+            "variant_label": f"Variant {draft.variant_index}",
+            "body": draft.body,
+            "draft_state": _humanize_label(draft.state.value),
+            "rejection_reason": draft.rejection_reason or "No rejection recorded.",
+            "created_at": _format_datetime(draft.created_at, none_label="Not recorded"),
+            "reviewed_at": _format_datetime(draft.reviewed_at, none_label="Not reviewed yet"),
+        },
+        "provenance": {
+            "source_name": draft.source_name or "Not recorded",
+            "source_url": draft.source_url,
+            "article_url": draft.article_url,
+            "source_published_at": _format_datetime(
+                draft.source_published_at,
+                none_label="Not recorded",
+            ),
+            "source_policy_mode": _humanize_label(
+                draft.source_policy_mode.value if draft.source_policy_mode else None
+            ),
+        },
+        "brief": {
+            "brief_id": content_brief.id,
+            "title": content_brief.title,
+            "summary": content_brief.summary or "No summary recorded.",
+            "key_points": list(content_brief.key_points),
+            "landing_url": content_brief.landing_url,
+            "tags": list(content_brief.tags),
+            "angle": _humanize_label(content_brief.angle),
+            "language": content_brief.language,
+        },
+        "source_item": {
+            "source_item_id": source_item.id,
+            "source_key": source_item.source_key,
+            "external_id": source_item.external_id,
+            "title": source_item.title,
+            "summary": source_item.summary or "No source summary recorded.",
+            "source_url": source_item.source_url,
+            "canonical_url": source_item.canonical_url,
+            "published_at": _format_datetime(source_item.published_at, none_label="Not recorded"),
+            "policy_mode": _humanize_label(source_item.policy_mode.value),
+            "require_attribution": "Required" if source_item.require_attribution else "Not required",
+        },
+        "publish_logs": [
+            _build_publish_job_log_row(log)
+            for log in detail.publish_logs
+        ],
+    }
+
+
+def _build_publish_job_log_row(log) -> dict[str, str]:
+    return {
+        "log_label": f"Log {log.id}",
+        "event_type": _humanize_label(log.event_type),
+        "message": log.message,
+        "payload": _format_json_payload(log.payload),
+        "created_at": _format_datetime(log.created_at, none_label="Not recorded"),
+    }
+
+
 def _build_pending_review_metrics(rows) -> list[dict[str, str]]:
     account_keys = sorted({row.account_key for row in rows})
     channels = sorted({row.channel.upper() for row in rows if row.channel})
@@ -914,7 +1262,11 @@ def _build_review_detail(
             else None
         ),
         "review_actions": [
-            _build_review_action_row(action)
+            _build_review_action_row(
+                request,
+                query_params,
+                action,
+            )
             for action in detail.review_actions
         ],
         "sibling_variants": [
@@ -924,7 +1276,11 @@ def _build_review_detail(
     }
 
 
-def _build_review_action_row(action) -> dict[str, str]:
+def _build_review_action_row(
+    request: Request,
+    query_params: dict[str, str],
+    action,
+) -> dict[str, str | None]:
     return {
         "action_id": str(action.id),
         "action_type": _humanize_label(action.action_type.value),
@@ -936,7 +1292,24 @@ def _build_review_action_row(action) -> dict[str, str]:
         "draft_state_after": _humanize_label(action.draft_state_after.value),
         "rejection_reason": action.rejection_reason or "No rejection recorded.",
         "scheduled_for": _format_datetime(action.scheduled_for, none_label="Not scheduled"),
-        "publish_job_id": str(action.publish_job_id) if action.publish_job_id else "Not created",
+        "publish_job_label": (
+            f"Publish job {action.publish_job_id}"
+            if action.publish_job_id
+            else "Not created"
+        ),
+        "publish_job_href": (
+            _append_query_params(
+                str(
+                    request.url_for(
+                        "console_publish_job_detail",
+                        publish_job_id=action.publish_job_id,
+                    )
+                ),
+                query_params,
+            )
+            if action.publish_job_id
+            else None
+        ),
     }
 
 
@@ -1062,3 +1435,9 @@ def _truncate_text(value: str, *, limit: int) -> str:
     if len(normalized) <= limit:
         return normalized
     return f"{normalized[: limit - 3].rstrip()}..."
+
+
+def _format_json_payload(payload: dict | None) -> str:
+    if payload is None:
+        return "No payload recorded."
+    return json.dumps(payload, sort_keys=True)

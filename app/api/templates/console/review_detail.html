@@ -378,7 +378,11 @@
                   <td>
                     <div class="console-stack">
                       <span>Scheduled {{ action.scheduled_for }}</span>
-                      <span>Publish job {{ action.publish_job_id }}</span>
+                      {% if action.publish_job_href %}
+                        <a class="console-link" href="{{ action.publish_job_href }}">{{ action.publish_job_label }}</a>
+                      {% else %}
+                        <span>{{ action.publish_job_label }}</span>
+                      {% endif %}
                     </div>
                   </td>
                 </tr>
