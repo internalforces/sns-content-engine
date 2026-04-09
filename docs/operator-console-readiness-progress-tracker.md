@@ -25,12 +25,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M1_read_only_console_foundation`
 - Current task: `02_run_overview_and_failure_dashboard_pages`
-- Active status: `in_progress`
-- Last updated: `2026-04-09 12:33 KST`
+- Active status: `done`
+- Last updated: `2026-04-09 12:34 KST`
 - Base branch: `master`
 - Active branch: `codex/task-02-console-dashboard`
-- Latest task commit: `not_created`
-- Resume decision: `started_task_02`
+- Latest task commit: `06ed520`
+- Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
@@ -51,7 +51,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Console shell and template infrastructure | done | 2026-04-08 18:32 KST | Added a FastAPI-served console shell with shared templates, mounted static assets, and passing focused browser coverage on `codex/task-01-console-shell` |
-| M1 | 02 | Run overview and failure dashboard pages | in_progress | 2026-04-09 12:22 KST | Started implementation on `codex/task-02-console-dashboard`; wiring one read-only dashboard page to shared run and failure query helpers |
+| M1 | 02 | Run overview and failure dashboard pages | done | 2026-04-09 12:34 KST | Added `/console/dashboard` with recent run history, readable failures, policy skips, and passing focused browser plus shared query/API regression coverage on `codex/task-02-console-dashboard` |
 | M1 | 03 | Article status and pending-review queue pages | pending | 2026-04-08 17:40 KST | Expose current article and queue data in table-friendly browser pages |
 | M2 | 04 | Review draft detail page | pending | 2026-04-08 17:40 KST | Reuse the current operator-ready review detail contract in one browser page |
 | M2 | 05 | Review action forms and safe mutation feedback | pending | 2026-04-08 17:40 KST | Keep browser mutations routed through existing review validation |
@@ -84,6 +84,7 @@ Status values:
 - `2026-04-08 18:32 KST` Committed Task `01` as `2e373ce` (`Add operator console shell`) after the focused console coverage and shared API regression slice passed
 - `2026-04-09 12:22 KST` Started Task `02` on `codex/task-02-console-dashboard`; keeping scope to one dashboard page that reuses existing history-query helpers for recent runs, failures, and policy skips without changing API semantics
 - `2026-04-09 12:28 KST` Added a dedicated `/console/dashboard` page, wired the console shell to shared run/failure listers through FastAPI app state, and shaped one read-only dashboard template with recent-run, failure, and policy-skip sections plus focused browser tests for empty and populated states
+- `2026-04-09 12:34 KST` Committed Task `02` as `06ed520` (`Add operator console dashboard`) after focused browser coverage and the shared runs/failures regression slice passed
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -105,8 +106,10 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 02 can now attach run and failure data to the shared console shell without revisiting route or asset infrastructure`
+- `Task 03 can now add article and pending-review list pages onto the same navigation, operator-context handling, and read-only table styling without revisiting dashboard wiring`
 
 ## Completion Summary
 - `Task 01 complete: the FastAPI app now serves a dedicated `/console` namespace with a canonical landing page, shared Jinja layout, and mounted static assets for future browser surfaces`
 - `Task 01 complete: focused browser coverage now protects the console redirect, landing-page rendering, and static asset delivery while shared API regression confirms existing operator routes still behave as before`
+- `Task 02 complete: the console now exposes `/console/dashboard` with recent pipeline runs, technical failures, and policy skips rendered through the same history query helpers that power the operator API`
+- `Task 02 complete: focused browser coverage now protects empty and populated dashboard states while shared history-query and API regression confirms the linked run/failure data path still behaves as expected`
