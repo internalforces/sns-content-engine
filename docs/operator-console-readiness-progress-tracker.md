@@ -26,10 +26,10 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_publish_and_scheduler_controls`
 - Current task: `08_console_operator_docs_and_browser_facing_regression_coverage`
 - Active status: `done`
-- Last updated: `2026-04-09 15:20 KST`
+- Last updated: `2026-04-09 15:16 KST`
 - Base branch: `codex/task-07-scheduler-console`
 - Active branch: `codex/task-08-console-docs`
-- Latest task commit: `pending_commit_sha`
+- Latest task commit: `3c2403e`
 - Resume decision: `pick_next_task`
 - Stop reason: `none`
 
@@ -57,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M2 | 05 | Review action forms and safe mutation feedback | done | 2026-04-09 14:29 KST | Added browser approve, reject, edit, and schedule actions with inline workflow feedback on `codex/task-05-review-action-console` |
 | M3 | 06 | Publish job list and detail pages | done | 2026-04-09 14:44 KST | Added `/console/publish-jobs` and `/console/publish-jobs/{publish_job_id}` with focused browser coverage on `codex/task-06-publish-job-console` |
 | M3 | 07 | Scheduler action console with safe defaults | done | 2026-04-09 15:00 KST | Added `/console/scheduler` with discover, backfill, and explicit live-opt-in publish-due actions plus focused console coverage on `codex/task-07-scheduler-console` |
-| M3 | 08 | Console operator docs and browser-facing regression coverage | done | 2026-04-09 15:20 KST | Added a shipped-console operator guide, README link updates, and linked browser regressions on `codex/task-08-console-docs`; commit SHA pending final record |
+| M3 | 08 | Console operator docs and browser-facing regression coverage | done | 2026-04-09 15:16 KST | Added a shipped-console operator guide, README link updates, and linked browser regressions on `codex/task-08-console-docs` in commit `3c2403e` |
 
 Status values:
 - `pending`
@@ -72,6 +72,7 @@ Status values:
 - `tests/test_console.py`
 
 ## Progress Log
+- `2026-04-09 15:16 KST` Committed Task `08` as `3c2403e` (`Document operator console and expand browser regression coverage`) after the full console suite, broader API/review/scheduler regression slice, and `git diff --check` passed
 - `2026-04-09 15:15 KST` Added a dedicated `docs/operator-console-guide.md` reference plus a README guide link that documents how to start the shipped FastAPI console locally, open it with `config_dir` and `database_url`, and restates manual-review plus dry-run publish safety in browser terms
 - `2026-04-09 15:16 KST` Expanded `tests/test_console.py` with linked-fixture browser regressions that cover the shipped read-only console routes together and the approve-to-schedule-to-publish-visibility flow alongside the default dry-run scheduler action path
 - `2026-04-09 15:07 KST` Started Task `08` on `codex/task-08-console-docs`; keeping scope to one concise console operator guide, README guide-link updates, and realistic linked-fixture browser regression coverage now that the shipped console surface exists
