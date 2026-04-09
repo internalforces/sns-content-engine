@@ -400,6 +400,20 @@ body.console-shell {
   font-weight: 700;
 }
 
+.console-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--console-ink);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.console-checkbox-row input {
+  margin-top: 0.25rem;
+  accent-color: var(--console-accent);
+}
+
 .console-input,
 .console-textarea,
 .console-button {

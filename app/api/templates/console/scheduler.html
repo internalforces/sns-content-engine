@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Scheduler controls</p>
+        <h2>Discover, backfill, and publish due</h2>
+      </div>
+      <span class="console-badge">Task 07</span>
+    </div>
+    <p class="console-card-copy">
+      Trigger the existing scheduler wrappers from the browser without changing their safety model. Publish-due stays in dry-run mode unless the live checkbox is explicitly selected for that one request.
+    </p>
+  </section>
+
+  <section class="console-grid">
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Execution context</p>
+          <h2>Current operator inputs</h2>
+        </div>
+      </div>
+      <dl class="console-definition-list">
+        <div>
+          <dt>Config directory</dt>
+          <dd>{{ operator_context.config_dir }}</dd>
+        </div>
+        <div>
+          <dt>Database URL</dt>
+          <dd>{{ operator_context.database_url or "Default application database" }}</dd>
+        </div>
+        <div>
+          <dt>Publish safety</dt>
+          <dd>Dry run is the default browser path. Live publish requires the explicit checkbox in the publish-due form below.</dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Latest browser action</p>
+          <h2>{% if scheduler_action_result %}{{ scheduler_action_result.title }}{% else %}Waiting for action{% endif %}</h2>
+        </div>
+        {% if scheduler_action_result %}
+          <span class="console-badge">{{ scheduler_action_result.badge }}</span>
+        {% endif %}
+      </div>
+
+      {% if scheduler_action_feedback %}
+        <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}">
+          <strong>{{ scheduler_action_feedback.title }}</strong>
+          <p>{{ scheduler_action_feedback.message }}</p>
+        </div>
+      {% endif %}
+
+      {% if scheduler_action_result %}
+        <p class="console-card-copy">{{ scheduler_action_result.summary }}</p>
+
+        {% if scheduler_action_result.mode_label %}
+          <p class="console-card-copy"><strong>Publish mode:</strong> {{ scheduler_action_result.mode_label }}</p>
+        {% endif %}
+
+        <section class="console-metric-grid console-metric-grid-compact">
+          {% for metric in scheduler_action_result.metrics %}
+            <article class="console-metric-card console-metric-card-compact">
+              <p class="console-metric-label">{{ metric.label }}</p>
+              <p class="console-metric-value">{{ metric.value }}</p>
+            </article>
+          {% endfor %}
+        </section>
+
+        {% if scheduler_action_result.kind == "discover" %}
+          <div class="console-panel-grid">
+            <article class="console-panel">
+              <p class="console-card-label">Processed sources</p>
+              <h3>Configured routes touched</h3>
+              {% if scheduler_action_result.processed_sources %}
+                <ul class="console-checklist">
+                  {% for source_key in scheduler_action_result.processed_sources %}
+                    <li>{{ source_key }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="console-empty">No sources were processed.</p>
+              {% endif %}
+            </article>
+
+            <article class="console-panel">
+              <p class="console-card-label">Failures</p>
+              <h3>Readable scheduler errors</h3>
+              {% if scheduler_action_result.failure_messages %}
+                <ul class="console-checklist">
+                  {% for message in scheduler_action_result.failure_messages %}
+                    <li>{{ message }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="console-empty">No discover failures were reported.</p>
+              {% endif %}
+            </article>
+          </div>
+        {% elif scheduler_action_result.kind == "backfill" %}
+          {% if scheduler_action_result.outcomes %}
+            <div class="console-table-wrap">
+              <table class="console-table">
+                <thead>
+                  <tr>
+                    <th>Route</th>
+                    <th>Backlog target</th>
+                    <th>Existing future jobs</th>
+                    <th>Eligible drafts</th>
+                    <th>Planning</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for outcome in scheduler_action_result.outcomes %}
+                    <tr>
+                      <td>{{ outcome.route_label }}</td>
+                      <td>{{ outcome.backlog_target }}</td>
+                      <td>{{ outcome.existing_future_job_count }}</td>
+                      <td>{{ outcome.eligible_draft_count }}</td>
+                      <td>
+                        <div class="console-stack">
+                          <span>Planned slots {{ outcome.planned_slot_count }}</span>
+                          <span>Created jobs {{ outcome.created_job_ids }}</span>
+                          <span>Created count {{ outcome.created_count }} / Skipped slots {{ outcome.skipped_slot_count }}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="console-empty">No backlog routes were processed for this run.</p>
+          {% endif %}
+        {% elif scheduler_action_result.kind == "publish_due" %}
+          {% if scheduler_action_result.outcomes %}
+            <div class="console-table-wrap">
+              <table class="console-table">
+                <thead>
+                  <tr>
+                    <th>Publish job</th>
+                    <th>Status</th>
+                    <th>Stored state</th>
+                    <th>Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for outcome in scheduler_action_result.outcomes %}
+                    <tr>
+                      <td>{{ outcome.publish_job_label }}</td>
+                      <td>{{ outcome.status }}</td>
+                      <td>{{ outcome.state }}</td>
+                      <td>
+                        <div class="console-stack">
+                          <span>{{ outcome.message }}</span>
+                          <span>{{ outcome.external_post_id }}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="console-empty">No due publish jobs were processed by this run.</p>
+          {% endif %}
+        {% endif %}
+      {% else %}
+        <p class="console-empty">No scheduler action has been triggered from this browser session yet.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Run actions</p>
+        <h2>Execute scheduler workflows</h2>
+      </div>
+    </div>
+
+    <div class="console-action-grid">
+      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
+        <input type="hidden" name="action" value="discover">
+        <p class="console-card-label">Discover</p>
+        <h3>Discover new source items</h3>
+        <p class="console-card-copy">Run the configured source discovery workflow and surface any readable failures directly in this page.</p>
+        <button class="console-button" type="submit">Run discover</button>
+      </form>
+
+      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
+        <input type="hidden" name="action" value="backfill">
+        <p class="console-card-label">Backfill</p>
+        <h3>Fill future publish slots</h3>
+        <p class="console-card-copy">Create missing scheduled publish jobs up to each route backlog target using the existing planner and approved drafts.</p>
+        <button class="console-button" type="submit">Run backfill</button>
+      </form>
+    </div>
+
+    <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="publish_due">
+      <p class="console-card-label">Publish due</p>
+      <h3>Process due publish jobs</h3>
+      <p class="console-card-copy">Leave the checkbox off to keep this request in dry-run mode. Only check it when you intentionally want a live publish attempt from the browser.</p>
+      <label class="console-checkbox-row" for="publish-due-live">
+        <input id="publish-due-live" name="live" type="checkbox" value="true">
+        <span>Enable live publishing for this one run</span>
+      </label>
+      <button class="console-button console-button-muted" type="submit">Run publish due</button>
+    </form>
+  </section>
+{% endblock %}

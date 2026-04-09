@@ -12,7 +12,8 @@ from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.storage import PublishJobState
+from app.config import ConfigError
+from app.storage import DatabaseSchemaError, PublishJobState
 from app.workflows.history_queries import PublishJobNotFoundError
 from app.workflows.review_queue import (
     DraftNotFoundError,
@@ -30,6 +31,7 @@ _DEFAULT_DASHBOARD_RUN_LIMIT = 6
 _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 _DEFAULT_ARTICLE_LIMIT = 25
 _DEFAULT_PUBLISH_JOB_LIMIT = 25
+_SCHEDULER_LIVE_VALUES = {"1", "on", "true", "yes"}
 
 console_router = APIRouter(include_in_schema=False)
 
@@ -332,6 +334,102 @@ def get_console_publish_job_detail(
         request=request,
         name="console/publish_job_detail.html",
         context=context,
+    )
+
+
+@console_router.get(
+    "/console/scheduler",
+    response_class=HTMLResponse,
+    name="console_scheduler",
+)
+def get_console_scheduler(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Render scheduler actions with dry-run-first browser controls."""
+
+    return _render_console_scheduler_page(
+        request,
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+
+
+@console_router.post(
+    "/console/scheduler",
+    response_class=HTMLResponse,
+    name="console_scheduler_action",
+)
+async def post_console_scheduler_action(
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+) -> HTMLResponse:
+    """Execute one scheduler action and re-render the browser summary."""
+
+    form_data = await _parse_console_form_body(request)
+    action = (form_data.get("action") or "").strip().lower()
+
+    if action not in {"discover", "backfill", "publish_due"}:
+        return _render_console_scheduler_page(
+            request,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_scheduler_action_feedback(
+                kind="error",
+                action_label="Scheduler action",
+                message="Select one of the supported scheduler actions before submitting the form.",
+            ),
+        )
+
+    live_requested = _is_live_publish_requested(form_data)
+    try:
+        result = _execute_console_scheduler_action(
+            request,
+            action=action,
+            config_dir=config_dir,
+            database_url=database_url,
+            live_requested=live_requested,
+        )
+    except ConfigError as exc:
+        return _render_console_scheduler_page(
+            request,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_scheduler_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+        )
+    except DatabaseSchemaError as exc:
+        return _render_console_scheduler_page(
+            request,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=503,
+            feedback=_build_scheduler_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+        )
+
+    return _render_console_scheduler_page(
+        request,
+        config_dir=config_dir,
+        database_url=database_url,
+        feedback=_build_scheduler_action_success_feedback(
+            action=action,
+            result=result,
+        ),
+        action_result=_build_scheduler_action_result(
+            action=action,
+            result=result,
+        ),
     )
 
 
@@ -693,6 +791,202 @@ def _build_review_action_feedback(
     }
 
 
+def _render_console_scheduler_page(
+    request: Request,
+    *,
+    config_dir: str,
+    database_url: str | None,
+    status_code: int = 200,
+    feedback: dict[str, str] | None = None,
+    action_result: dict[str, object] | None = None,
+) -> HTMLResponse:
+    """Render the shared scheduler control page for GET and POST flows."""
+
+    query_params = _extract_console_query_params(request)
+    context = _build_console_context(
+        request,
+        page_title="Scheduler",
+        page_description="Browser controls for discover, backfill, and publish-due execution that reuse the current scheduler wrappers and keep dry-run publish as the default path.",
+        active_nav_key="scheduler",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    context.update(
+        {
+            "scheduler_action_href": _append_query_params(
+                str(request.url_for("console_scheduler_action")),
+                query_params,
+            ),
+            "scheduler_action_feedback": feedback,
+            "scheduler_action_result": action_result,
+        }
+    )
+    return _TEMPLATES.TemplateResponse(
+        request=request,
+        name="console/scheduler.html",
+        context=context,
+        status_code=status_code,
+    )
+
+
+def _execute_console_scheduler_action(
+    request: Request,
+    *,
+    action: str,
+    config_dir: str,
+    database_url: str | None,
+    live_requested: bool,
+):
+    if action == "discover":
+        return request.app.state.console_scheduler_discover_runner(
+            config_dir=config_dir,
+        )
+    if action == "backfill":
+        return request.app.state.console_scheduler_backfill_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    return request.app.state.console_scheduler_publish_due_runner(
+        config_dir=config_dir,
+        database_url=database_url,
+        dry_run=not live_requested,
+    )
+
+
+def _is_live_publish_requested(form_data: dict[str, str]) -> bool:
+    value = (form_data.get("live") or "").strip().lower()
+    return value in _SCHEDULER_LIVE_VALUES
+
+
+def _build_scheduler_action_success_feedback(
+    *,
+    action: str,
+    result,
+) -> dict[str, str]:
+    action_label = _humanize_label(action)
+    if action == "discover":
+        message = (
+            f"Discover completed with {result.discovered_count} discovered items across "
+            f"{len(result.processed_sources)} configured sources."
+        )
+    elif action == "backfill":
+        message = (
+            f"Backfill checked {result.processed_channel_count} account routes and created "
+            f"{result.created_count} publish jobs."
+        )
+    else:
+        mode_label = "dry-run mode" if result.dry_run else "live publishing enabled"
+        message = (
+            f"Publish-due completed with {mode_label}. "
+            f"Processed {result.processed_count} due jobs."
+        )
+    return _build_scheduler_action_feedback(
+        kind="success",
+        action_label=action_label,
+        message=message,
+    )
+
+
+def _build_scheduler_action_feedback(
+    *,
+    kind: str,
+    action_label: str,
+    message: str,
+) -> dict[str, str]:
+    return {
+        "kind": kind,
+        "title": f"{action_label} {'saved' if kind == 'success' else 'blocked'}",
+        "message": message,
+    }
+
+
+def _build_scheduler_action_result(
+    *,
+    action: str,
+    result,
+) -> dict[str, object]:
+    if action == "discover":
+        processed_sources = list(result.processed_sources)
+        failure_messages = list(result.failure_messages)
+        return {
+            "kind": "discover",
+            "title": "Discover summary",
+            "badge": "Discover",
+            "summary": (
+                f"Discover checked {len(processed_sources)} configured sources and recorded "
+                f"{result.discovered_count} discovered items."
+            ),
+            "metrics": [
+                {"label": "Discovered items", "value": str(result.discovered_count)},
+                {"label": "Sources processed", "value": str(len(processed_sources))},
+                {"label": "Failures", "value": str(result.failure_count)},
+            ],
+            "processed_sources": processed_sources,
+            "failure_messages": failure_messages,
+        }
+
+    if action == "backfill":
+        return {
+            "kind": "backfill",
+            "title": "Backfill summary",
+            "badge": "Backfill",
+            "summary": (
+                f"Backfill checked {result.processed_channel_count} account routes and created "
+                f"{result.created_count} scheduled publish jobs."
+            ),
+            "metrics": [
+                {"label": "Routes checked", "value": str(result.processed_channel_count)},
+                {"label": "Jobs created", "value": str(result.created_count)},
+                {"label": "Existing future jobs", "value": str(result.existing_count)},
+                {"label": "Skipped slots", "value": str(result.skipped_count)},
+            ],
+            "outcomes": [_build_scheduler_backfill_outcome_row(outcome) for outcome in result.outcomes],
+        }
+
+    return {
+        "kind": "publish_due",
+        "title": "Publish-due summary",
+        "badge": "Publish Due",
+        "mode_label": "Dry run" if result.dry_run else "Live publish",
+        "summary": (
+            "Live publish ran because the explicit browser opt-in was selected."
+            if not result.dry_run
+            else "Dry run remained the default browser path, so no publish state changes were applied."
+        ),
+        "metrics": [
+            {"label": "Due jobs processed", "value": str(result.processed_count)},
+            {"label": "Published", "value": str(result.published_count)},
+            {"label": "Failures", "value": str(result.failed_count)},
+            {"label": "Dry-run only", "value": str(result.dry_run_count)},
+            {"label": "Skipped", "value": str(result.skipped_count)},
+        ],
+        "outcomes": [_build_scheduler_publish_due_outcome_row(outcome) for outcome in result.outcomes],
+    }
+
+
+def _build_scheduler_backfill_outcome_row(outcome) -> dict[str, str]:
+    return {
+        "route_label": f"{outcome.account_key} / {outcome.channel.upper()}",
+        "backlog_target": str(outcome.backlog_target),
+        "existing_future_job_count": str(outcome.existing_future_job_count),
+        "eligible_draft_count": str(outcome.eligible_draft_count),
+        "planned_slot_count": str(outcome.planned_slot_count),
+        "created_job_ids": _format_list(outcome.created_job_ids, fallback="None created"),
+        "created_count": str(outcome.created_count),
+        "skipped_slot_count": str(outcome.skipped_slot_count),
+    }
+
+
+def _build_scheduler_publish_due_outcome_row(outcome) -> dict[str, str]:
+    return {
+        "publish_job_label": f"Publish job {outcome.publish_job_id}",
+        "status": _humanize_label(outcome.status),
+        "state": _humanize_label(outcome.state.value),
+        "message": outcome.message,
+        "external_post_id": outcome.external_post_id or "No external post recorded.",
+    }
+
+
 def _build_console_context(
     request: Request,
     *,
@@ -763,8 +1057,10 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="Scheduler",
-            description="Planned safe controls for discover, backfill, and dry-run publish operations.",
-            status="Task 07",
+            description="Safe browser controls for discover, backfill, and dry-run-first publish execution.",
+            status="Ready",
+            href=_append_query_params(str(request.url_for("console_scheduler")), query_params),
+            active=active_nav_key == "scheduler",
         ),
     ]
 
