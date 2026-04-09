@@ -71,9 +71,12 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 ## Operator Guides
 
+- [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
 - [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, publish-job visibility, and scheduler-safe HTTP actions.
+
+The console follows the same safety model as the CLI and API: drafts still require manual review, and browser `publish-due` stays dry-run unless you explicitly opt into one live run.
 
 ## CLI Usage
 

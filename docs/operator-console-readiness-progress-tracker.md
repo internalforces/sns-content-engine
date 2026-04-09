@@ -24,23 +24,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M3_publish_and_scheduler_controls`
-- Current task: `07_scheduler_action_console_with_safe_defaults`
+- Current task: `08_console_operator_docs_and_browser_facing_regression_coverage`
 - Active status: `done`
-- Last updated: `2026-04-09 15:00 KST`
-- Base branch: `codex/task-06-publish-job-console`
-- Active branch: `codex/task-07-scheduler-console`
-- Latest task commit: `50abe01`
+- Last updated: `2026-04-09 15:16 KST`
+- Base branch: `codex/task-07-scheduler-console`
+- Active branch: `codex/task-08-console-docs`
+- Latest task commit: `3c2403e`
 - Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
-- Goal: `Expose discover, backfill, and publish-due controls through the browser while keeping dry-run as the default publish path`
-- In scope: `One server-rendered scheduler page, POST-backed discover/backfill/publish-due actions, readable execution summaries, and focused browser coverage for safe defaults plus representative outcomes`
-- Out of scope: `Background auto-refresh, auth, multi-user workflow ownership, and any hidden live-publish default`
-- Dependencies: `Task 06 publish-job console plus existing scheduler action wrappers and API request semantics in app/api/app.py and app/scheduler/jobs.py`
+- Goal: `Document the shipped operator console and add browser-facing regression coverage that protects its linked read and action flows`
+- In scope: `One concise console operator guide, README guide-link updates, a realistic linked-fixture console regression sweep, and tracker updates for shipped console usage plus safety expectations`
+- Out of scope: `New browser features, auth, SPA work, background refresh, or any change to manual-review and publish safety semantics`
+- Dependencies: `Tasks 01 through 07, current console routes/templates/tests, README operator guide links, and existing API safety documentation`
 - Verification commands:
-  - `PYTHONPATH=$PWD pytest tests/test_console.py -k "scheduler_actions"`
-  - `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_scheduler.py -k "scheduler_discover_endpoint or scheduler_backfill_endpoint or scheduler_publish_due_endpoint"`
+  - `PYTHONPATH=$PWD pytest tests/test_console.py`
+  - `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_scheduler.py tests/test_review_queue_workflow.py`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -57,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M2 | 05 | Review action forms and safe mutation feedback | done | 2026-04-09 14:29 KST | Added browser approve, reject, edit, and schedule actions with inline workflow feedback on `codex/task-05-review-action-console` |
 | M3 | 06 | Publish job list and detail pages | done | 2026-04-09 14:44 KST | Added `/console/publish-jobs` and `/console/publish-jobs/{publish_job_id}` with focused browser coverage on `codex/task-06-publish-job-console` |
 | M3 | 07 | Scheduler action console with safe defaults | done | 2026-04-09 15:00 KST | Added `/console/scheduler` with discover, backfill, and explicit live-opt-in publish-due actions plus focused console coverage on `codex/task-07-scheduler-console` |
-| M3 | 08 | Console operator docs and browser-facing regression coverage | pending | 2026-04-08 17:40 KST | Document the console only after the shipped browser surface exists |
+| M3 | 08 | Console operator docs and browser-facing regression coverage | done | 2026-04-09 15:16 KST | Added a shipped-console operator guide, README link updates, and linked browser regressions on `codex/task-08-console-docs` in commit `3c2403e` |
 
 Status values:
 - `pending`
@@ -66,14 +66,16 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/api/app.py`
-- `app/api/console.py`
-- `app/api/static/console.css`
-- `app/api/templates/console/scheduler.html`
+- `README.md`
+- `docs/operator-console-guide.md`
 - `docs/operator-console-readiness-progress-tracker.md`
 - `tests/test_console.py`
 
 ## Progress Log
+- `2026-04-09 15:16 KST` Committed Task `08` as `3c2403e` (`Document operator console and expand browser regression coverage`) after the full console suite, broader API/review/scheduler regression slice, and `git diff --check` passed
+- `2026-04-09 15:15 KST` Added a dedicated `docs/operator-console-guide.md` reference plus a README guide link that documents how to start the shipped FastAPI console locally, open it with `config_dir` and `database_url`, and restates manual-review plus dry-run publish safety in browser terms
+- `2026-04-09 15:16 KST` Expanded `tests/test_console.py` with linked-fixture browser regressions that cover the shipped read-only console routes together and the approve-to-schedule-to-publish-visibility flow alongside the default dry-run scheduler action path
+- `2026-04-09 15:07 KST` Started Task `08` on `codex/task-08-console-docs`; keeping scope to one concise console operator guide, README guide-link updates, and realistic linked-fixture browser regression coverage now that the shipped console surface exists
 - `2026-04-09 15:00 KST` Committed Task `07` as `50abe01` (`Expose scheduler controls in operator console`) after focused scheduler console coverage, scheduler API regression slices, and a full console regression run passed
 - `2026-04-09 14:56 KST` Added `/console/scheduler` with POST-backed discover, backfill, and publish-due controls, kept the route thin by reusing the existing scheduler runners from app state, and made live publish an explicit checkbox opt-in while dry-run remains the default path
 - `2026-04-09 14:58 KST` Added focused browser tests for scheduler summaries and publish-due mode wiring, then verified the page against focused scheduler console coverage, scheduler API regression slices, and a full console regression run
@@ -143,6 +145,10 @@ Status values:
 - `2026-04-09 14:55 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_scheduler.py -k "scheduler_discover_endpoint or scheduler_backfill_endpoint or scheduler_publish_due_endpoint"` -> `passed`
 - `2026-04-09 14:57 KST` `PYTHONPATH=$PWD pytest tests/test_console.py` -> `passed`
 - `2026-04-09 14:58 KST` `git diff --check` -> `passed`
+- `2026-04-09 15:17 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -k "linked_operator_context or mutation_flow"` -> `passed`
+- `2026-04-09 15:18 KST` `PYTHONPATH=$PWD pytest tests/test_console.py` -> `passed`
+- `2026-04-09 15:18 KST` `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_scheduler.py tests/test_review_queue_workflow.py` -> `passed`
+- `2026-04-09 15:18 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Should the first console stay fully server-rendered for all interactions, or should later tasks allow small progressive-enhancement fetch calls while still avoiding a separate SPA?`
@@ -151,7 +157,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 08 can document the now-shipped scheduler console and tighten browser-facing regression coverage around the full linked operator flow`
+- `Operator console readiness roadmap tasks 01 through 08 are complete; any further browser enhancements should be scoped as a new roadmap item instead of extending this finished slice`
 
 ## Completion Summary
 - `Task 01 complete: the FastAPI app now serves a dedicated `/console` namespace with a canonical landing page, shared Jinja layout, and mounted static assets for future browser surfaces`
@@ -168,3 +174,5 @@ Status values:
 - `Task 06 complete: focused publish-job browser coverage plus shared API and full-console regression slices confirm the new read-only publish visibility stays aligned with the existing history-query contracts and review workspace links`
 - `Task 07 complete: the console now exposes `/console/scheduler` so operators can trigger discover, backfill, and publish-due runs from the browser without shell access`
 - `Task 07 complete: focused scheduler browser coverage plus shared scheduler API regressions and a full console slice confirm dry-run stays the default browser path while live publish still requires explicit opt-in`
+- `Task 08 complete: the repository now includes one dedicated operator console guide that explains local startup, context query parameters, main pages, and the browser safety model without drifting from shipped behavior`
+- `Task 08 complete: linked browser-facing regressions now cover the shared read-only console context plus the approve-to-schedule-to-publish visibility flow while keeping the default scheduler publish path in dry-run mode`
