@@ -485,6 +485,10 @@ def create_app(
     application.state.console_article_statuses_lister = article_statuses_lister
     application.state.console_pending_review_drafts_lister = pending_review_drafts_lister
     application.state.console_review_draft_detail_fetcher = review_draft_detail_fetcher
+    application.state.console_draft_approver = draft_approver
+    application.state.console_draft_rejector = draft_rejector
+    application.state.console_draft_editor = draft_editor
+    application.state.console_draft_scheduler = draft_scheduler
     application.include_router(console_router)
 
     @application.exception_handler(DatabaseSchemaError)
