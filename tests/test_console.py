@@ -995,6 +995,262 @@ def test_scheduler_actions_publish_due_live_opt_in_is_explicit() -> None:
     assert "published successfully" in response.text
 
 
+def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        PipelineRunRepository(session).add(
+            PipelineRun(
+                workflow_name="run_local_finance",
+                trigger_mode="manual_local",
+                status=PipelineRunStatus.PARTIAL,
+                started_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 3, 18, 9, 5, tzinfo=timezone.utc),
+                discovered_count=4,
+                saved_count=3,
+                enriched_count=2,
+                brief_count=2,
+                draft_count=2,
+                failure_count=1,
+                latest_error_code="fetch_blocked",
+                summary_json={
+                    "policy_mode_counts": {"reusable": 3, "restricted": 1},
+                    "policy_skipped_count": 1,
+                    "attribution_required_count": 1,
+                    "rewrite_providers": ["codex_wrapper"],
+                },
+            )
+        )
+        failed_source = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="finance_rss",
+                external_id="linked-entry-1",
+                source_url="https://example.com/articles/linked-1",
+                title="Central bank update",
+                published_at=datetime(2026, 3, 17, 21, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+                policy_mode=SourcePolicyMode.RESTRICTED,
+                require_attribution=True,
+            )
+        )
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=failed_source.id,
+                source_name="Finance Feed",
+                article_url="https://example.com/final/linked-1",
+                published_at=datetime(2026, 3, 17, 21, 0, tzinfo=timezone.utc),
+                discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
+                failure_stage=PipelineStage.HTML_FETCH,
+                failure_code="fetch_blocked",
+                failure_message="site blocked",
+                html_fetch_status=StageExecutionStatus.FAILED,
+                last_stage=PipelineStage.HTML_FETCH,
+                updated_at=datetime(2026, 3, 18, 9, 8, tzinfo=timezone.utc),
+            )
+        )
+        skipped_source = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="wikinews_feed",
+                external_id="linked-entry-2",
+                source_url="https://example.com/articles/linked-2",
+                title="Election watchdog report",
+                policy_mode=SourcePolicyMode.DISCOVERY_ONLY,
+                require_attribution=True,
+            )
+        )
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=skipped_source.id,
+                source_name="Wikinews",
+                article_url="https://example.com/articles/linked-2",
+                policy_decision_reason="Source policy blocks full-text fetch for this item.",
+                html_fetch_status=StageExecutionStatus.SKIPPED,
+                article_extract_status=StageExecutionStatus.SKIPPED,
+                summary_regenerate_status=StageExecutionStatus.SKIPPED,
+                last_stage=PipelineStage.HTML_FETCH,
+                updated_at=datetime(2026, 3, 18, 9, 9, tzinfo=timezone.utc),
+            )
+        )
+        pending_draft = _create_pending_review_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 10, tzinfo=timezone.utc),
+            brief_title="Linked pending brief",
+            body="Useful AI automation workflows for operators",
+        )
+        publish_job = _create_publish_job(
+            session,
+            variant_index=1,
+            brief_title="Linked scheduled brief",
+            created_at=datetime(2026, 3, 18, 9, 20, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 3, 18, 12, 0, tzinfo=timezone.utc),
+            include_provenance=True,
+        )
+        publish_job_id = publish_job.id
+        linked_review_draft_id = publish_job.draft_variant_id
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    params = {"config_dir": "/tmp/operator-config", "database_url": database_url}
+    client = TestClient(create_app())
+
+    home_response = client.get("/console/", params=params)
+    assert home_response.status_code == 200
+    assert "Operator Console" in home_response.text
+    assert "Runs &amp; Failures" in home_response.text
+    assert "Publish Jobs" in home_response.text
+    assert "Manual review required" in home_response.text
+
+    dashboard_response = client.get("/console/dashboard", params=params)
+    assert dashboard_response.status_code == 200
+    assert "run_local_finance" in dashboard_response.text
+    assert "Central bank update" in dashboard_response.text
+    assert "Election watchdog report" in dashboard_response.text
+
+    articles_response = client.get("/console/articles", params=params)
+    assert articles_response.status_code == 200
+    assert "Finance Feed" in articles_response.text
+    assert "site blocked" in articles_response.text
+
+    pending_response = client.get("/console/reviews/pending", params=params)
+    assert pending_response.status_code == 200
+    assert f"/console/reviews/{pending_draft.id}" in pending_response.text
+
+    publish_jobs_response = client.get("/console/publish-jobs", params=params)
+    assert publish_jobs_response.status_code == 200
+    assert f"/console/publish-jobs/{publish_job_id}" in publish_jobs_response.text
+    assert f"/console/reviews/{linked_review_draft_id}" in publish_jobs_response.text
+
+    publish_job_detail_response = client.get(
+        f"/console/publish-jobs/{publish_job_id}",
+        params=params,
+    )
+    assert publish_job_detail_response.status_code == 200
+    assert "Back to publish jobs" in publish_job_detail_response.text
+    assert f"/console/reviews/{linked_review_draft_id}" in publish_job_detail_response.text
+
+    scheduler_response = client.get("/console/scheduler", params=params)
+    assert scheduler_response.status_code == 200
+    assert "Run discover" in scheduler_response.text
+    assert "Run publish due" in scheduler_response.text
+    assert "Enable live publishing for this one run" in scheduler_response.text
+
+
+def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def stub_publish_due(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+        dry_run: bool,
+    ) -> PublishDueResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        captured["dry_run"] = dry_run
+        return PublishDueResult(
+            outcomes=(
+                PublishDueOutcome(
+                    publish_job_id=99,
+                    status="dry_run",
+                    state=PublishJobState.SCHEDULED,
+                    message="dry-run only; no state changes were applied",
+                    external_post_id="dry-run:99",
+                ),
+            ),
+            dry_run=dry_run,
+        )
+
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+            include_article_enrichment=True,
+        )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    config_dir = str(tmp_path)
+    params = {"config_dir": config_dir, "database_url": database_url}
+    client = TestClient(create_app(scheduler_publish_due_runner=stub_publish_due))
+
+    pending_before_response = client.get("/console/reviews/pending", params=params)
+    assert pending_before_response.status_code == 200
+    assert f"/console/reviews/{draft.id}" in pending_before_response.text
+
+    detail_before_response = client.get(f"/console/reviews/{draft.id}", params=params)
+    assert detail_before_response.status_code == 200
+    assert "Approve draft" in detail_before_response.text
+    assert "Edit draft body" in detail_before_response.text
+
+    approve_response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=database_url,
+        config_dir=tmp_path,
+        action="approve",
+        reviewer="editor-a",
+    )
+    assert approve_response.status_code == 200
+    assert "Approve saved" in approve_response.text
+    assert "Create a publish job" in approve_response.text
+
+    schedule_response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=database_url,
+        config_dir=tmp_path,
+        action="schedule",
+        reviewer="scheduler-a",
+        scheduled_for="2026-03-18T09:00:00+09:00",
+    )
+    assert schedule_response.status_code == 200
+    assert "Schedule saved" in schedule_response.text
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    publish_job_id = jobs[0].id
+
+    pending_after_response = client.get("/console/reviews/pending", params=params)
+    assert pending_after_response.status_code == 200
+    assert "No drafts are currently waiting for manual review." in pending_after_response.text
+
+    publish_jobs_response = client.get("/console/publish-jobs", params=params)
+    assert publish_jobs_response.status_code == 200
+    assert f"/console/publish-jobs/{publish_job_id}" in publish_jobs_response.text
+    assert f"/console/reviews/{draft.id}" in publish_jobs_response.text
+
+    publish_job_detail_response = client.get(
+        f"/console/publish-jobs/{publish_job_id}",
+        params=params,
+    )
+    assert publish_job_detail_response.status_code == 200
+    assert "Open review workspace" in publish_job_detail_response.text
+    assert f"/console/reviews/{draft.id}" in publish_job_detail_response.text
+
+    scheduler_response = _post_console_scheduler_action(
+        client,
+        action="publish_due",
+        config_dir=config_dir,
+        database_url=database_url,
+    )
+    assert scheduler_response.status_code == 200
+    assert captured == {
+        "config_dir": config_dir,
+        "database_url": database_url,
+        "dry_run": True,
+    }
+    assert "Publish Due saved" in scheduler_response.text
+    assert "Dry run remained the default browser path" in scheduler_response.text
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'console.db'}")
     create_all_tables(engine)
