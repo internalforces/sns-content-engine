@@ -25,12 +25,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M2_review_workspace`
 - Current task: `05_review_action_forms_and_safe_mutation_feedback`
-- Active status: `in_progress`
-- Last updated: `2026-04-09 14:20 KST`
+- Active status: `done`
+- Last updated: `2026-04-09 14:29 KST`
 - Base branch: `codex/task-04-review-detail-console`
 - Active branch: `codex/task-05-review-action-console`
-- Latest task commit: `pending_commit_creation`
-- Resume decision: `start_task_05`
+- Latest task commit: `a8e4842`
+- Resume decision: `pick_next_task`
 - Stop reason: `none`
 
 ## Scope For Current Task
@@ -54,7 +54,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run overview and failure dashboard pages | done | 2026-04-09 12:34 KST | Added `/console/dashboard` with recent run history, readable failures, policy skips, and passing focused browser plus shared query/API regression coverage on `codex/task-02-console-dashboard` |
 | M1 | 03 | Article status and pending-review queue pages | done | 2026-04-09 13:57 KST | Added `/console/articles` and `/console/reviews/pending` with shared helper reuse, live navigation links, and focused console plus API/workflow regression coverage on `codex/task-03-console-queues` |
 | M2 | 04 | Review draft detail page | done | 2026-04-09 14:09 KST | Added `/console/reviews/{draft_id}` with queue-to-detail links, browser-friendly not-found handling, and focused console plus shared review regression coverage on `codex/task-04-review-detail-console` |
-| M2 | 05 | Review action forms and safe mutation feedback | in_progress | 2026-04-09 14:20 KST | Extending the draft-detail workspace with browser action forms and readable mutation feedback on `codex/task-05-review-action-console` |
+| M2 | 05 | Review action forms and safe mutation feedback | done | 2026-04-09 14:29 KST | Added browser approve, reject, edit, and schedule actions with inline workflow feedback on `codex/task-05-review-action-console` |
 | M3 | 06 | Publish job list and detail pages | pending | 2026-04-08 17:40 KST | Surface publish queue visibility before adding more browser actions |
 | M3 | 07 | Scheduler action console with safe defaults | pending | 2026-04-08 17:40 KST | Dry-run publish remains the default browser action path |
 | M3 | 08 | Console operator docs and browser-facing regression coverage | pending | 2026-04-08 17:40 KST | Document the console only after the shipped browser surface exists |
@@ -94,6 +94,7 @@ Status values:
 - `2026-04-09 14:24 KST` Added a POST-backed review action flow on `/console/reviews/{draft_id}`, reusing the existing review_queue mutation helpers and rendering workflow-aligned success or error feedback directly in the draft workspace without introducing a second data path
 - `2026-04-09 14:25 KST` Expanded the review detail template and console stylesheet with state-aware action cards so pending drafts expose approve/reject/edit while approved drafts expose scheduling with browser-readable guardrail messaging
 - `2026-04-09 14:27 KST` Added focused console browser tests covering approve, reject, edit, and schedule success plus approval-validation and schedule-conflict feedback to keep the new mutation surface aligned with the existing review workflow rules
+- `2026-04-09 14:29 KST` Committed Task `05` as `a8e4842` (`Add browser review action console`) after focused console review-action coverage plus shared API/workflow and console regression slices passed
 
 ## Test Log
 - `2026-04-08 17:44 KST` `git diff --check` -> `passed`
@@ -143,3 +144,5 @@ Status values:
 - `Task 03 complete: focused browser coverage protects empty and populated article and pending-review states while shared API, review-workflow, and full-console regression slices confirm the reused data paths still behave as expected`
 - `Task 04 complete: the console now exposes `/console/reviews/{draft_id}` so operators can inspect one draft's body, provenance, brief, source-item, enrichment, audit history, and sibling variants from the browser`
 - `Task 04 complete: focused browser coverage protects populated and not-found detail states while shared review-detail regressions and a full console slice confirm the queue-to-detail path stays aligned with the current API and workflow helper behavior`
+- `Task 05 complete: the review workspace now exposes browser approve, reject, edit, and schedule actions that call the same review_queue helpers and preserve the existing validation, state-conflict, and scheduling guardrails`
+- `Task 05 complete: focused console browser coverage protects all four action paths plus representative validation/conflict feedback while shared API/workflow regressions confirm the mutation semantics still match the existing operator surfaces`
