@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Run overview</p>
+        <h2>Recent local pipeline activity</h2>
+      </div>
+      <span class="console-badge">Task 02</span>
+    </div>
+
+    {% if dashboard_latest_run %}
+      <div class="console-panel-grid">
+        <article class="console-panel">
+          <p class="console-card-label">Latest run</p>
+          <h3>{{ dashboard_latest_run.workflow_name }}</h3>
+          <dl class="console-definition-list">
+            <div>
+              <dt>Status</dt>
+              <dd>{{ dashboard_latest_run.status }}</dd>
+            </div>
+            <div>
+              <dt>Trigger mode</dt>
+              <dd>{{ dashboard_latest_run.trigger_mode }}</dd>
+            </div>
+            <div>
+              <dt>Started</dt>
+              <dd>{{ dashboard_latest_run.started_at }}</dd>
+            </div>
+            <div>
+              <dt>Completed</dt>
+              <dd>{{ dashboard_latest_run.completed_at }}</dd>
+            </div>
+            <div>
+              <dt>Policy summary</dt>
+              <dd>{{ dashboard_latest_run.policy_summary }}</dd>
+            </div>
+            <div>
+              <dt>Guardrails</dt>
+              <dd>{{ dashboard_latest_run.policy_guardrails }}</dd>
+            </div>
+            <div>
+              <dt>Rewrite providers</dt>
+              <dd>{{ dashboard_latest_run.rewrite_providers }}</dd>
+            </div>
+            <div>
+              <dt>Latest error code</dt>
+              <dd>{{ dashboard_latest_run.latest_error_code }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="console-panel">
+          <p class="console-card-label">Delivery counts</p>
+          <div class="console-metric-grid console-metric-grid-compact">
+            {% for count in dashboard_latest_run.counts %}
+              <div class="console-metric-card console-metric-card-compact">
+                <p class="console-metric-label">{{ count.label }}</p>
+                <p class="console-metric-value">{{ count.value }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        </article>
+      </div>
+    {% else %}
+      <p class="console-empty">Run dashboard is waiting for data. No pipeline runs have been recorded yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="console-metric-grid">
+    {% for metric in dashboard_metrics %}
+      <article class="console-card console-metric-card">
+        <p class="console-metric-label">{{ metric.label }}</p>
+        <p class="console-metric-value">{{ metric.value }}</p>
+        <p class="console-card-copy">{{ metric.detail }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="console-card">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">Recent runs</p>
+        <h2>Stored run history</h2>
+      </div>
+    </div>
+    {% if dashboard_runs %}
+      <div class="console-table-wrap">
+        <table class="console-table">
+          <thead>
+            <tr>
+              <th>Workflow</th>
+              <th>Status</th>
+              <th>Counts</th>
+              <th>Policy</th>
+              <th>Timing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in dashboard_runs %}
+              <tr>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.workflow_name }}</strong>
+                    <span>{{ row.trigger_mode }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <strong>{{ row.status }}</strong>
+                    <span>Latest error: {{ row.latest_error_code }}</span>
+                  </div>
+                </td>
+                <td>{{ row.counts_summary }}</td>
+                <td>
+                  <div class="console-stack">
+                    <span>{{ row.policy_summary }}</span>
+                    <span>{{ row.policy_guardrails }}</span>
+                    <span>Rewrite providers: {{ row.rewrite_providers }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="console-stack">
+                    <span>Started {{ row.started_at }}</span>
+                    <span>Completed {{ row.completed_at }}</span>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="console-empty">No recent runs are available for this operator context yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="console-grid">
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Technical failures</p>
+          <h2>Readable failure rows</h2>
+        </div>
+      </div>
+      {% if dashboard_failures %}
+        <div class="console-table-wrap">
+          <table class="console-table">
+            <thead>
+              <tr>
+                <th>Article</th>
+                <th>Failure</th>
+                <th>Policy</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard_failures %}
+                <tr>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ row.title }}</strong>
+                      <span>{{ row.source_name }}</span>
+                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ row.failure_code }}</strong>
+                      <span>{{ row.failure_stage }}</span>
+                      <span>{{ row.failure_message }}</span>
+                    </div>
+                  </td>
+                  <td>{{ row.policy_mode }} / Attribution {{ row.require_attribution }}</td>
+                  <td>{{ row.updated_at }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="console-empty">No technical failures are currently visible.</p>
+      {% endif %}
+    </article>
+
+    <article class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">Policy skips</p>
+          <h2>Intentional policy blocks</h2>
+        </div>
+      </div>
+      {% if dashboard_policy_skips %}
+        <div class="console-table-wrap">
+          <table class="console-table">
+            <thead>
+              <tr>
+                <th>Article</th>
+                <th>Decision</th>
+                <th>Policy</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in dashboard_policy_skips %}
+                <tr>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ row.title }}</strong>
+                      <span>{{ row.source_name }}</span>
+                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="console-stack">
+                      <strong>{{ row.skipped_stage }}</strong>
+                      <span>{{ row.policy_decision_reason }}</span>
+                    </div>
+                  </td>
+                  <td>{{ row.policy_mode }} / Attribution {{ row.require_attribution }}</td>
+                  <td>{{ row.updated_at }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="console-empty">No policy skips are currently visible.</p>
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}
