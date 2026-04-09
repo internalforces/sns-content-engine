@@ -13,7 +13,7 @@
       This page exposes the current queue directly from the shared review workflow helper while keeping the existing manual-review gate untouched.
     </p>
     <p class="console-card-copy">
-      Task 04 will add per-draft browser detail, but this page already makes the current queue and routing mix visible without shell access.
+      Each queue row now links into one draft workspace so operators can inspect provenance, brief context, enrichment, audit history, and sibling variants without leaving the console.
     </p>
   </section>
 
@@ -53,7 +53,7 @@
                 <td>#{{ row.queue_position }}</td>
                 <td>
                   <div class="console-stack">
-                    <strong>{{ row.draft_label }}</strong>
+                    <a class="console-link" href="{{ row.detail_href }}">{{ row.draft_label }}</a>
                     <span>{{ row.variant_label }}</span>
                   </div>
                 </td>
