@@ -166,6 +166,32 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     )
 
 
+def test_registry_loads_finance_local_example_config_directory() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/examples/finance_local")
+
+    account = registry.get_account("finance_insights_daily")
+    source = registry.get_source("finance_macro_rss")
+
+    assert account.topic == "Finance market insights"
+    assert str(account.landing.fallback_url) == "https://www.federalreserve.gov/monetarypolicy.htm"
+    assert account.matching.include_keywords == (
+        "market",
+        "policy",
+        "macro",
+        "fomc",
+        "monetary policy",
+        "rate",
+    )
+    assert account.matching.source_tags == ("markets", "policy", "macro", "monetary policy")
+    assert account.matching.strict_topic_guard is True
+
+    assert isinstance(source, RssSourceConfig)
+    assert str(source.url) == "https://www.federalreserve.gov/feeds/press_monetary.xml"
+    assert source.duplicate_window_days == 14
+
+    assert registry.get_source_set("finance_primary").sources == ("finance_macro_rss",)
+
+
 def test_registry_is_deeply_immutable() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
     account = registry.get_account("ai_tools_daily")
@@ -535,12 +561,14 @@ def test_sources_load_policy_overrides_for_supported_variants(tmp_path: Path) ->
     assert rss_source.allow_llm_rewrite is False
     assert rss_source.require_attribution is True
     assert rss_source.notes == "Aggregator feed for discovery only"
+    assert tuple(str(prefix) for prefix in rss_source.include_url_prefixes) == ()
 
     assert sitemap_source.policy_mode == "restricted"
     assert sitemap_source.allow_full_text_fetch is True
     assert sitemap_source.allow_llm_rewrite is True
     assert sitemap_source.require_attribution is True
     assert sitemap_source.notes is None
+    assert tuple(str(prefix) for prefix in sitemap_source.include_url_prefixes) == ()
 
     assert isinstance(manual_source, ManualCsvSourceConfig)
     assert manual_source.policy_mode == "reusable"
@@ -548,6 +576,65 @@ def test_sources_load_policy_overrides_for_supported_variants(tmp_path: Path) ->
     assert manual_source.allow_llm_rewrite is True
     assert manual_source.require_attribution is False
     assert manual_source.notes == "Operator-curated reusable seeds"
+
+
+def test_source_variants_load_include_url_prefixes(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_sitemap:
+            type: sitemap
+            url: https://example.com/sitemap.xml
+            include_url_prefixes:
+              - https://example.com/guides
+          seo_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            include_url_prefixes:
+              - https://example.com/seo
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_sitemap
+              - seo_tools_rss
+        """,
+    )
+
+    registry = ConfigRegistry.from_directory(tmp_path)
+    sitemap_source = registry.get_source("ai_tools_sitemap")
+    rss_source = registry.get_source("seo_tools_rss")
+
+    assert isinstance(sitemap_source, SitemapSourceConfig)
+    assert tuple(str(prefix) for prefix in sitemap_source.include_url_prefixes) == (
+        "https://example.com/guides",
+    )
+    assert isinstance(rss_source, RssSourceConfig)
+    assert tuple(str(prefix) for prefix in rss_source.include_url_prefixes) == (
+        "https://example.com/seo",
+    )
 
 
 def test_invalid_source_policy_mode_raises_validation_error(tmp_path: Path) -> None:

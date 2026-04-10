@@ -1,7 +1,9 @@
 sources:
   ai_tools_rss:
-    type: rss
-    url: https://odtoolbase.com/feed.xml
+    type: sitemap
+    url: https://odtoolbase.com/sitemap.xml
+    include_url_prefixes:
+      - https://odtoolbase.com/guides
     duplicate_window_days: 14
 
   ai_tools_manual:
@@ -9,8 +11,10 @@ sources:
     path: ../data/ai_tools_manual.csv
 
   seo_tools_rss:
-    type: rss
-    url: https://odtoolbase.com/feed.xml
+    type: sitemap
+    url: https://odtoolbase.com/sitemap.xml
+    include_url_prefixes:
+      - https://odtoolbase.com/seo
     duplicate_window_days: 14
 
   seo_tools_manual:

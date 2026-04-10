@@ -32,6 +32,27 @@ def normalize_raw_source_item(raw_item: RawSourceItem) -> SourceItemCandidate:
     )
 
 
+def source_url_matches_prefixes(
+    source_url: str,
+    include_url_prefixes,
+) -> bool:
+    """Return whether a normalized source URL should be kept for this source config."""
+
+    if not include_url_prefixes:
+        return True
+
+    normalized_source_url = canonicalize_url(source_url)
+    for prefix in include_url_prefixes:
+        normalized_prefix = canonicalize_url(str(prefix))
+        if (
+            normalized_source_url == normalized_prefix
+            or normalized_source_url.startswith(f"{normalized_prefix}/")
+            or normalized_source_url.startswith(f"{normalized_prefix}?")
+        ):
+            return True
+    return False
+
+
 def _normalize_source_url(value: str | None) -> str:
     normalized = _normalize_non_empty(value, label="source_url")
     parsed = urlparse(normalized)

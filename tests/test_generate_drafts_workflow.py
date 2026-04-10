@@ -28,7 +28,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows import generate_drafts
+from app.workflows.generate_drafts import generate_drafts
 
 
 def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None:

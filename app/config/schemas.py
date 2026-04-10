@@ -349,6 +349,7 @@ class BaseSourceConfig(FrozenConfigModel):
     require_attribution: bool = False
     notes: str | None = None
     duplicate_window_days: int = Field(default=30, ge=0)
+    include_url_prefixes: tuple[HttpUrl, ...] = Field(default_factory=tuple)
     extraction: SourceExtractionConfig | None = None
 
     @field_validator("policy_mode", mode="before")

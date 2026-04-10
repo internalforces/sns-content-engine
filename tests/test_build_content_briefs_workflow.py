@@ -20,7 +20,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows import build_content_briefs
+from app.workflows.build_content_briefs import build_content_briefs
 
 
 def test_build_content_briefs_creates_and_persists_a_brief(tmp_path: Path) -> None:

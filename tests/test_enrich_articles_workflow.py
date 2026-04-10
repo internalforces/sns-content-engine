@@ -19,7 +19,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows import enrich_articles
+from app.workflows.enrich_articles import enrich_articles
 
 
 class _FakeFetcher:
