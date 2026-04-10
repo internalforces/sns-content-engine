@@ -105,10 +105,21 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert account.topic == "All-domain latest news"
     assert account.prompt_profile == "all_domain_factual_x_post"
     assert list(account.source_sets) == ["all_domain_primary"]
-    assert str(account.landing.fallback_url) == "https://newsroom.example.com/daily-brief"
-    assert account.matching.include_keywords == ("policy", "launch", "update", "report", "statement")
+    assert str(account.landing.fallback_url) == "https://www.federalreserve.gov/newsevents/pressreleases.htm"
+    assert account.matching.include_keywords == (
+        "announces",
+        "minutes",
+        "policy",
+        "launch",
+        "update",
+        "report",
+        "statement",
+        "nvidia",
+        "wikinews",
+        "federal reserve",
+    )
     assert account.matching.exclude_keywords == ("coupon", "giveaway", "rumor")
-    assert account.matching.source_tags == ("official", "newsroom", "wikinews")
+    assert account.matching.source_tags == ("press release", "wikinews")
     assert account.validation.profile == "standard"
     assert channel.validation.max_links == 1
     assert channel.validation.recent_duplicate_window_days == 2
@@ -117,15 +128,15 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert official_source.policy_mode == "reusable"
     assert official_source.require_attribution is True
     assert official_source.allow_full_text_fetch is True
-    assert "government-style feed" in official_source.notes
+    assert str(official_source.url) == "https://www.federalreserve.gov/feeds/press_all.xml"
+    assert official_source.notes == "Live Federal Reserve all press releases RSS feed."
 
-    assert isinstance(corporate_source, SitemapSourceConfig)
+    assert isinstance(corporate_source, RssSourceConfig)
     assert corporate_source.policy_mode == "reusable"
     assert corporate_source.require_attribution is True
     assert corporate_source.allow_llm_rewrite is True
-    assert corporate_source.extraction is not None
-    assert corporate_source.extraction.prefer_selectors == (".article-body",)
-    assert corporate_source.extraction.exclude_selectors == (".related-links",)
+    assert str(corporate_source.url) == "https://nvidianews.nvidia.com/cats/press_release.xml"
+    assert corporate_source.notes == "Live NVIDIA Newsroom press releases RSS feed."
 
     assert isinstance(gdelt_source, GdeltSourceConfig)
     assert gdelt_source.query == "domain:news"
@@ -137,7 +148,8 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert isinstance(wikinews_source, RssSourceConfig)
     assert wikinews_source.policy_mode == "reusable"
     assert wikinews_source.require_attribution is True
-    assert wikinews_source.notes == "Sample Wikinews-style source with attribution-friendly defaults."
+    assert str(wikinews_source.url) == "https://en.wikinews.org/w/index.php?title=Special:NewsFeed&feed=rss"
+    assert wikinews_source.notes == "Live English Wikinews RSS feed with attribution-friendly defaults."
 
     assert registry.get_prompt_profile("all_domain_review_default").system_template.startswith(
         "You are the review-first editor"

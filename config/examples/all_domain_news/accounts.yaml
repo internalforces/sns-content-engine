@@ -5,22 +5,26 @@ accounts:
       - all_domain_primary
     prompt_profile: all_domain_factual_x_post
     landing:
-      fallback_url: https://newsroom.example.com/daily-brief
+      fallback_url: https://www.federalreserve.gov/newsevents/pressreleases.htm
       rules: []
     matching:
       include_keywords:
+        - announces
+        - minutes
         - policy
         - launch
         - update
         - report
         - statement
+        - nvidia
+        - wikinews
+        - federal reserve
       exclude_keywords:
         - coupon
         - giveaway
         - rumor
       source_tags:
-        - official
-        - newsroom
+        - press release
         - wikinews
       strict_topic_guard: false
     validation:

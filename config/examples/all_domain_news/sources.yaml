@@ -1,43 +1,38 @@
 sources:
   official_updates_reusable:
     type: rss
-    url: https://public.example.com/agency/press/feed.xml
+    url: https://www.federalreserve.gov/feeds/press_all.xml
     policy_mode: reusable
     allow_full_text_fetch: true
     allow_llm_rewrite: true
     require_attribution: true
-    notes: "Sample official or government-style feed. Replace with a real public institution RSS feed."
+    notes: "Live Federal Reserve all press releases RSS feed."
     duplicate_window_days: 7
 
   corporate_ir_reusable:
-    type: sitemap
-    url: https://investors.example.com/newsroom/sitemap.xml
+    type: rss
+    url: https://nvidianews.nvidia.com/cats/press_release.xml
     policy_mode: reusable
     allow_full_text_fetch: true
     allow_llm_rewrite: true
     require_attribution: true
-    notes: "Sample corporate newsroom or investor-relations sitemap. Replace with a real newsroom or IR source."
+    notes: "Live NVIDIA Newsroom press releases RSS feed."
     duplicate_window_days: 7
-    extraction:
-      prefer_selectors:
-        - .article-body
-      exclude_selectors:
-        - .related-links
 
   wikinews_attribution_friendly:
     type: rss
-    url: https://wikinews.example.org/wiki/Special:NewsFeed?feed=rss
+    url: https://en.wikinews.org/w/index.php?title=Special:NewsFeed&feed=rss
     policy_mode: reusable
     allow_full_text_fetch: true
     allow_llm_rewrite: true
     require_attribution: true
-    notes: "Sample Wikinews-style source with attribution-friendly defaults."
+    notes: "Live English Wikinews RSS feed with attribution-friendly defaults."
     duplicate_window_days: 3
 
   gdelt_latest_discovery:
     type: gdelt
     query: "domain:news"
-    notes: "Sample GDELT discovery-only source. Keep it in a separate discovery source set until policy-aware enrichment skips are enabled."
+    notes: "Live GDELT discovery-only source. Keep it in a separate discovery source set until policy-aware enrichment skips are enabled."
 
 source_sets:
   public_reusable:
