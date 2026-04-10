@@ -15,11 +15,19 @@ from app.connectors.llm import DraftGenerationProviderError
 from app.config import ConfigValidationError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import BackfillResult, PublishDueOutcome, PublishDueResult, SchedulerDiscoverResult
-from app.storage import DatabaseSchemaError, DraftVariantState, PublishJobState, ReviewActionType
+from app.storage import (
+    DatabaseSchemaError,
+    DraftVariantState,
+    PipelineStage,
+    PublishJobState,
+    ReviewActionType,
+)
 from app.workflows import (
     BuildContentBriefOutcome,
     BuildContentBriefsResult,
     DiscoverSourcesResult,
+    EnrichArticleOutcome,
+    EnrichArticlesResult,
     GenerateDraftOutcome,
     GenerateDraftsResult,
     IngestSourcesResult,
@@ -326,6 +334,53 @@ def test_ingest_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     )
 
     result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
+def test_enrich_articles_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "enrich_articles",
+        lambda _config_dir, database_url=None: EnrichArticlesResult(
+            processed_source_item_ids=(1, 2, 3, 4),
+            outcomes=(
+                EnrichArticleOutcome(source_item_id=1, status="enriched", article_enrichment_id=10),
+                EnrichArticleOutcome(source_item_id=2, status="existing", article_enrichment_id=11),
+                EnrichArticleOutcome(source_item_id=3, status="skipped", article_enrichment_id=12),
+                EnrichArticleOutcome(
+                    source_item_id=4,
+                    status="failed",
+                    article_enrichment_id=13,
+                    failure_code="fetch_blocked",
+                    failure_stage=PipelineStage.HTML_FETCH,
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["enrich-articles"])
+
+    assert result.exit_code == 0
+    assert "processed 4 ingested source items" in result.stdout
+    assert "enriched: 1" in result.stdout
+    assert "existing: 1" in result.stdout
+    assert "skipped: 1" in result.stdout
+    assert "failed: 1" in result.stdout
+    assert "failures[html_fetch]: 1" in result.stdout
+
+
+def test_enrich_articles_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "enrich_articles",
+        lambda _config_dir, database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["enrich-articles"])
 
     assert result.exit_code == 1
     assert "database schema is outdated" in result.output
@@ -902,6 +957,7 @@ def test_help_command_is_available() -> None:
     assert "db" in result.stdout
     assert "build-briefs" in result.stdout
     assert "discover" in result.stdout
+    assert "enrich-articles" in result.stdout
     assert "generate-drafts" in result.stdout
     assert "ingest" in result.stdout
     assert "review" in result.stdout

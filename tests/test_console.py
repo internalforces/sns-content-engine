@@ -10,6 +10,7 @@ from textwrap import dedent
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import (
     BackfillChannelResult,
     BackfillResult,
@@ -41,6 +42,13 @@ from app.storage import (
     create_database_engine,
     create_session_factory,
     session_scope,
+)
+from app.workflows import (
+    EnrichArticleOutcome,
+    EnrichArticlesResult,
+    IngestSourcesResult,
+    RunLocalPipelineResult,
+    SourceIngestOutcome,
 )
 from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
 
@@ -824,9 +832,12 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "스케줄러" in response.text
-    assert "수집, 백필, 발행 예정 처리" in response.text
-    assert "이 브라우저 세션에서 아직 실행된 스케줄러 작업이 없습니다." in response.text
-    assert "수집 실행" in response.text
+    assert "후보 수집, 저장, 보강, 파이프라인, 백필, 발행 예정 처리" in response.text
+    assert "이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다." in response.text
+    assert "후보 수집 실행" in response.text
+    assert "수집 저장 실행" in response.text
+    assert "기사 보강 실행" in response.text
+    assert "전체 파이프라인 실행" in response.text
     assert "백필 실행" in response.text
     assert "발행 예정 처리 실행" in response.text
     assert "이번 실행에만 실발행 허용" in response.text
@@ -855,9 +866,155 @@ def test_scheduler_actions_discover_post_renders_summary() -> None:
     assert response.status_code == 200
     assert captured == {"config_dir": "/tmp/operator-config"}
     assert "수집 완료" in response.text
-    assert "수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
+    assert "후보 수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
     assert "ai_tools_rss" in response.text
     assert "manual_csv: feed parse failed" in response.text
+
+
+def test_scheduler_actions_ingest_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_ingest_sources(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> IngestSourcesResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return IngestSourcesResult(
+            outcomes=(
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-1",
+                        source_url="https://example.com/posts/1",
+                        title="Fresh item",
+                    ),
+                    status="saved",
+                    source_item_id=10,
+                ),
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-2",
+                        source_url="https://example.com/posts/2",
+                        title="Duplicate item",
+                    ),
+                    status="duplicate",
+                    duplicate_reason=DuplicateReason.CANONICAL_URL,
+                    matched_item_id=9,
+                ),
+            ),
+            failures=(
+                SourceDiscoveryFailure(
+                    source_id="ai_tools_manual",
+                    stage="read",
+                    message="csv missing",
+                ),
+            ),
+            processed_sources=("ai_tools_manual", "ai_tools_rss"),
+        )
+
+    client = TestClient(create_app(ingest_sources_runner=stub_ingest_sources))
+    response = _post_console_scheduler_action(
+        client,
+        action="ingest",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "수집 저장 완료" in response.text
+    assert "수집 저장이 완료되었습니다. 2개의 발견 후보 중 1개를 저장했고 1개 중복을 차단했습니다." in response.text
+    assert "대표 URL 중복 1" in response.text
+    assert "ai_tools_manual [read] csv missing" in response.text
+
+
+def test_scheduler_actions_enrich_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_enrich_articles(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> EnrichArticlesResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return EnrichArticlesResult(
+            processed_source_item_ids=(1, 2, 3),
+            outcomes=(
+                EnrichArticleOutcome(source_item_id=1, status="enriched", article_enrichment_id=21),
+                EnrichArticleOutcome(source_item_id=2, status="skipped", article_enrichment_id=22),
+                EnrichArticleOutcome(
+                    source_item_id=3,
+                    status="failed",
+                    article_enrichment_id=23,
+                    failure_code="extract_failed",
+                    failure_stage=PipelineStage.ARTICLE_EXTRACT,
+                ),
+            ),
+        )
+
+    client = TestClient(create_app(enrich_articles_runner=stub_enrich_articles))
+    response = _post_console_scheduler_action(
+        client,
+        action="enrich",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "기사 보강 완료" in response.text
+    assert "기사 보강이 완료되었습니다. 3개의 저장된 수집 항목 중 1개를 보강했고 1개를 정책에 따라 건너뛰었습니다." in response.text
+    assert "본문 추출 1" in response.text
+
+
+def test_scheduler_actions_run_local_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_run_local_pipeline(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> RunLocalPipelineResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return RunLocalPipelineResult(
+            pipeline_run_id=77,
+            status=PipelineRunStatus.PARTIAL,
+            ingest_discovered_count=6,
+            ingest_saved_count=4,
+            enrichment_enriched_count=3,
+            brief_created_count=3,
+            draft_created_variant_count=9,
+            failure_count=1,
+        )
+
+    client = TestClient(create_app(run_local_pipeline_runner=stub_run_local_pipeline))
+    response = _post_console_scheduler_action(
+        client,
+        action="run_local",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "전체 파이프라인 완료" in response.text
+    assert "전체 파이프라인이 완료되었습니다. 발견 6, 저장 4, 보강 3, 브리프 3, 초안 9건입니다." in response.text
+    assert "실행 ID" in response.text
+    assert "부분 완료" in response.text
 
 
 def test_scheduler_actions_backfill_post_renders_summary() -> None:
@@ -1129,7 +1286,9 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
 
     scheduler_response = client.get("/console/scheduler", params=params)
     assert scheduler_response.status_code == 200
-    assert "수집 실행" in scheduler_response.text
+    assert "후보 수집 실행" in scheduler_response.text
+    assert "수집 저장 실행" in scheduler_response.text
+    assert "기사 보강 실행" in scheduler_response.text
     assert "발행 예정 처리 실행" in scheduler_response.text
     assert "이번 실행에만 실발행 허용" in scheduler_response.text
 

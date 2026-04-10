@@ -13,6 +13,7 @@ from app.operations import log_workflow_exception, log_workflow_result, run_heal
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
 from app.workflows.discover_sources import discover_sources
+from app.workflows.enrich_articles import enrich_articles
 from app.workflows import (
     ReviewQueueError,
     approve_draft,
@@ -165,6 +166,46 @@ def ingest_command(
         typer.echo(f"- {failure.format_for_cli()}", err=True)
 
     raise typer.Exit(code=1)
+
+
+@app.command("enrich-articles")
+def enrich_articles_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Fetch, extract, and summarize stored ingested source items."""
+
+    try:
+        result = enrich_articles(config_dir, database_url=database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"processed {result.processed_count} ingested source items")
+    typer.echo(f"enriched: {result.enriched_count}")
+    typer.echo(f"existing: {result.existing_count}")
+    typer.echo(f"skipped: {result.skipped_count}")
+    typer.echo(f"failed: {result.failed_count}")
+
+    for stage, count in result.failure_counts_by_stage().items():
+        typer.echo(f"failures[{stage}]: {count}")
 
 
 @app.command("build-briefs")

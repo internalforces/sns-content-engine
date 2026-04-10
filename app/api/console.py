@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from app.connectors.llm import DraftGenerationProviderError
 from app.config import ConfigError
 from app.storage import DatabaseSchemaError, PublishJobState
 from app.workflows.history_queries import PublishJobNotFoundError
@@ -40,18 +41,23 @@ _KOREAN_LABELS = {
     "backfill": "백필",
     "brief_build": "브리프 생성",
     "cancelled": "취소됨",
+    "canonical_url": "대표 URL 중복",
     "discover": "수집",
     "discovery_only": "탐색 전용",
     "draft_generate": "초안 생성",
     "dry_run": "드라이런",
     "edit": "수정",
+    "enrich": "기사 보강",
     "enriched": "보강 완료",
+    "existing": "기존 있음",
     "failed": "실패",
     "html_fetch": "HTML 수집",
+    "ingest": "수집 저장",
     "in_progress": "진행 중",
     "linkedin": "LinkedIn",
     "manual_local": "로컬 수동 실행",
     "news": "뉴스",
+    "normalized_title_hash": "정규화 제목 중복",
     "opinion": "의견",
     "other": "기타",
     "partial": "부분 완료",
@@ -63,9 +69,11 @@ _KOREAN_LABELS = {
     "publish_due": "발행 예정 처리",
     "published": "발행 완료",
     "publishing": "발행 중",
+    "recent_fingerprint": "최근 내용 중복",
     "reject": "반려",
     "rejected": "반려됨",
     "restricted": "제한됨",
+    "run_local": "전체 파이프라인",
     "reusable": "재사용 가능",
     "rss_discovered": "RSS 수집",
     "running": "실행 중",
@@ -73,6 +81,7 @@ _KOREAN_LABELS = {
     "schedule": "예약",
     "scheduled": "예약됨",
     "skipped": "건너뜀",
+    "source_identity": "소스 고유 ID 중복",
     "succeeded": "성공",
     "summary_regenerate": "요약 재생성",
     "topic_takeaway": "핵심 요약",
@@ -419,7 +428,7 @@ async def post_console_scheduler_action(
     form_data = await _parse_console_form_body(request)
     action = (form_data.get("action") or "").strip().lower()
 
-    if action not in {"discover", "backfill", "publish_due"}:
+    if action not in {"discover", "ingest", "enrich", "run_local", "backfill", "publish_due"}:
         return _render_console_scheduler_page(
             request,
             config_dir=config_dir,
@@ -427,8 +436,8 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
-                action_label="스케줄러 작업",
-                message="폼을 제출하기 전에 지원되는 스케줄러 작업을 선택하세요.",
+                action_label="운영 작업",
+                message="폼을 제출하기 전에 지원되는 운영 작업을 선택하세요.",
             ),
         )
 
@@ -459,6 +468,18 @@ async def post_console_scheduler_action(
             config_dir=config_dir,
             database_url=database_url,
             status_code=503,
+            feedback=_build_scheduler_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+        )
+    except DraftGenerationProviderError as exc:
+        return _render_console_scheduler_page(
+            request,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
                 action_label=_humanize_label(action),
@@ -854,7 +875,7 @@ def _render_console_scheduler_page(
     context = _build_console_context(
         request,
         page_title="스케줄러",
-        page_description="현재 스케줄러 래퍼를 그대로 재사용하면서, 수집·백필·발행 예정 처리를 드라이런 기본값으로 실행하는 브라우저 제어 화면입니다.",
+        page_description="후보 수집, 저장, 기사 보강, 전체 파이프라인, 백필, 발행 예정 처리를 현재 워크플로 경로에 맞춰 실행하는 브라우저 제어 화면입니다.",
         active_nav_key="scheduler",
         config_dir=config_dir,
         database_url=database_url,
@@ -889,6 +910,21 @@ def _execute_console_scheduler_action(
         return request.app.state.console_scheduler_discover_runner(
             config_dir=config_dir,
         )
+    if action == "ingest":
+        return request.app.state.console_ingest_sources_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "enrich":
+        return request.app.state.console_enrich_articles_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "run_local":
+        return request.app.state.console_run_local_pipeline_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
     if action == "backfill":
         return request.app.state.console_scheduler_backfill_runner(
             config_dir=config_dir,
@@ -914,8 +950,23 @@ def _build_scheduler_action_success_feedback(
     action_label = _humanize_label(action)
     if action == "discover":
         message = (
-            f"수집이 완료되었습니다. {len(result.processed_sources)}개의 설정된 소스에서 "
+            f"후보 수집이 완료되었습니다. {len(result.processed_sources)}개의 설정된 소스에서 "
             f"{result.discovered_count}개의 항목을 발견했습니다."
+        )
+    elif action == "ingest":
+        message = (
+            f"수집 저장이 완료되었습니다. {result.discovered_count}개의 발견 후보 중 "
+            f"{result.saved_count}개를 저장했고 {result.duplicate_count}개 중복을 차단했습니다."
+        )
+    elif action == "enrich":
+        message = (
+            f"기사 보강이 완료되었습니다. {result.processed_count}개의 저장된 수집 항목 중 "
+            f"{result.enriched_count}개를 보강했고 {result.skipped_count}개를 정책에 따라 건너뛰었습니다."
+        )
+    elif action == "run_local":
+        message = (
+            f"전체 파이프라인이 완료되었습니다. 발견 {result.ingest_discovered_count}, 저장 {result.ingest_saved_count}, "
+            f"보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다."
         )
     elif action == "backfill":
         message = (
@@ -958,10 +1009,10 @@ def _build_scheduler_action_result(
         failure_messages = list(result.failure_messages)
         return {
             "kind": "discover",
-            "title": "수집 요약",
-            "badge": "수집",
+            "title": "후보 수집 요약",
+            "badge": "후보 수집",
             "summary": (
-                f"수집이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
+                f"후보 수집이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
                 f"{result.discovered_count}개의 발견 항목을 기록했습니다."
             ),
             "metrics": [
@@ -971,6 +1022,78 @@ def _build_scheduler_action_result(
             ],
             "processed_sources": processed_sources,
             "failure_messages": failure_messages,
+        }
+
+    if action == "ingest":
+        processed_sources = list(result.processed_sources)
+        failure_messages = [failure.format_for_cli() for failure in result.failures]
+        return {
+            "kind": "ingest",
+            "title": "수집 저장 요약",
+            "badge": "수집 저장",
+            "summary": (
+                f"수집 저장이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
+                f"{result.saved_count}개의 새 항목을 저장했습니다."
+            ),
+            "metrics": [
+                {"label": "발견 후보", "value": str(result.discovered_count)},
+                {"label": "저장", "value": str(result.saved_count)},
+                {"label": "중복 차단", "value": str(result.duplicate_count)},
+                {"label": "실패", "value": str(result.failure_count)},
+            ],
+            "processed_sources": processed_sources,
+            "duplicate_reasons": [
+                {
+                    "label": _humanize_label(reason),
+                    "value": str(count),
+                }
+                for reason, count in result.duplicate_counts_by_reason().items()
+            ],
+            "failure_messages": failure_messages,
+        }
+
+    if action == "enrich":
+        failure_counts = result.failure_counts_by_stage()
+        return {
+            "kind": "enrich",
+            "title": "기사 보강 요약",
+            "badge": "기사 보강",
+            "summary": (
+                f"기사 보강이 저장된 수집 항목 {result.processed_count}건을 확인했고 "
+                f"{result.enriched_count}건을 보강했습니다."
+            ),
+            "metrics": [
+                {"label": "처리한 항목", "value": str(result.processed_count)},
+                {"label": "보강 완료", "value": str(result.enriched_count)},
+                {"label": "기존 완료", "value": str(result.existing_count)},
+                {"label": "정책상 건너뜀", "value": str(result.skipped_count)},
+                {"label": "실패", "value": str(result.failed_count)},
+            ],
+            "failure_stages": [
+                {
+                    "label": _humanize_label(stage),
+                    "value": str(count),
+                }
+                for stage, count in failure_counts.items()
+            ],
+        }
+
+    if action == "run_local":
+        return {
+            "kind": "run_local",
+            "title": "전체 파이프라인 요약",
+            "badge": "전체 파이프라인",
+            "summary": "발견부터 저장, 기사 보강, 브리프 생성, 초안 생성까지 현재 로컬 워크플로를 한 번 실행했습니다.",
+            "metrics": [
+                {"label": "실행 ID", "value": str(result.pipeline_run_id)},
+                {"label": "상태", "value": _humanize_label(result.status.value)},
+                {"label": "발견", "value": str(result.ingest_discovered_count)},
+                {"label": "저장", "value": str(result.ingest_saved_count)},
+                {"label": "보강", "value": str(result.enrichment_enriched_count)},
+                {"label": "브리프", "value": str(result.brief_created_count)},
+                {"label": "초안", "value": str(result.draft_created_variant_count)},
+                {"label": "실패", "value": str(result.failure_count)},
+            ],
         }
 
     if action == "backfill":
@@ -1105,7 +1228,7 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="스케줄러",
-            description="수집, 백필, 드라이런 우선 발행 실행을 위한 안전한 브라우저 제어 화면입니다.",
+            description="후보 수집, 저장, 기사 보강, 전체 파이프라인, 백필, 드라이런 우선 발행을 실행하는 제어 화면입니다.",
             status="준비됨",
             href=_append_query_params(str(request.url_for("console_scheduler")), query_params),
             active=active_nav_key == "scheduler",
