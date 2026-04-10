@@ -57,12 +57,14 @@ class XDraftGenerator:
             raise DraftGenerationError(f"account {account_key!r} does not define an x channel")
 
         channel_config = account.channels["x"]
+        draft_link_url = resolve_draft_link_url(content_brief)
         render_context = _build_render_context(
             content_brief=content_brief,
             account_key=account_key,
             account=account,
             channel="x",
             max_chars=channel_config.render.max_chars,
+            draft_link_url=draft_link_url,
         )
         rendered_prompt = self._prompt_renderer.render(
             prompt_profile,
@@ -77,11 +79,11 @@ class XDraftGenerator:
             ),
             user_prompt=_build_user_prompt(
                 rendered_prompt.user_prompt,
-                landing_url=content_brief.landing_url,
+                landing_url=draft_link_url,
                 max_chars=channel_config.render.max_chars,
                 variant_count=variant_count,
             ),
-            landing_url=content_brief.landing_url,
+            landing_url=draft_link_url,
             max_chars=channel_config.render.max_chars,
             variant_count=variant_count,
             title=content_brief.title,
@@ -98,6 +100,7 @@ def _build_render_context(
     account: AccountConfig,
     channel: str,
     max_chars: int,
+    draft_link_url: str,
 ) -> Mapping[str, object]:
     provenance = build_draft_provenance_snapshot(content_brief)
     sensitivity = build_domain_sensitivity(
@@ -116,9 +119,12 @@ def _build_render_context(
         "key_points": tuple(content_brief.key_points),
         "tags": tuple(content_brief.tags),
         "angle": content_brief.angle,
-        "landing_url": content_brief.landing_url,
+        "landing_url": draft_link_url,
+        "content_landing_url": content_brief.landing_url,
         "language": content_brief.language,
         "source_url": provenance.article_url or provenance.source_url,
+        "article_url": provenance.article_url,
+        "original_source_url": provenance.source_url,
         "source_name": provenance.source_name,
         "article_summary": _article_summary(content_brief),
         "policy_mode": provenance.policy_mode.value if provenance.policy_mode is not None else None,
@@ -138,7 +144,7 @@ def _build_system_prompt(base_prompt: str, *, max_chars: int, variant_count: int
         "- Output plain-text X drafts only.\n"
         f"- Return exactly {variant_count} distinct variants.\n"
         f"- Keep every variant at or under {max_chars} characters.\n"
-        "- Include the landing URL exactly once in each variant.\n"
+        "- Include the required URL exactly once in each variant.\n"
         "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
         "- Attribute the insight to the source context instead of claiming certainty."
     )
@@ -156,11 +162,18 @@ def _build_user_prompt(
         "Output requirements:\n"
         f"- Variant count: {variant_count}\n"
         f"- Max characters per variant: {max_chars}\n"
-        f"- Landing URL: {landing_url}\n"
+        f"- Required URL: {landing_url}\n"
         "- Keep the tone concise and traffic-oriented.\n"
         "- Mention the source context when it helps credibility.\n"
         "- Avoid language that sounds like financial advice."
     )
+
+
+def resolve_draft_link_url(content_brief: ContentBrief) -> str:
+    """Return the URL that generated drafts should include."""
+
+    provenance = build_draft_provenance_snapshot(content_brief)
+    return provenance.article_url or content_brief.landing_url
 
 
 def build_draft_provenance_snapshot(content_brief: ContentBrief) -> DraftProvenanceSnapshot:

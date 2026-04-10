@@ -57,6 +57,32 @@ def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None
     assert all("https://gilgop.cloud/ai-tools" in draft.body for draft in stored_drafts)
 
 
+def test_generate_drafts_uses_article_url_when_enrichment_exists(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(
+            session,
+            account_key="ai_tools_daily",
+            article_url="https://example.com/articles/ai-tools-canonical",
+        )
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "x",
+        )
+
+    assert len(stored_drafts) == 3
+    assert all("https://example.com/articles/ai-tools-canonical" in draft.body for draft in stored_drafts)
+
+
 def test_generate_drafts_is_idempotent_when_x_drafts_already_exist(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     _write_project_config(tmp_path)

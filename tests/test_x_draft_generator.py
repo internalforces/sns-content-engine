@@ -81,8 +81,8 @@ def test_fake_llm_provider_uses_guide_cta_for_guide_landings() -> None:
 def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> None:
     provider = _CapturingProvider(
         (
-            "First X draft https://gilgop.cloud/ai-tools",
-            "Second X draft https://gilgop.cloud/ai-tools",
+            "First X draft https://example.com/articles/1",
+            "Second X draft https://example.com/articles/1",
         )
     )
     generator = XDraftGenerator(provider)
@@ -105,8 +105,8 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
     )
 
     assert variants == (
-        "First X draft https://gilgop.cloud/ai-tools",
-        "Second X draft https://gilgop.cloud/ai-tools",
+        "First X draft https://example.com/articles/1",
+        "Second X draft https://example.com/articles/1",
     )
     assert provider.request is not None
     assert (
@@ -114,7 +114,7 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
         in provider.request.system_prompt
     )
     assert (
-        "Write about Useful AI workflow patterns with https://gilgop.cloud/ai-tools "
+        "Write about Useful AI workflow patterns with https://example.com/articles/1 "
         "using https://example.com/articles/1 and A concise guide for operators."
         in provider.request.user_prompt
     )
@@ -127,8 +127,8 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
 def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_topics() -> None:
     provider = _CapturingProvider(
         (
-            "First health draft https://gilgop.cloud/health",
-            "Second health draft https://gilgop.cloud/health",
+            "First health draft https://example.com/articles/1",
+            "Second health draft https://example.com/articles/1",
         )
     )
     generator = XDraftGenerator(provider)
@@ -167,27 +167,27 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
     [
         (
             (
-                "Duplicate draft https://gilgop.cloud/ai-tools",
-                "Duplicate   draft https://gilgop.cloud/ai-tools",
+                "Duplicate draft https://example.com/articles/1",
+                "Duplicate   draft https://example.com/articles/1",
             ),
             "duplicates an earlier variant",
         ),
         (
             (
                 "Missing landing URL",
-                "Second draft https://gilgop.cloud/ai-tools",
+                "Second draft https://example.com/articles/1",
             ),
             "missing the landing URL",
         ),
         (
             (
-                "This draft has too many words to fit into a very small limit https://gilgop.cloud/ai-tools",
-                "Second draft https://gilgop.cloud/ai-tools",
+                "This draft has too many words to fit into a very small limit https://example.com/articles/1",
+                "Second draft https://example.com/articles/1",
             ),
             "exceeds max_chars",
         ),
         (
-            ("Only one draft https://gilgop.cloud/ai-tools",),
+            ("Only one draft https://example.com/articles/1",),
             "expected 2",
         ),
     ],
@@ -209,6 +209,31 @@ def test_x_draft_generator_rejects_invalid_provider_output(
             ),
             variant_count=2,
         )
+
+
+def test_x_draft_generator_prefers_article_url_over_content_landing_url() -> None:
+    provider = _CapturingProvider(
+        (
+            "First X draft https://example.com/articles/1",
+            "Second X draft https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    generator.generate(
+        content_brief=_build_content_brief(landing_url="https://gilgop.cloud/ai-tools"),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=120),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="Use {{ landing_url }} not {{ content_landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert provider.request is not None
+    assert "Use https://example.com/articles/1 not https://gilgop.cloud/ai-tools" in provider.request.user_prompt
+    assert provider.request.landing_url == "https://example.com/articles/1"
 
 
 class _CapturingProvider:

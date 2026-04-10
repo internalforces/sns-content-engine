@@ -186,18 +186,18 @@ routes:
     openai_client = _RecordingOpenAIClient(
         _StubOpenAIResponse(
             '{"variants":['
-            '"OpenAI run-local first https://gilgop.cloud/finance",'
-            '"OpenAI run-local second https://gilgop.cloud/finance",'
-            '"OpenAI run-local third https://gilgop.cloud/finance"'
+            '"OpenAI run-local first https://example.com/articles/finance-1",'
+            '"OpenAI run-local second https://example.com/articles/finance-1",'
+            '"OpenAI run-local third https://example.com/articles/finance-1"'
             "]}"
         )
     )
     codex_client = _RecordingCodexWrapperClient(
         _StubCodexWrapperResponse(
             '{"variants":['
-            '"Codex run-local first https://gilgop.cloud/finance",'
-            '"Codex run-local second https://gilgop.cloud/finance",'
-            '"Codex run-local third https://gilgop.cloud/finance"'
+            '"Codex run-local first https://example.com/articles/finance-1",'
+            '"Codex run-local second https://example.com/articles/finance-1",'
+            '"Codex run-local third https://example.com/articles/finance-1"'
             "]}"
         )
     )
@@ -246,9 +246,9 @@ routes:
 
     assert pipeline_runs[0].summary_json["rewrite_providers"] == ["codex_wrapper"]
     assert [draft.body for draft in stored_drafts] == [
-        "Codex run-local first https://gilgop.cloud/finance",
-        "Codex run-local second https://gilgop.cloud/finance",
-        "Codex run-local third https://gilgop.cloud/finance",
+        "Codex run-local first https://example.com/articles/finance-1",
+        "Codex run-local second https://example.com/articles/finance-1",
+        "Codex run-local third https://example.com/articles/finance-1",
     ]
 
 
