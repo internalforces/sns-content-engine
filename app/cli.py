@@ -12,11 +12,11 @@ from app.connectors.llm import DraftGenerationProviderError
 from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
+from app.workflows.discover_sources import discover_sources
 from app.workflows import (
     ReviewQueueError,
     approve_draft,
     build_content_briefs,
-    discover_sources,
     edit_draft,
     generate_drafts,
     ingest_sources,
