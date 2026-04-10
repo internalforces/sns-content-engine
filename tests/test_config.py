@@ -96,14 +96,16 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/examples/all_domain_news")
 
     account = registry.get_account("all_domain_news_daily")
-    channel = account.channels["x"]
+    x_channel = account.channels["x"]
+    linkedin_channel = account.channels["linkedin"]
+    threads_channel = account.channels["threads"]
     official_source = registry.get_source("official_updates_reusable")
     corporate_source = registry.get_source("corporate_ir_reusable")
     gdelt_source = registry.get_source("gdelt_latest_discovery")
     wikinews_source = registry.get_source("wikinews_attribution_friendly")
 
     assert account.topic == "All-domain latest news"
-    assert account.prompt_profile == "all_domain_factual_x_post"
+    assert account.prompt_profile == "all_domain_social_news_post"
     assert list(account.source_sets) == ["all_domain_primary"]
     assert str(account.landing.fallback_url) == "https://www.federalreserve.gov/newsevents/pressreleases.htm"
     assert account.matching.include_keywords == (
@@ -121,8 +123,15 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert account.matching.exclude_keywords == ("coupon", "giveaway", "rumor")
     assert account.matching.source_tags == ("press release", "wikinews")
     assert account.validation.profile == "standard"
-    assert channel.validation.max_links == 1
-    assert channel.validation.recent_duplicate_window_days == 2
+    assert x_channel.render.max_chars == 280
+    assert x_channel.validation.max_links == 1
+    assert x_channel.validation.recent_duplicate_window_days == 2
+    assert linkedin_channel.render.max_chars == 3000
+    assert linkedin_channel.validation.max_links == 1
+    assert linkedin_channel.validation.recent_duplicate_window_days == 2
+    assert threads_channel.render.max_chars == 10000
+    assert threads_channel.validation.max_links == 1
+    assert threads_channel.validation.recent_duplicate_window_days == 2
 
     assert isinstance(official_source, RssSourceConfig)
     assert official_source.policy_mode == "reusable"
@@ -153,6 +162,9 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
 
     assert registry.get_prompt_profile("all_domain_review_default").system_template.startswith(
         "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile("all_domain_social_news_post").system_template.startswith(
+        "You are the review-first social editor"
     )
     assert registry.get_prompt_profile("all_domain_general_news_summary").system_template.startswith(
         "You are the review-first editor"

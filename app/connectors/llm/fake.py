@@ -21,6 +21,27 @@ _TOOL_CTA_PHRASES = (
     "See it in action:",
     "Open the tool:",
 )
+_STRUCTURED_SUMMARY_SUFFIXES = (
+    "is the clearest verified update to watch.",
+    "stands out as the update most worth a quick operator scan.",
+    "is the development to keep on the immediate review list.",
+)
+_STRUCTURED_IMPACT_LINES = (
+    "Next impact to monitor: how this update changes execution, planning, or stakeholder expectations.",
+    "Forward impact: watch for downstream shifts in priorities, partnerships, or delivery plans.",
+    "What changes next: track whether teams need to adjust operating assumptions after this announcement.",
+)
+_STRUCTURED_INSIGHT_LINES = (
+    "Insight: {channel_label} readers can treat this as a practical signal rather than a final conclusion.",
+    "Insight: the most useful takeaway is the directional change this creates for operators and decision-makers.",
+    "Insight: this matters most as an execution signal, not as a standalone headline.",
+)
+_STRUCTURED_CONCLUSION_LINES = (
+    "Bottom line: keep the source-linked update in view before making downstream decisions.",
+    "Bottom line: review the source-linked update before changing plans or messaging.",
+    "Bottom line: the source-linked details are where the real operating implications show up.",
+)
+_STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
 _WORD_RE = re.compile(r"[A-Za-z0-9']+")
 _PROMPT_STOPWORDS = frozenset(
     {
@@ -85,6 +106,9 @@ class FakeLLMProvider:
     def generate_variants(self, request: DraftGenerationRequest) -> tuple[str, ...]:
         if request.variant_count not in (2, 3):
             raise ValueError("variant_count must be 2 or 3")
+
+        if request.channel in _STRUCTURED_CHANNELS:
+            return _generate_structured_variants(request)
 
         variants: list[str] = []
         cta_phrases = _select_cta_phrases(request)
@@ -176,6 +200,70 @@ def _select_cta_phrases(request: DraftGenerationRequest) -> tuple[str, ...]:
     return _TOOL_CTA_PHRASES
 
 
+def _generate_structured_variants(request: DraftGenerationRequest) -> tuple[str, ...]:
+    variants: list[str] = []
+    prompt_focus = _build_prompt_focus(request)
+    keywords = _build_keywords(request)
+
+    for index in range(request.variant_count):
+        key_point = _select_key_point(request.key_points, index=index) or request.title
+        secondary_point = _select_key_point(request.key_points, index=min(index + 1, request.variant_count - 1))
+        title = request.title.rstrip(".")
+        summary = _shorten_text(
+            f"{title} {prompt_focus or _STRUCTURED_SUMMARY_SUFFIXES[index]}",
+            limit=220,
+        )
+        key_points = [
+            _shorten_text(f"Verified update: {title}.", limit=180),
+            _shorten_text(f"Core detail: {key_point.rstrip('.')}.", limit=180),
+            _shorten_text(
+                f"Operator watchpoint: {(secondary_point or prompt_focus or title).rstrip('.')}.",
+                limit=180,
+            ),
+        ]
+        background = _shorten_text(
+            f"Source context centers on {prompt_focus or title.lower()} and keeps the post anchored to the originating report.",
+            limit=240,
+        )
+        forward_impact = _shorten_text(
+            _STRUCTURED_IMPACT_LINES[index],
+            limit=240,
+        )
+        insight = _shorten_text(
+            _STRUCTURED_INSIGHT_LINES[index].format(
+                channel_label="LinkedIn" if request.channel == "linkedin" else "Threads"
+            ),
+            limit=220,
+        )
+        conclusion = _shorten_text(
+            _STRUCTURED_CONCLUSION_LINES[index],
+            limit=180,
+        )
+        body = "\n".join(
+            [
+                "1. One-line summary",
+                summary,
+                "2. Key points",
+                *(f"- {point}" for point in key_points),
+                "3. Keywords",
+                ", ".join(keywords),
+                "4. Background/Context",
+                background,
+                "5. Forward impact",
+                forward_impact,
+                "6. Insight",
+                insight,
+                "7. One-line conclusion",
+                conclusion,
+                "8. URL",
+                request.landing_url,
+            ]
+        )
+        variants.append(_fit_structured_text(body=body, request=request))
+
+    return tuple(variants)
+
+
 def _tokenize(text: str) -> tuple[str, ...]:
     return tuple(match.group(0).casefold() for match in _WORD_RE.finditer(text))
 
@@ -188,6 +276,51 @@ def _fit_text_with_url(*, prefix: str, landing_url: str, max_chars: int) -> str:
 
     trimmed_prefix = _shorten_text(prefix, limit=available)
     return f"{trimmed_prefix}{suffix}".strip()
+
+
+def _fit_structured_text(*, body: str, request: DraftGenerationRequest) -> str:
+    normalized = body.strip()
+    if len(normalized) <= request.max_chars:
+        return normalized
+
+    lines = normalized.split("\n")
+    for index, line in enumerate(lines):
+        if line in {
+            "1. One-line summary",
+            "2. Key points",
+            "3. Keywords",
+            "4. Background/Context",
+            "5. Forward impact",
+            "6. Insight",
+            "7. One-line conclusion",
+            "8. URL",
+            request.landing_url,
+        }:
+            continue
+        lines[index] = _shorten_text(line, limit=max(len(line) - 40, 24))
+        candidate = "\n".join(lines).strip()
+        if len(candidate) <= request.max_chars:
+            return candidate
+
+    return "\n".join(lines).strip()[: request.max_chars].rstrip()
+
+
+def _build_keywords(request: DraftGenerationRequest) -> tuple[str, ...]:
+    words = []
+    seen: set[str] = set()
+
+    for token in (*_tokenize(request.title), *(word for point in request.key_points for word in _tokenize(point))):
+        if len(token) < 4 or token in seen:
+            continue
+        seen.add(token)
+        words.append(token)
+        if len(words) == 5:
+            break
+
+    if not words:
+        return ("news", "update", request.channel)
+
+    return tuple(word.title() for word in words)
 
 
 def _shorten_text(text: str, *, limit: int) -> str:

@@ -162,6 +162,35 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
     assert "Health coverage should stay attributed" in provider.request.user_prompt
 
 
+def test_x_draft_generator_preserves_multiline_structure_for_linkedin_channel() -> None:
+    provider = _CapturingProvider(
+        (
+            "1. One-line summary\nA professional summary.\n2. Key points\n- First point\n- Second point\n- Third point\n3. Keywords\nAI, Workflow\n4. Background/Context\nContext line.\n5. Forward impact\nImpact line.\n6. Insight\nInsight line.\n7. One-line conclusion\nConclusion line.\n8. URL\nhttps://example.com/articles/1",
+            "1. One-line summary\nA second professional summary.\n2. Key points\n- First point\n- Second point\n- Third point\n3. Keywords\nAI, Workflow\n4. Background/Context\nContext line.\n5. Forward impact\nImpact line.\n6. Insight\nInsight line.\n7. One-line conclusion\nConclusion line.\n8. URL\nhttps://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=3000, channels=("x", "linkedin")),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }} for {{ channel }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+        channel="linkedin",
+    )
+
+    assert variants[0].startswith("1. One-line summary\n")
+    assert "\n2. Key points\n- First point" in variants[0]
+    assert variants[0].endswith("8. URL\nhttps://example.com/articles/1")
+    assert provider.request is not None
+    assert provider.request.channel == "linkedin"
+    assert "1. One-line summary" in provider.request.system_prompt
+
+
 @pytest.mark.parametrize(
     ("variants", "message", "max_chars"),
     [
@@ -284,17 +313,23 @@ class _CapturingProvider:
         return self._variants
 
 
-def _build_account_config(*, max_chars: int, topic: str = "AI tools and workflows") -> AccountConfig:
+def _build_account_config(
+    *,
+    max_chars: int,
+    topic: str = "AI tools and workflows",
+    channels: tuple[str, ...] = ("x",),
+) -> AccountConfig:
     return AccountConfig(
         topic=topic,
         source_sets=("ai_tools_primary",),
         prompt_profile="ai_tools_default",
         landing={"fallback_url": "https://gilgop.cloud/ai-tools", "rules": []},
         channels={
-            "x": {
+            channel: {
                 "schedule": {"cron": "0 9 * * *"},
                 "render": {"max_chars": max_chars},
             }
+            for channel in channels
         },
     )
 

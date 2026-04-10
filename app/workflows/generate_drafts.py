@@ -1,4 +1,4 @@
-"""Workflow for generating X-ready draft variants from stored content briefs."""
+"""Workflow for generating channel-ready draft variants from stored content briefs."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.storage import (
 
 @dataclass(frozen=True, slots=True)
 class GenerateDraftOutcome:
-    """Outcome of attempting to generate X drafts for one content brief."""
+    """Outcome of attempting to generate drafts for one content brief/channel pair."""
 
     content_brief_id: int
     status: str
@@ -47,19 +47,19 @@ class GenerateDraftsResult:
 
     @property
     def created_count(self) -> int:
-        """Return the number of briefs that produced new draft sets."""
+        """Return the number of channel draft sets that were newly created."""
 
         return sum(outcome.status == "created" for outcome in self.outcomes)
 
     @property
     def existing_count(self) -> int:
-        """Return the number of briefs that already had X drafts."""
+        """Return the number of channel draft sets that already existed."""
 
         return sum(outcome.status == "existing" for outcome in self.outcomes)
 
     @property
     def no_channel_count(self) -> int:
-        """Return the number of briefs whose account lacks an X channel."""
+        """Return the number of briefs whose account lacks any configured channel."""
 
         return sum(outcome.status == "no_channel" for outcome in self.outcomes)
 
@@ -100,7 +100,7 @@ def generate_drafts(
     llm_provider: DraftGenerationProvider | None = None,
     variant_count: int = 3,
 ) -> GenerateDraftsResult:
-    """Generate X-ready draft variants for stored content briefs."""
+    """Generate channel-ready draft variants for stored content briefs."""
 
     if variant_count not in (2, 3):
         raise ValueError("variant_count must be 2 or 3")
@@ -132,17 +132,6 @@ def generate_drafts(
             used_provider_names: set[str] = set()
 
             for brief in stored_briefs:
-                existing_drafts = drafts.list_by_content_brief_and_channel(brief.id, "x")
-                if existing_drafts:
-                    outcomes.append(
-                        GenerateDraftOutcome(
-                            content_brief_id=brief.id,
-                            status="existing",
-                            channel="x",
-                        )
-                    )
-                    continue
-
                 try:
                     account = registry.get_account(brief.account_key)
                 except KeyError:
@@ -154,7 +143,8 @@ def generate_drafts(
                     )
                     continue
 
-                if "x" not in account.channels:
+                configured_channels = tuple(account.channels)
+                if not configured_channels:
                     outcomes.append(
                         GenerateDraftOutcome(
                             content_brief_id=brief.id,
@@ -164,45 +154,59 @@ def generate_drafts(
                     continue
 
                 prompt_profile = registry.get_prompt_profile(account.prompt_profile)
-                generated_bodies = generator.generate(
-                    content_brief=brief,
-                    account_key=brief.account_key,
-                    account=account,
-                    prompt_profile=prompt_profile,
-                    variant_count=variant_count,
-                )
-                provider_name = _resolve_provider_name(provider)
-                if provider_name is not None:
-                    used_provider_names.add(provider_name)
-                created_draft_ids: list[int] = []
-                created_any = False
                 provenance = build_draft_provenance_snapshot(brief)
-                for index, body in enumerate(generated_bodies):
-                    stored_draft, was_created = drafts.get_or_create(
-                        DraftVariant(
+
+                for channel in configured_channels:
+                    existing_drafts = drafts.list_by_content_brief_and_channel(brief.id, channel)
+                    if existing_drafts:
+                        outcomes.append(
+                            GenerateDraftOutcome(
+                                content_brief_id=brief.id,
+                                status="existing",
+                                channel=channel,
+                            )
+                        )
+                        continue
+
+                    generated_bodies = generator.generate(
+                        content_brief=brief,
+                        account_key=brief.account_key,
+                        account=account,
+                        prompt_profile=prompt_profile,
+                        variant_count=variant_count,
+                        channel=channel,
+                    )
+                    provider_name = _resolve_provider_name(provider)
+                    if provider_name is not None:
+                        used_provider_names.add(provider_name)
+                    created_draft_ids: list[int] = []
+                    created_any = False
+                    for index, body in enumerate(generated_bodies):
+                        stored_draft, was_created = drafts.get_or_create(
+                            DraftVariant(
+                                content_brief_id=brief.id,
+                                channel=channel,
+                                variant_index=index,
+                                body=body,
+                                source_name=provenance.source_name,
+                                source_url=provenance.source_url,
+                                article_url=provenance.article_url,
+                                source_published_at=provenance.published_at,
+                                source_policy_mode=provenance.policy_mode,
+                            )
+                        )
+                        if was_created:
+                            created_any = True
+                            created_draft_ids.append(stored_draft.id)
+
+                    outcomes.append(
+                        GenerateDraftOutcome(
                             content_brief_id=brief.id,
-                            channel="x",
-                            variant_index=index,
-                            body=body,
-                            source_name=provenance.source_name,
-                            source_url=provenance.source_url,
-                            article_url=provenance.article_url,
-                            source_published_at=provenance.published_at,
-                            source_policy_mode=provenance.policy_mode,
+                            status="created" if created_any else "existing",
+                            channel=channel,
+                            draft_variant_ids=tuple(created_draft_ids),
                         )
                     )
-                    if was_created:
-                        created_any = True
-                        created_draft_ids.append(stored_draft.id)
-
-                outcomes.append(
-                    GenerateDraftOutcome(
-                        content_brief_id=brief.id,
-                        status="created" if created_any else "existing",
-                        channel="x",
-                        draft_variant_ids=tuple(created_draft_ids),
-                    )
-                )
     finally:
         if owned_engine is not None:
             owned_engine.dispose()

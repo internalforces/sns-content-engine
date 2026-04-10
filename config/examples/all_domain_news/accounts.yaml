@@ -3,7 +3,7 @@ accounts:
     topic: "All-domain latest news"
     source_sets:
       - all_domain_primary
-    prompt_profile: all_domain_factual_x_post
+    prompt_profile: all_domain_social_news_post
     landing:
       fallback_url: https://www.federalreserve.gov/newsevents/pressreleases.htm
       rules: []
@@ -35,6 +35,22 @@ accounts:
           cron: "0 9 * * *"
         render:
           max_chars: 280
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 2
+      linkedin:
+        schedule:
+          cron: "0 10 * * *"
+        render:
+          max_chars: 3000
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 2
+      threads:
+        schedule:
+          cron: "0 11 * * *"
+        render:
+          max_chars: 10000
         validation:
           max_links: 1
           recent_duplicate_window_days: 2

@@ -525,6 +525,52 @@ def test_review_actions_reject_success_records_reason(tmp_path: Path) -> None:
     assert stored_draft.state is DraftVariantState.REJECTED
 
 
+def test_review_detail_shows_manual_upload_guidance_for_approved_linkedin_draft(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    structured_body = (
+        "1. One-line summary\n"
+        "A professional summary.\n"
+        "2. Key points\n"
+        "- First point\n"
+        "- Second point\n"
+        "- Third point\n"
+        "3. Keywords\n"
+        "AI, Workflow\n"
+        "4. Background/Context\n"
+        "Context line.\n"
+        "5. Forward impact\n"
+        "Impact line.\n"
+        "6. Insight\n"
+        "Insight line.\n"
+        "7. One-line conclusion\n"
+        "Conclusion line.\n"
+        "8. URL\n"
+        "https://example.com/articles/1"
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=structured_body,
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "LinkedIn 수동 업로드" in response.text
+    assert "이 채널은 현재 브라우저 자동 업로드 대신 수동 업로드용 본문을 복사해 게시하는 흐름을 권장합니다." in response.text
+    assert "발행 작업 만들기" not in response.text
+    assert "1. One-line summary" in response.text
+    assert "8. URL" in response.text
+
+
 def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     with session_scope(session_factory) as session:

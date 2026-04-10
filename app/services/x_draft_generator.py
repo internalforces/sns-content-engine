@@ -1,4 +1,4 @@
-"""X-specific draft generation service."""
+"""Channel-aware social draft generation service."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from app.services.prompt_renderer import PromptRenderer, build_domain_sensitivit
 from app.storage import ContentBrief, SourcePolicyMode
 
 _WHITESPACE_RE = re.compile(r"\s+")
+_LINE_BREAK_RE = re.compile(r"\n{3,}")
+_STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
 
 
 class DraftGenerationError(ValueError):
@@ -31,7 +33,7 @@ class DraftProvenanceSnapshot:
 
 
 class XDraftGenerator:
-    """Generate validated X-ready draft variants from stored content briefs."""
+    """Generate validated social draft variants from stored content briefs."""
 
     def __init__(
         self,
@@ -50,19 +52,22 @@ class XDraftGenerator:
         account: AccountConfig,
         prompt_profile: PromptProfileConfig,
         variant_count: int,
+        channel: str = "x",
     ) -> tuple[str, ...]:
         _validate_variant_count(variant_count)
 
-        if "x" not in account.channels:
-            raise DraftGenerationError(f"account {account_key!r} does not define an x channel")
+        if channel not in account.channels:
+            raise DraftGenerationError(
+                f"account {account_key!r} does not define channel {channel!r}"
+            )
 
-        channel_config = account.channels["x"]
+        channel_config = account.channels[channel]
         draft_link_url = resolve_draft_link_url(content_brief)
         render_context = _build_render_context(
             content_brief=content_brief,
             account_key=account_key,
             account=account,
-            channel="x",
+            channel=channel,
             max_chars=channel_config.render.max_chars,
             draft_link_url=draft_link_url,
         )
@@ -71,14 +76,16 @@ class XDraftGenerator:
             context=render_context,
         )
         request = DraftGenerationRequest(
-            channel="x",
+            channel=channel,
             system_prompt=_build_system_prompt(
                 rendered_prompt.system_prompt,
+                channel=channel,
                 max_chars=channel_config.render.max_chars,
                 variant_count=variant_count,
             ),
             user_prompt=_build_user_prompt(
                 rendered_prompt.user_prompt,
+                channel=channel,
                 landing_url=draft_link_url,
                 max_chars=channel_config.render.max_chars,
                 variant_count=variant_count,
@@ -137,33 +144,85 @@ def _build_render_context(
     }
 
 
-def _build_system_prompt(base_prompt: str, *, max_chars: int, variant_count: int) -> str:
+def _build_system_prompt(
+    base_prompt: str,
+    *,
+    channel: str,
+    max_chars: int,
+    variant_count: int,
+) -> str:
+    if channel == "x" or channel not in _STRUCTURED_CHANNELS:
+        channel_label = _channel_label(channel)
+        return (
+            f"{base_prompt}\n\n"
+            "Channel constraints:\n"
+            f"- Output plain-text {channel_label} drafts only.\n"
+            f"- Return exactly {variant_count} distinct variants.\n"
+            f"- Keep every variant at or under {max_chars} characters.\n"
+            "- Include the required URL exactly once in each variant.\n"
+            "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
+            "- Attribute the insight to the source context instead of claiming certainty."
+        )
+
+    channel_label = _channel_label(channel)
     return (
         f"{base_prompt}\n\n"
         "Channel constraints:\n"
-        "- Output plain-text X drafts only.\n"
+        f"- Output plain-text {channel_label} drafts only.\n"
         f"- Return exactly {variant_count} distinct variants.\n"
         f"- Keep every variant at or under {max_chars} characters.\n"
-        "- Include the required URL exactly once in each variant.\n"
+        "- Use this exact numbered structure with line breaks:\n"
+        "  1. One-line summary\n"
+        "  2. Key points\n"
+        "  3. Keywords\n"
+        "  4. Background/Context\n"
+        "  5. Forward impact\n"
+        "  6. Insight\n"
+        "  7. One-line conclusion\n"
+        "  8. URL\n"
+        "- Put 3 to 5 short bullet-style items inside section 2.\n"
+        "- Put the required URL only in section 8.\n"
         "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
-        "- Attribute the insight to the source context instead of claiming certainty."
+        "- Attribute the insight to the source context instead of claiming certainty.\n"
+        "- Keep each section skimmable for manual operator review."
     )
 
 
 def _build_user_prompt(
     base_prompt: str,
     *,
+    channel: str,
     landing_url: str,
     max_chars: int,
     variant_count: int,
 ) -> str:
+    if channel == "x" or channel not in _STRUCTURED_CHANNELS:
+        return (
+            f"{base_prompt}\n\n"
+            "Output requirements:\n"
+            f"- Variant count: {variant_count}\n"
+            f"- Max characters per variant: {max_chars}\n"
+            f"- Required URL: {landing_url}\n"
+            "- Keep the tone concise and traffic-oriented.\n"
+            "- Mention the source context when it helps credibility.\n"
+            "- Avoid language that sounds like financial advice."
+        )
+
+    channel_copy = (
+        "- Keep the tone professional and insight-led for business readers.\n"
+        if channel == "linkedin"
+        else "- Keep the tone readable and social-first while staying factual.\n"
+    )
     return (
         f"{base_prompt}\n\n"
         "Output requirements:\n"
         f"- Variant count: {variant_count}\n"
         f"- Max characters per variant: {max_chars}\n"
         f"- Required URL: {landing_url}\n"
-        "- Keep the tone concise and traffic-oriented.\n"
+        "- Keep the numbered section labels exactly as written in the system instructions.\n"
+        "- Section 2 should contain 3 to 5 bullet-style lines.\n"
+        "- Section 3 should list concise keywords separated by commas.\n"
+        f"{channel_copy}"
         "- Mention the source context when it helps credibility.\n"
         "- Avoid language that sounds like financial advice."
     )
@@ -231,16 +290,17 @@ def _validate_variants(
     seen: set[str] = set()
 
     for index, variant in enumerate(variants):
-        normalized = _normalize_body(variant)
+        normalized = _normalize_variant_body(variant, channel=request.channel)
         if not normalized:
             raise DraftGenerationError(f"variant {index} is empty after normalization")
         if request.landing_url not in normalized:
             raise DraftGenerationError(f"variant {index} is missing the landing URL")
-        normalized = _coerce_variant_to_fit(
-            normalized,
-            landing_url=request.landing_url,
-            max_chars=request.max_chars,
-        )
+        if _channel_uses_compaction(request.channel):
+            normalized = _coerce_variant_to_fit(
+                normalized,
+                landing_url=request.landing_url,
+                max_chars=request.max_chars,
+            )
         if len(normalized) > request.max_chars:
             raise DraftGenerationError(
                 f"variant {index} exceeds max_chars ({len(normalized)} > {request.max_chars})"
@@ -256,6 +316,26 @@ def _validate_variants(
 
 def _normalize_body(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", value).strip()
+
+
+def _normalize_variant_body(value: str, *, channel: str) -> str:
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    if channel not in _STRUCTURED_CHANNELS:
+        return _normalize_body(normalized)
+
+    normalized_lines: list[str] = []
+    blank_pending = False
+    for raw_line in normalized.split("\n"):
+        stripped = _normalize_body(raw_line)
+        if not stripped:
+            blank_pending = True
+            continue
+        if blank_pending and normalized_lines:
+            normalized_lines.append("")
+        normalized_lines.append(stripped)
+        blank_pending = False
+
+    return _LINE_BREAK_RE.sub("\n\n", "\n".join(normalized_lines)).strip()
 
 
 def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> str:
@@ -319,6 +399,20 @@ def _shorten_text(text: str, *, limit: int) -> str:
         return f"{shortened} ..."
 
     return shortened
+
+
+def _channel_uses_compaction(channel: str) -> bool:
+    return channel == "x"
+
+
+def _channel_label(channel: str) -> str:
+    if channel == "linkedin":
+        return "LinkedIn"
+    if channel == "threads":
+        return "Threads"
+    if channel == "x":
+        return "X"
+    return channel
 
 
 def _validate_variant_count(variant_count: int) -> None:

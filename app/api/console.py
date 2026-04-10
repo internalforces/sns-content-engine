@@ -33,6 +33,7 @@ _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 _DEFAULT_ARTICLE_LIMIT = 25
 _DEFAULT_PUBLISH_JOB_LIMIT = 25
 _SCHEDULER_LIVE_VALUES = {"1", "on", "true", "yes"}
+_MANUAL_UPLOAD_CHANNELS = frozenset({"linkedin", "threads"})
 _KOREAN_LABELS = {
     "analysis": "분석",
     "approve": "승인",
@@ -84,6 +85,7 @@ _KOREAN_LABELS = {
     "source_identity": "소스 고유 ID 중복",
     "succeeded": "성공",
     "summary_regenerate": "요약 재생성",
+    "threads": "Threads",
     "topic_takeaway": "핵심 요약",
     "trend_insight": "트렌드 인사이트",
     "tutorial": "튜토리얼",
@@ -833,8 +835,13 @@ def _normalize_review_action_form_data(form_data: dict[str, str]) -> dict[str, s
 
 def _build_review_action_success_feedback(result) -> dict[str, str]:
     action_label = _humanize_label(result.action_type.value)
+    approved_message = (
+        "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다."
+        if getattr(result, "channel", None) not in _MANUAL_UPLOAD_CHANNELS
+        else "초안이 승인되었습니다. 이제 이 작업공간에서 수동 업로드용 본문을 복사해 게시할 수 있습니다."
+    )
     messages = {
-        "approve": "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다.",
+        "approve": approved_message,
         "reject": "초안이 반려되었습니다. 반려 사유가 감사 이력에 기록되었습니다.",
         "edit": "초안 본문이 수정되었습니다. 수정 내용이 감사 이력에 기록되었습니다.",
         "schedule": (
@@ -1857,6 +1864,7 @@ def _build_review_action_form_state(
     draft = detail.draft
     state_value = draft.state.value
     values = form_values or {}
+    manual_upload = state_value == "approved" and draft.channel in _MANUAL_UPLOAD_CHANNELS
 
     if state_value == "pending_review":
         state_hint = (
@@ -1864,10 +1872,27 @@ def _build_review_action_form_state(
             "예약은 승인 이후에만 열립니다."
         )
         read_only_notice = ""
+        manual_upload_copy = ""
+        manual_upload_helper = ""
     elif state_value == "approved":
-        state_hint = (
-            "이미 승인이 기록되어 있습니다. 공용 검토 워크플로에서 다음으로 가능한 작업은 예약입니다."
-        )
+        if manual_upload:
+            state_hint = (
+                "이미 승인이 기록되어 있습니다. 이 채널은 현재 브라우저 자동 업로드 대신 "
+                "수동 업로드용 본문을 복사해 게시하는 흐름을 권장합니다."
+            )
+            manual_upload_copy = (
+                f"{_humanize_label(draft.channel)} 게시창에 아래 본문을 그대로 붙여넣고, 업로드 후 외부 게시 링크를 운영 기록에 남기세요."
+            )
+            manual_upload_helper = (
+                "현재 이 채널은 프로젝트 내 live publisher가 연결되어 있지 않아 예약 발행 버튼을 숨깁니다. "
+                "본문 줄바꿈과 번호 구조를 유지한 채 수동 게시하는 것이 가장 안전합니다."
+            )
+        else:
+            state_hint = (
+                "이미 승인이 기록되어 있습니다. 공용 검토 워크플로에서 다음으로 가능한 작업은 예약입니다."
+            )
+            manual_upload_copy = ""
+            manual_upload_helper = ""
         read_only_notice = ""
     else:
         state_hint = (
@@ -1876,6 +1901,8 @@ def _build_review_action_form_state(
         read_only_notice = (
             "이 초안의 현재 상태에서는 브라우저 작업을 수행할 수 없습니다. 아래 검토 이력에서 최종 결정을 확인하세요."
         )
+        manual_upload_copy = ""
+        manual_upload_helper = ""
 
     return {
         "action_href": _append_query_params(
@@ -1887,9 +1914,14 @@ def _build_review_action_form_state(
         "edit_body": values.get("edit_body", draft.body),
         "scheduled_for": values.get("scheduled_for", ""),
         "show_pending_actions": state_value == "pending_review",
-        "show_schedule_action": state_value == "approved",
+        "show_schedule_action": state_value == "approved" and not manual_upload,
+        "show_manual_upload_guidance": manual_upload,
         "state_hint": state_hint,
         "read_only_notice": read_only_notice,
+        "manual_upload_title": f"{_humanize_label(draft.channel)} 수동 업로드",
+        "manual_upload_copy": manual_upload_copy,
+        "manual_upload_helper": manual_upload_helper,
+        "manual_upload_body": draft.body,
     }
 
 

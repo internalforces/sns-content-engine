@@ -605,7 +605,7 @@ def test_generate_drafts_command_reports_summary(monkeypatch) -> None:
     assert "processed 2 content briefs" in result.stdout
     assert "draft sets created: 1" in result.stdout
     assert "draft sets existing: 1" in result.stdout
-    assert "no x channel: 0" in result.stdout
+    assert "no configured channel: 0" in result.stdout
     assert "missing account: 0" in result.stdout
     assert "draft variants created: 3" in result.stdout
 
