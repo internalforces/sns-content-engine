@@ -42,6 +42,7 @@ class RunLocalPipelineResult:
     brief_created_count: int
     draft_created_variant_count: int
     failure_count: int
+    created_draft_ids: tuple[int, ...] = ()
 
 
 def run_local_pipeline(
@@ -249,6 +250,7 @@ def run_local_pipeline(
             enrichment_enriched_count=enrichment_result.enriched_count,
             brief_created_count=brief_result.created_count,
             draft_created_variant_count=drafts_result.created_variant_count,
+            created_draft_ids=drafts_result.created_draft_variant_ids,
             failure_count=total_failures,
         )
     finally:

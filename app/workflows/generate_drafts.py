@@ -75,6 +75,16 @@ class GenerateDraftsResult:
 
         return sum(len(outcome.draft_variant_ids) for outcome in self.outcomes)
 
+    @property
+    def created_draft_variant_ids(self) -> tuple[int, ...]:
+        """Return the created draft ids in creation order."""
+
+        return tuple(
+            draft_id
+            for outcome in self.outcomes
+            for draft_id in outcome.draft_variant_ids
+        )
+
     def counts_by_status(self) -> dict[str, int]:
         """Return outcome counts grouped by status."""
 

@@ -148,6 +148,7 @@ def test_run_local_pipeline_records_run_history_and_generates_pending_review_dra
     assert result.brief_created_count == 1
     assert result.draft_created_variant_count == 3
     assert result.failure_count == 0
+    assert len(result.created_draft_ids) == 3
 
     with session_scope(session_factory) as session:
         pipeline_runs = PipelineRunRepository(session).list()

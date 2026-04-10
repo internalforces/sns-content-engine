@@ -496,8 +496,10 @@ async def post_console_scheduler_action(
             result=result,
         ),
         action_result=_build_scheduler_action_result(
+            request,
             action=action,
             result=result,
+            database_url=database_url,
         ),
     )
 
@@ -966,7 +968,8 @@ def _build_scheduler_action_success_feedback(
     elif action == "run_local":
         message = (
             f"전체 파이프라인이 완료되었습니다. 발견 {result.ingest_discovered_count}, 저장 {result.ingest_saved_count}, "
-            f"보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다."
+            f"보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다. "
+            "생성된 초안은 검토 대기열에 저장되었습니다."
         )
     elif action == "backfill":
         message = (
@@ -1000,10 +1003,14 @@ def _build_scheduler_action_feedback(
 
 
 def _build_scheduler_action_result(
+    request: Request,
     *,
     action: str,
     result,
+    database_url: str | None,
 ) -> dict[str, object]:
+    query_params = _extract_console_query_params(request)
+
     if action == "discover":
         processed_sources = list(result.processed_sources)
         failure_messages = list(result.failure_messages)
@@ -1079,6 +1086,12 @@ def _build_scheduler_action_result(
         }
 
     if action == "run_local":
+        created_draft_rows = _build_scheduler_created_draft_rows(
+            request,
+            query_params=query_params,
+            database_url=database_url,
+            draft_ids=tuple(getattr(result, "created_draft_ids", ()) or ()),
+        )
         return {
             "kind": "run_local",
             "title": "전체 파이프라인 요약",
@@ -1094,6 +1107,11 @@ def _build_scheduler_action_result(
                 {"label": "초안", "value": str(result.draft_created_variant_count)},
                 {"label": "실패", "value": str(result.failure_count)},
             ],
+            "pending_review_href": _append_query_params(
+                str(request.url_for("console_pending_review")),
+                query_params,
+            ),
+            "created_drafts": created_draft_rows,
         }
 
     if action == "backfill":
@@ -1133,6 +1151,45 @@ def _build_scheduler_action_result(
         ],
         "outcomes": [_build_scheduler_publish_due_outcome_row(outcome) for outcome in result.outcomes],
     }
+
+
+def _build_scheduler_created_draft_rows(
+    request: Request,
+    *,
+    query_params: dict[str, str],
+    database_url: str | None,
+    draft_ids: tuple[int, ...],
+) -> list[dict[str, str]]:
+    if not draft_ids:
+        return []
+
+    pending_result = request.app.state.console_pending_review_drafts_lister(
+        database_url=database_url,
+    )
+    pending_by_id = {
+        row.draft_id: row
+        for row in pending_result.drafts
+    }
+    rows: list[dict[str, str]] = []
+
+    for draft_id in draft_ids:
+        pending_row = pending_by_id.get(draft_id)
+        rows.append(
+            {
+                "draft_label": f"초안 {draft_id}",
+                "detail_href": _append_query_params(
+                    str(request.url_for("console_review_detail", draft_id=draft_id)),
+                    query_params,
+                ),
+                "title": pending_row.title if pending_row is not None else "생성된 초안",
+                "body_preview": _truncate_text(
+                    pending_row.body if pending_row is not None else "초안 본문은 상세 화면에서 확인하세요.",
+                    limit=180,
+                ),
+            }
+        )
+
+    return rows
 
 
 def _build_scheduler_backfill_outcome_row(outcome) -> dict[str, str]:

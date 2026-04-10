@@ -50,7 +50,13 @@ from app.workflows import (
     RunLocalPipelineResult,
     SourceIngestOutcome,
 )
-from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
+from app.workflows.review_queue import (
+    PendingReviewDraft,
+    PendingReviewDraftsResult,
+    approve_draft,
+    edit_draft,
+    schedule_draft,
+)
 
 _DRAFT_SOURCE_COUNTER = count()
 
@@ -341,18 +347,24 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
 def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
-    attributed_body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    attributed_body_template = (
+        "AI Tools Daily via example.com: Useful AI automation workflows for operators {article_url}"
+    )
     with session_scope(session_factory) as session:
         draft = _create_review_detail_draft(
             session,
             variant_index=0,
             created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
-            body=attributed_body,
+            body=attributed_body_template,
             include_provenance=True,
             include_article_enrichment=True,
         )
+    attributed_body = attributed_body_template.format(article_url=draft.article_url)
 
-    edited_body = "AI Tools Daily via example.com: Edited AI automation workflow summary for operators https://gilgop.cloud/ai-tools"
+    edited_body = (
+        "AI Tools Daily via example.com: Edited AI automation workflow summary for operators "
+        f"{draft.article_url}"
+    )
     edit_draft(
         draft.id,
         body=edited_body,
@@ -1012,9 +1024,77 @@ def test_scheduler_actions_run_local_post_renders_summary() -> None:
         "database_url": "sqlite+pysqlite:////tmp/operator.db",
     }
     assert "전체 파이프라인 완료" in response.text
-    assert "전체 파이프라인이 완료되었습니다. 발견 6, 저장 4, 보강 3, 브리프 3, 초안 9건입니다." in response.text
+    assert "전체 파이프라인이 완료되었습니다. 발견 6, 저장 4, 보강 3, 브리프 3, 초안 9건입니다. 생성된 초안은 검토 대기열에 저장되었습니다." in response.text
     assert "실행 ID" in response.text
     assert "부분 완료" in response.text
+
+
+def test_scheduler_actions_run_local_post_lists_created_draft_links() -> None:
+    def stub_run_local_pipeline(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> RunLocalPipelineResult:
+        return RunLocalPipelineResult(
+            pipeline_run_id=77,
+            status=PipelineRunStatus.SUCCEEDED,
+            ingest_discovered_count=2,
+            ingest_saved_count=2,
+            enrichment_enriched_count=2,
+            brief_created_count=2,
+            draft_created_variant_count=2,
+            failure_count=0,
+            created_draft_ids=(401, 402),
+        )
+
+    def stub_pending_review_drafts_lister(
+        *,
+        database_url: str | None = None,
+    ) -> PendingReviewDraftsResult:
+        return PendingReviewDraftsResult(
+            drafts=(
+                PendingReviewDraft(
+                    draft_id=401,
+                    account_key="finance_insights_daily",
+                    channel="x",
+                    variant_index=0,
+                    created_at=datetime(2026, 4, 11, 9, 0, tzinfo=timezone.utc),
+                    title="Fed minutes draft",
+                    body="First saved draft body with article url https://example.com/articles/401",
+                ),
+                PendingReviewDraft(
+                    draft_id=402,
+                    account_key="finance_insights_daily",
+                    channel="x",
+                    variant_index=1,
+                    created_at=datetime(2026, 4, 11, 9, 1, tzinfo=timezone.utc),
+                    title="Rate statement draft",
+                    body="Second saved draft body with article url https://example.com/articles/402",
+                ),
+            ),
+        )
+
+    client = TestClient(
+        create_app(
+            run_local_pipeline_runner=stub_run_local_pipeline,
+            pending_review_drafts_lister=stub_pending_review_drafts_lister,
+        )
+    )
+    response = _post_console_scheduler_action(
+        client,
+        action="run_local",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert "검토 대기열 열기" in response.text
+    assert "초안 401" in response.text
+    assert "Fed minutes draft" in response.text
+    assert "초안 402" in response.text
+    assert "Rate statement draft" in response.text
+    assert "/console/reviews/pending" in response.text
+    assert "/console/reviews/401" in response.text
 
 
 def test_scheduler_actions_backfill_post_renders_summary() -> None:
@@ -1322,16 +1402,17 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
-    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    body_template = "AI Tools Daily via example.com: Useful AI automation workflows for operators {article_url}"
     with session_scope(session_factory) as session:
         draft = _create_review_detail_draft(
             session,
             variant_index=0,
             created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
-            body=body,
+            body=body_template,
             include_provenance=True,
             include_article_enrichment=True,
         )
+    body = body_template.format(article_url=draft.article_url)
 
     database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
     config_dir = str(tmp_path)
@@ -1531,11 +1612,13 @@ def _create_review_detail_draft(
     include_article_enrichment: bool = False,
 ) -> DraftVariant:
     source_number = next(_DRAFT_SOURCE_COUNTER)
+    source_url = f"https://example.com/drafts/{source_number}"
+    article_url = f"https://example.com/articles/{source_number}" if include_article_enrichment else None
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
             external_id=f"draft-entry-{source_number}",
-            source_url=f"https://example.com/drafts/{source_number}",
+            source_url=source_url,
             title=f"Draft source {source_number}",
             summary="RSS summary for review" if include_article_enrichment else None,
             published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
@@ -1549,7 +1632,7 @@ def _create_review_detail_draft(
             ArticleEnrichment(
                 source_item_id=source_item.id,
                 source_name="AI Tools Daily",
-                article_url=f"https://example.com/articles/{source_number}",
+                article_url=article_url,
                 published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
                 discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
                 regenerated_summary="Regenerated article summary for operators",
@@ -1557,6 +1640,9 @@ def _create_review_detail_draft(
                 classification="analysis",
             )
         )
+    if article_url is not None:
+        body = body.format(article_url=article_url)
+    body = body.format(source_url=source_url)
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,
@@ -1579,8 +1665,8 @@ def _create_review_detail_draft(
             body=body,
             created_at=created_at,
             source_name="AI Tools Daily" if include_provenance else None,
-            source_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
-            article_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            source_url=source_url if include_provenance else None,
+            article_url=(article_url or source_url) if include_provenance else None,
             source_published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
             if include_provenance
             else None,
