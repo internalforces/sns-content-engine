@@ -4,97 +4,97 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Publish job detail</p>
+        <p class="console-card-label">발행 작업 상세</p>
         {% if publish_job_detail_missing %}
-          <h2>Publish job could not be loaded</h2>
+          <h2>발행 작업을 불러올 수 없습니다</h2>
         {% else %}
           <h2>{{ publish_job_detail.job_label }}</h2>
         {% endif %}
       </div>
-      <span class="console-badge">{% if publish_job_detail_missing %}404{% else %}Task 06{% endif %}</span>
+      <span class="console-badge">{% if publish_job_detail_missing %}404{% else %}작업 06{% endif %}</span>
     </div>
     <p class="console-card-copy">
-      <a class="console-link" href="{{ publish_jobs_href }}">Back to publish jobs</a>
+      <a class="console-link" href="{{ publish_jobs_href }}">발행 작업 목록으로 돌아가기</a>
     </p>
     {% if publish_job_detail_missing %}
       <p class="console-empty">{{ publish_job_detail_missing.message }}</p>
       <p class="console-card-copy">
-        The publish job may not exist in this database, or it may belong to a different operator context than the current query parameters.
+        이 발행 작업은 현재 데이터베이스에 없거나, 현재 쿼리 파라미터와 다른 운영 콘텍스트에 속해 있을 수 있습니다.
       </p>
     {% else %}
       <div class="console-panel-grid">
         <article class="console-panel">
-          <p class="console-card-label">Delivery status</p>
+          <p class="console-card-label">전달 상태</p>
           <h3>{{ publish_job_detail.job_label }}</h3>
           <dl class="console-definition-list">
             <div>
-              <dt>Account key</dt>
+              <dt>계정 키</dt>
               <dd>{{ publish_job_detail.account_key }}</dd>
             </div>
             <div>
-              <dt>Channel</dt>
+              <dt>채널</dt>
               <dd>{{ publish_job_detail.channel }}</dd>
             </div>
             <div>
-              <dt>State</dt>
+              <dt>상태</dt>
               <dd>{{ publish_job_detail.state }}</dd>
             </div>
             <div>
-              <dt>Scheduled</dt>
+              <dt>예약 시각</dt>
               <dd>{{ publish_job_detail.scheduled_for }}</dd>
             </div>
             <div>
-              <dt>Published</dt>
+              <dt>발행 시각</dt>
               <dd>{{ publish_job_detail.published_at }}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>생성됨</dt>
               <dd>{{ publish_job_detail.created_at }}</dd>
             </div>
             <div>
-              <dt>Updated</dt>
+              <dt>업데이트됨</dt>
               <dd>{{ publish_job_detail.updated_at }}</dd>
             </div>
             <div>
-              <dt>Attempt count</dt>
+              <dt>시도 횟수</dt>
               <dd>{{ publish_job_detail.attempt_count }}</dd>
             </div>
             <div>
-              <dt>External post ID</dt>
+              <dt>외부 게시물 ID</dt>
               <dd>{{ publish_job_detail.external_post_id }}</dd>
             </div>
             <div>
-              <dt>Last error</dt>
+              <dt>마지막 오류</dt>
               <dd>{{ publish_job_detail.last_error }}</dd>
             </div>
           </dl>
         </article>
 
         <article class="console-panel">
-          <p class="console-card-label">Linked draft</p>
+          <p class="console-card-label">연결된 초안</p>
           <h3>{{ publish_job_detail.draft.draft_label }} · {{ publish_job_detail.draft.variant_label }}</h3>
           <p class="console-card-copy">
-            <a class="console-link" href="{{ publish_job_detail.review_detail_href }}">Open review workspace</a>
+            <a class="console-link" href="{{ publish_job_detail.review_detail_href }}">검토 작업공간 열기</a>
           </p>
           <dl class="console-definition-list">
             <div>
-              <dt>State</dt>
+              <dt>상태</dt>
               <dd>{{ publish_job_detail.draft.draft_state }}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>생성됨</dt>
               <dd>{{ publish_job_detail.draft.created_at }}</dd>
             </div>
             <div>
-              <dt>Reviewed</dt>
+              <dt>검토됨</dt>
               <dd>{{ publish_job_detail.draft.reviewed_at }}</dd>
             </div>
             <div>
-              <dt>Rejection reason</dt>
+              <dt>반려 사유</dt>
               <dd>{{ publish_job_detail.draft.rejection_reason }}</dd>
             </div>
             <div>
-              <dt>Body</dt>
+              <dt>본문</dt>
               <dd>{{ publish_job_detail.draft.body }}</dd>
             </div>
           </dl>
@@ -108,41 +108,41 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Provenance</p>
-            <h2>Stored source context</h2>
+            <p class="console-card-label">출처 정보</p>
+            <h2>저장된 소스 콘텍스트</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Source name</dt>
+            <dt>소스 이름</dt>
             <dd>{{ publish_job_detail.provenance.source_name }}</dd>
           </div>
           <div>
-            <dt>Source URL</dt>
+            <dt>소스 URL</dt>
             <dd>
               {% if publish_job_detail.provenance.source_url %}
                 <a class="console-link" href="{{ publish_job_detail.provenance.source_url }}">{{ publish_job_detail.provenance.source_url }}</a>
               {% else %}
-                Not recorded
+                기록 없음
               {% endif %}
             </dd>
           </div>
           <div>
-            <dt>Article URL</dt>
+            <dt>아티클 URL</dt>
             <dd>
               {% if publish_job_detail.provenance.article_url %}
                 <a class="console-link" href="{{ publish_job_detail.provenance.article_url }}">{{ publish_job_detail.provenance.article_url }}</a>
               {% else %}
-                Not recorded
+                기록 없음
               {% endif %}
             </dd>
           </div>
           <div>
-            <dt>Published</dt>
+            <dt>발행 시각</dt>
             <dd>{{ publish_job_detail.provenance.source_published_at }}</dd>
           </div>
           <div>
-            <dt>Policy mode</dt>
+            <dt>정책 모드</dt>
             <dd>{{ publish_job_detail.provenance.source_policy_mode }}</dd>
           </div>
         </dl>
@@ -151,34 +151,34 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Brief</p>
+            <p class="console-card-label">브리프</p>
             <h2>{{ publish_job_detail.brief.title }}</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Brief ID</dt>
+            <dt>브리프 ID</dt>
             <dd>{{ publish_job_detail.brief.brief_id }}</dd>
           </div>
           <div>
-            <dt>Summary</dt>
+            <dt>요약</dt>
             <dd>{{ publish_job_detail.brief.summary }}</dd>
           </div>
           <div>
-            <dt>Landing URL</dt>
+            <dt>랜딩 URL</dt>
             <dd><a class="console-link" href="{{ publish_job_detail.brief.landing_url }}">{{ publish_job_detail.brief.landing_url }}</a></dd>
           </div>
           <div>
-            <dt>Angle</dt>
+            <dt>각도</dt>
             <dd>{{ publish_job_detail.brief.angle }}</dd>
           </div>
           <div>
-            <dt>Language</dt>
+            <dt>언어</dt>
             <dd>{{ publish_job_detail.brief.language }}</dd>
           </div>
           <div>
-            <dt>Tags</dt>
-            <dd>{{ publish_job_detail.brief.tags | join(", ") if publish_job_detail.brief.tags else "No tags recorded." }}</dd>
+            <dt>태그</dt>
+            <dd>{{ publish_job_detail.brief.tags | join(", ") if publish_job_detail.brief.tags else "기록된 태그 없음" }}</dd>
           </div>
         </dl>
         {% if publish_job_detail.brief.key_points %}
@@ -195,42 +195,42 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Source item</p>
+            <p class="console-card-label">소스 항목</p>
             <h2>{{ publish_job_detail.source_item.title }}</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Source item ID</dt>
+            <dt>소스 항목 ID</dt>
             <dd>{{ publish_job_detail.source_item.source_item_id }}</dd>
           </div>
           <div>
-            <dt>Source key</dt>
+            <dt>소스 키</dt>
             <dd>{{ publish_job_detail.source_item.source_key }}</dd>
           </div>
           <div>
-            <dt>External ID</dt>
+            <dt>외부 ID</dt>
             <dd>{{ publish_job_detail.source_item.external_id }}</dd>
           </div>
           <div>
-            <dt>Summary</dt>
+            <dt>요약</dt>
             <dd>{{ publish_job_detail.source_item.summary }}</dd>
           </div>
           <div>
-            <dt>Source URL</dt>
+            <dt>소스 URL</dt>
             <dd><a class="console-link" href="{{ publish_job_detail.source_item.source_url }}">{{ publish_job_detail.source_item.source_url }}</a></dd>
           </div>
           <div>
-            <dt>Canonical URL</dt>
+            <dt>정규 URL</dt>
             <dd><a class="console-link" href="{{ publish_job_detail.source_item.canonical_url }}">{{ publish_job_detail.source_item.canonical_url }}</a></dd>
           </div>
           <div>
-            <dt>Published</dt>
+            <dt>발행 시각</dt>
             <dd>{{ publish_job_detail.source_item.published_at }}</dd>
           </div>
           <div>
-            <dt>Policy</dt>
-            <dd>{{ publish_job_detail.source_item.policy_mode }} / Attribution {{ publish_job_detail.source_item.require_attribution }}</dd>
+            <dt>정책</dt>
+            <dd>{{ publish_job_detail.source_item.policy_mode }} / 출처 표기 {{ publish_job_detail.source_item.require_attribution }}</dd>
           </div>
         </dl>
       </article>
@@ -238,8 +238,8 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Publish logs</p>
-            <h2>Recorded delivery timeline</h2>
+            <p class="console-card-label">발행 로그</p>
+            <h2>기록된 전달 타임라인</h2>
           </div>
         </div>
         {% if publish_job_detail.publish_logs %}
@@ -247,10 +247,10 @@
             <table class="console-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>Message</th>
-                  <th>Payload</th>
-                  <th>Created</th>
+                  <th>이벤트</th>
+                  <th>메시지</th>
+                  <th>페이로드</th>
+                  <th>생성됨</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,7 +271,7 @@
             </table>
           </div>
         {% else %}
-          <p class="console-empty">No publish log events have been recorded for this job yet.</p>
+          <p class="console-empty">이 작업에 기록된 발행 로그 이벤트가 아직 없습니다.</p>
         {% endif %}
       </article>
     </section>

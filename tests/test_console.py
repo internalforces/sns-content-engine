@@ -79,14 +79,14 @@ def test_console_shell_landing_page_renders_navigation_and_context() -> None:
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Operator Console" in response.text
-    assert "Console Home" in response.text
-    assert "Runs &amp; Failures" in response.text
-    assert "Pending Review" in response.text
+    assert "운영 콘솔" in response.text
+    assert "콘솔 홈" in response.text
+    assert "실행 및 실패" in response.text
+    assert "검토 대기" in response.text
     assert "/tmp/operator-config" in response.text
     assert "sqlite:///tmp/operator.db" in response.text
-    assert "Manual review required" in response.text
-    assert "Dry-run publish is the browser default" in response.text
+    assert "수동 검토 필수" in response.text
+    assert "브라우저 기본 발행 경로는 드라이런입니다" in response.text
 
 
 def test_console_shell_static_asset_is_served() -> None:
@@ -110,11 +110,11 @@ def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Run Dashboard" in response.text
-    assert "Run dashboard is waiting for data. No pipeline runs have been recorded yet." in response.text
-    assert "No recent runs are available for this operator context yet." in response.text
-    assert "No technical failures are currently visible." in response.text
-    assert "No policy skips are currently visible." in response.text
+    assert "실행 대시보드" in response.text
+    assert "실행 대시보드가 데이터를 기다리고 있습니다. 아직 기록된 파이프라인 실행이 없습니다." in response.text
+    assert "현재 운영 콘텍스트에 표시할 최근 실행 이력이 아직 없습니다." in response.text
+    assert "현재 표시할 기술 실패가 없습니다." in response.text
+    assert "현재 표시할 정책상 건너뜀이 없습니다." in response.text
 
 
 def test_dashboard_page_renders_recent_runs_and_failures(tmp_path: Path) -> None:
@@ -196,12 +196,12 @@ def test_dashboard_page_renders_recent_runs_and_failures(tmp_path: Path) -> None
     )
 
     assert response.status_code == 200
-    assert "Run Dashboard" in response.text
+    assert "실행 대시보드" in response.text
     assert "run_local_finance" in response.text
-    assert "Partial" in response.text
-    assert "Discovered 4 / Saved 3 / Enriched 2 / Briefs 2 / Drafts 5 / Failures 1" in response.text
-    assert "Restricted 1 / Reusable 3" in response.text
-    assert "Policy skips 1 / Attribution required 2" in response.text
+    assert "부분 완료" in response.text
+    assert "발견 4 / 저장 3 / 보강 2 / 브리프 2 / 초안 5 / 실패 1" in response.text
+    assert "제한됨 1 / 재사용 가능 3" in response.text
+    assert "정책상 건너뜀 1 / 출처 표기 필수 2" in response.text
     assert "codex_wrapper, fake" in response.text
     assert "Central bank update" in response.text
     assert "site blocked" in response.text
@@ -219,9 +219,9 @@ def test_articles_page_renders_empty_state(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Article Status" in response.text
-    assert "Showing up to 25 recent source items in stored discovery order" in response.text
-    assert "No stored article rows are available for this operator context yet." in response.text
+    assert "아티클 상태" in response.text
+    assert "현재 운영 콘텍스트에서 최근 소스 항목을 저장된 발견 순서 기준 최대 25개까지 보여줍니다." in response.text
+    assert "현재 운영 콘텍스트에 표시할 저장된 아티클 행이 아직 없습니다." in response.text
 
 
 def test_articles_page_renders_recent_article_rows(tmp_path: Path) -> None:
@@ -268,15 +268,15 @@ def test_articles_page_renders_recent_article_rows(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Article Status" in response.text
+    assert "아티클 상태" in response.text
     assert "Central bank update" in response.text
     assert "Finance Feed" in response.text
     assert "https://example.com/final/2" in response.text
-    assert "Failed" in response.text
-    assert "Fetch Failed / Extract Pending / Summarize Pending" in response.text
+    assert "실패" in response.text
+    assert "수집 실패 / 추출 대기 / 요약 대기" in response.text
     assert "site blocked" in response.text
     assert "Operator checklist update" in response.text
-    assert "Resolved article not recorded yet." in response.text
+    assert "해결된 아티클 URL이 아직 기록되지 않았습니다." in response.text
 
 
 def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
@@ -289,9 +289,9 @@ def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Pending Review" in response.text
-    assert "Each queue row now links into one draft workspace" in response.text
-    assert "No drafts are currently waiting for manual review." in response.text
+    assert "검토 대기" in response.text
+    assert "각 대기열 행은 하나의 초안 작업공간으로 연결되어" in response.text
+    assert "현재 수동 검토를 기다리는 초안이 없습니다." in response.text
 
 
 def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
@@ -320,9 +320,9 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Pending Review" in response.text
-    assert f"Draft {pending_draft.id}" in response.text
-    assert "Variant 0" in response.text
+    assert "검토 대기" in response.text
+    assert f"초안 {pending_draft.id}" in response.text
+    assert "버전 0" in response.text
     assert "ai_tools_daily" in response.text
     assert "Useful AI automation workflows for operators" in response.text
     assert f'/console/reviews/{pending_draft.id}' in response.text
@@ -405,8 +405,8 @@ def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert f"Review Draft {draft.id}" in response.text
-    assert f"Draft {draft.id}" in response.text
+    assert f"검토 초안 {draft.id}" in response.text
+    assert f"초안 {draft.id}" in response.text
     assert "Brief for draft" in response.text
     assert "AI Tools Daily" in response.text
     assert "Regenerated article summary for operators" in response.text
@@ -416,7 +416,7 @@ def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     assert "scheduler-a" in response.text
     assert attributed_body in response.text
     assert edited_body in response.text
-    assert f"Publish job {schedule_result.publish_job_id}" in response.text
+    assert f"발행 작업 {schedule_result.publish_job_id}" in response.text
     assert "Variant one with a shorter operator hook" in response.text
     assert "Variant two for deeper operator analysis" in response.text
     assert f'/console/reviews/{sibling.id}' in response.text
@@ -433,7 +433,7 @@ def test_review_detail_page_returns_browser_friendly_not_found(tmp_path: Path) -
     )
 
     assert response.status_code == 404
-    assert "Review Draft Not Found" in response.text
+    assert "검토 초안을 찾을 수 없음" in response.text
     assert "draft 999 was not found" in response.text
     assert "/console/reviews/pending" in response.text
 
@@ -462,10 +462,10 @@ def test_review_actions_approve_success_updates_detail_state(tmp_path: Path) -> 
     )
 
     assert response.status_code == 200
-    assert "Approve saved" in response.text
-    assert "Draft approved. Scheduling is now available from this workspace." in response.text
-    assert "Approved" in response.text
-    assert "Create a publish job" in response.text
+    assert "승인 완료" in response.text
+    assert "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다." in response.text
+    assert "승인됨" in response.text
+    assert "발행 작업 만들기" in response.text
 
     with session_scope(session_factory) as session:
         stored_draft = DraftVariantRepository(session).get(draft.id)
@@ -494,9 +494,9 @@ def test_review_actions_reject_success_records_reason(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Reject saved" in response.text
+    assert "반려 완료" in response.text
     assert "Off topic for this account" in response.text
-    assert "No browser actions are available for this draft&#39;s current state." in response.text
+    assert "이 초안의 현재 상태에서는 브라우저 작업을 수행할 수 없습니다." in response.text
 
     with session_scope(session_factory) as session:
         stored_draft = DraftVariantRepository(session).get(draft.id)
@@ -526,7 +526,7 @@ def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> Non
     )
 
     assert response.status_code == 200
-    assert "Edit saved" in response.text
+    assert "수정 완료" in response.text
     assert updated_body in response.text
     assert "editor-c" in response.text
 
@@ -564,9 +564,9 @@ def test_review_actions_schedule_success_creates_publish_job(tmp_path: Path) -> 
     )
 
     assert response.status_code == 200
-    assert "Schedule saved" in response.text
-    assert "Draft scheduled for 2026-03-18T00:00:00+00:00 as publish job 1." in response.text
-    assert "Action saved" not in response.text
+    assert "예약 완료" in response.text
+    assert "초안이 2026-03-18T00:00:00+00:00에 예약되었고 발행 작업 1이 생성되었습니다." in response.text
+    assert "작업 완료" not in response.text
 
     with session_scope(session_factory) as session:
         jobs = PublishJobRepository(session).list()
@@ -598,10 +598,10 @@ def test_review_actions_approve_validation_error_stays_browser_readable(tmp_path
     )
 
     assert response.status_code == 422
-    assert "Approve blocked" in response.text
+    assert "승인 불가" in response.text
     assert "topic_guard_failed" in response.text
-    assert "Approve draft" in response.text
-    assert "Edit draft body" in response.text
+    assert "초안 승인" in response.text
+    assert "초안 본문 수정" in response.text
 
 
 def test_review_actions_schedule_conflict_preserves_submitted_slot(tmp_path: Path) -> None:
@@ -638,7 +638,7 @@ def test_review_actions_schedule_conflict_preserves_submitted_slot(tmp_path: Pat
     )
 
     assert response.status_code == 409
-    assert "Schedule blocked" in response.text
+    assert "예약 불가" in response.text
     assert "already has an active publish job" in response.text
     assert 'value="2026-03-18T10:00:00+09:00"' in response.text
 
@@ -653,9 +653,9 @@ def test_publish_jobs_page_renders_empty_state(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Publish Jobs" in response.text
-    assert "Queued and completed publish jobs" in response.text
-    assert "No publish jobs are stored for this operator context yet." in response.text
+    assert "발행 작업" in response.text
+    assert "대기 중이거나 완료된 발행 작업" in response.text
+    assert "현재 운영 콘텍스트에 저장된 발행 작업이 아직 없습니다." in response.text
 
 
 def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
@@ -700,9 +700,9 @@ def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Visible jobs" in response.text
-    assert "Active queue" in response.text
-    assert "Needs attention" in response.text
+    assert "표시 중인 작업" in response.text
+    assert "활성 대기열" in response.text
+    assert "확인 필요" in response.text
     assert "Queued AI brief" in response.text
     assert "Failed AI brief" in response.text
     assert "Published finance brief" in response.text
@@ -752,14 +752,14 @@ def test_publish_jobs_detail_page_renders_published_timeline(tmp_path: Path) -> 
     )
 
     assert response.status_code == 200
-    assert f"Publish Job {job_id}" in response.text
-    assert "Back to publish jobs" in response.text
-    assert "Open review workspace" in response.text
+    assert f"발행 작업 {job_id}" in response.text
+    assert "발행 작업 목록으로 돌아가기" in response.text
+    assert "검토 작업공간 열기" in response.text
     assert "publish job completed successfully" in response.text
     assert "publisher execution started" in response.text
     assert "tweet:detail-1" in response.text
     assert "AI Tools Daily" in response.text
-    assert "Stored source context" in response.text
+    assert "저장된 소스 콘텍스트" in response.text
 
 
 def test_publish_jobs_detail_page_renders_failed_context(tmp_path: Path) -> None:
@@ -790,8 +790,8 @@ def test_publish_jobs_detail_page_renders_failed_context(tmp_path: Path) -> None
     )
 
     assert response.status_code == 200
-    assert f"Publish Job {job_id}" in response.text
-    assert "Failed" in response.text
+    assert f"발행 작업 {job_id}" in response.text
+    assert "실패" in response.text
     assert "missing access token" in response.text
     assert "publish job failed: missing access token" in response.text
 
@@ -806,7 +806,7 @@ def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 404
-    assert "Publish job could not be loaded" in response.text
+    assert "발행 작업을 불러올 수 없습니다" in response.text
     assert "publish job 999 was not found" in response.text
 
 
@@ -823,13 +823,13 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert "Scheduler" in response.text
-    assert "Discover, backfill, and publish due" in response.text
-    assert "No scheduler action has been triggered from this browser session yet." in response.text
-    assert "Run discover" in response.text
-    assert "Run backfill" in response.text
-    assert "Run publish due" in response.text
-    assert "Enable live publishing for this one run" in response.text
+    assert "스케줄러" in response.text
+    assert "수집, 백필, 발행 예정 처리" in response.text
+    assert "이 브라우저 세션에서 아직 실행된 스케줄러 작업이 없습니다." in response.text
+    assert "수집 실행" in response.text
+    assert "백필 실행" in response.text
+    assert "발행 예정 처리 실행" in response.text
+    assert "이번 실행에만 실발행 허용" in response.text
     assert "/tmp/operator-config" in response.text
 
 
@@ -854,8 +854,8 @@ def test_scheduler_actions_discover_post_renders_summary() -> None:
 
     assert response.status_code == 200
     assert captured == {"config_dir": "/tmp/operator-config"}
-    assert "Discover saved" in response.text
-    assert "Discover completed with 3 discovered items across 2 configured sources." in response.text
+    assert "수집 완료" in response.text
+    assert "수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
     assert "ai_tools_rss" in response.text
     assert "manual_csv: feed parse failed" in response.text
 
@@ -898,10 +898,10 @@ def test_scheduler_actions_backfill_post_renders_summary() -> None:
         "config_dir": "/tmp/operator-config",
         "database_url": "sqlite+pysqlite:////tmp/operator.db",
     }
-    assert "Backfill saved" in response.text
+    assert "백필 완료" in response.text
     assert "ai_tools_daily / X" in response.text
-    assert "Created jobs 12, 13" in response.text
-    assert "Routes checked" in response.text
+    assert "생성한 작업 12, 13" in response.text
+    assert "확인한 경로" in response.text
 
 
 def test_scheduler_actions_publish_due_defaults_to_dry_run() -> None:
@@ -943,9 +943,9 @@ def test_scheduler_actions_publish_due_defaults_to_dry_run() -> None:
         "database_url": "sqlite+pysqlite:////tmp/operator.db",
         "dry_run": True,
     }
-    assert "Publish Due saved" in response.text
-    assert "Dry run remained the default browser path" in response.text
-    assert "Publish mode:</strong> Dry run" in response.text
+    assert "발행 예정 처리 완료" in response.text
+    assert "드라이런이 브라우저 기본 경로로 유지되어 발행 상태 변경은 적용되지 않았습니다." in response.text
+    assert "발행 모드:</strong> 드라이런" in response.text
     assert "dry-run only; no state changes were applied" in response.text
 
 
@@ -989,9 +989,9 @@ def test_scheduler_actions_publish_due_live_opt_in_is_explicit() -> None:
         "database_url": "sqlite+pysqlite:////tmp/operator.db",
         "dry_run": False,
     }
-    assert "Publish Due saved" in response.text
-    assert "Live publish ran because the explicit browser opt-in was selected." in response.text
-    assert "Publish mode:</strong> Live publish" in response.text
+    assert "발행 예정 처리 완료" in response.text
+    assert "브라우저에서 명시적으로 선택했기 때문에 실발행이 실행되었습니다." in response.text
+    assert "발행 모드:</strong> 실발행" in response.text
     assert "published successfully" in response.text
 
 
@@ -1094,10 +1094,10 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
 
     home_response = client.get("/console/", params=params)
     assert home_response.status_code == 200
-    assert "Operator Console" in home_response.text
-    assert "Runs &amp; Failures" in home_response.text
-    assert "Publish Jobs" in home_response.text
-    assert "Manual review required" in home_response.text
+    assert "운영 콘솔" in home_response.text
+    assert "실행 및 실패" in home_response.text
+    assert "발행 작업" in home_response.text
+    assert "수동 검토 필수" in home_response.text
 
     dashboard_response = client.get("/console/dashboard", params=params)
     assert dashboard_response.status_code == 200
@@ -1124,14 +1124,14 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
         params=params,
     )
     assert publish_job_detail_response.status_code == 200
-    assert "Back to publish jobs" in publish_job_detail_response.text
+    assert "발행 작업 목록으로 돌아가기" in publish_job_detail_response.text
     assert f"/console/reviews/{linked_review_draft_id}" in publish_job_detail_response.text
 
     scheduler_response = client.get("/console/scheduler", params=params)
     assert scheduler_response.status_code == 200
-    assert "Run discover" in scheduler_response.text
-    assert "Run publish due" in scheduler_response.text
-    assert "Enable live publishing for this one run" in scheduler_response.text
+    assert "수집 실행" in scheduler_response.text
+    assert "발행 예정 처리 실행" in scheduler_response.text
+    assert "이번 실행에만 실발행 허용" in scheduler_response.text
 
 
 def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
@@ -1185,8 +1185,8 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     detail_before_response = client.get(f"/console/reviews/{draft.id}", params=params)
     assert detail_before_response.status_code == 200
-    assert "Approve draft" in detail_before_response.text
-    assert "Edit draft body" in detail_before_response.text
+    assert "초안 승인" in detail_before_response.text
+    assert "초안 본문 수정" in detail_before_response.text
 
     approve_response = _post_console_review_action(
         client,
@@ -1197,8 +1197,8 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
         reviewer="editor-a",
     )
     assert approve_response.status_code == 200
-    assert "Approve saved" in approve_response.text
-    assert "Create a publish job" in approve_response.text
+    assert "승인 완료" in approve_response.text
+    assert "발행 작업 만들기" in approve_response.text
 
     schedule_response = _post_console_review_action(
         client,
@@ -1210,7 +1210,7 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
         scheduled_for="2026-03-18T09:00:00+09:00",
     )
     assert schedule_response.status_code == 200
-    assert "Schedule saved" in schedule_response.text
+    assert "예약 완료" in schedule_response.text
 
     with session_scope(session_factory) as session:
         jobs = PublishJobRepository(session).list()
@@ -1220,7 +1220,7 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     pending_after_response = client.get("/console/reviews/pending", params=params)
     assert pending_after_response.status_code == 200
-    assert "No drafts are currently waiting for manual review." in pending_after_response.text
+    assert "현재 수동 검토를 기다리는 초안이 없습니다." in pending_after_response.text
 
     publish_jobs_response = client.get("/console/publish-jobs", params=params)
     assert publish_jobs_response.status_code == 200
@@ -1232,7 +1232,7 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
         params=params,
     )
     assert publish_job_detail_response.status_code == 200
-    assert "Open review workspace" in publish_job_detail_response.text
+    assert "검토 작업공간 열기" in publish_job_detail_response.text
     assert f"/console/reviews/{draft.id}" in publish_job_detail_response.text
 
     scheduler_response = _post_console_scheduler_action(
@@ -1247,8 +1247,8 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
         "database_url": database_url,
         "dry_run": True,
     }
-    assert "Publish Due saved" in scheduler_response.text
-    assert "Dry run remained the default browser path" in scheduler_response.text
+    assert "발행 예정 처리 완료" in scheduler_response.text
+    assert "드라이런이 브라우저 기본 경로로 유지되어 발행 상태 변경은 적용되지 않았습니다." in scheduler_response.text
 
 
 def _build_session_factory(tmp_path: Path):

@@ -4,16 +4,16 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Article visibility</p>
-        <h2>Stored article and enrichment status</h2>
+        <p class="console-card-label">아티클 현황</p>
+        <h2>저장된 아티클 및 보강 상태</h2>
       </div>
-      <span class="console-badge">Task 03</span>
+      <span class="console-badge">작업 03</span>
     </div>
     <p class="console-card-copy">
-      This page stays read-only and reuses the same article-status helper behind the operator API, so the browser reflects stored source-item and enrichment state without adding a parallel data path.
+      이 페이지는 읽기 전용으로 유지되며, 운영자 API 뒤에서 쓰는 동일한 아티클 상태 헬퍼를 재사용합니다. 별도 데이터 경로를 추가하지 않고도 브라우저에서 저장된 소스 항목과 보강 상태를 확인할 수 있습니다.
     </p>
     <p class="console-card-copy">
-      Showing up to {{ article_limit }} recent source items in stored discovery order for the current operator context.
+      현재 운영 콘텍스트에서 최근 소스 항목을 저장된 발견 순서 기준 최대 {{ article_limit }}개까지 보여줍니다.
     </p>
   </section>
 
@@ -30,8 +30,8 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Article rows</p>
-        <h2>Recent stored source items</h2>
+        <p class="console-card-label">아티클 행</p>
+        <h2>최근 저장된 소스 항목</h2>
       </div>
     </div>
     {% if article_rows %}
@@ -39,11 +39,11 @@
         <table class="console-table">
           <thead>
             <tr>
-              <th>Source</th>
-              <th>Article</th>
-              <th>Timing</th>
-              <th>Enrichment</th>
-              <th>Failure</th>
+              <th>소스</th>
+              <th>아티클</th>
+              <th>시각</th>
+              <th>보강</th>
+              <th>실패</th>
             </tr>
           </thead>
           <tbody>
@@ -63,14 +63,14 @@
                     {% if row.article_url %}
                       <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
                     {% else %}
-                      <span>Resolved article not recorded yet.</span>
+                      <span>해결된 아티클 URL이 아직 기록되지 않았습니다.</span>
                     {% endif %}
                   </div>
                 </td>
                 <td>
                   <div class="console-stack">
-                    <span>Published {{ row.published_at }}</span>
-                    <span>Discovered {{ row.discovered_at }}</span>
+                    <span>발행 {{ row.published_at }}</span>
+                    <span>발견 {{ row.discovered_at }}</span>
                   </div>
                 </td>
                 <td>
@@ -86,7 +86,7 @@
         </table>
       </div>
     {% else %}
-      <p class="console-empty">No stored article rows are available for this operator context yet.</p>
+      <p class="console-empty">현재 운영 콘텍스트에 표시할 저장된 아티클 행이 아직 없습니다.</p>
     {% endif %}
   </section>
 {% endblock %}
