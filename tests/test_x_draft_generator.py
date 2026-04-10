@@ -163,7 +163,7 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
 
 
 @pytest.mark.parametrize(
-    ("variants", "message"),
+    ("variants", "message", "max_chars"),
     [
         (
             (
@@ -171,6 +171,7 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
                 "Duplicate   draft https://example.com/articles/1",
             ),
             "duplicates an earlier variant",
+            60,
         ),
         (
             (
@@ -178,6 +179,7 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
                 "Second draft https://example.com/articles/1",
             ),
             "missing the landing URL",
+            60,
         ),
         (
             (
@@ -185,16 +187,19 @@ def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_top
                 "Second draft https://example.com/articles/1",
             ),
             "exceeds max_chars",
+            20,
         ),
         (
             ("Only one draft https://example.com/articles/1",),
             "expected 2",
+            60,
         ),
     ],
 )
 def test_x_draft_generator_rejects_invalid_provider_output(
     variants: tuple[str, ...],
     message: str,
+    max_chars: int,
 ) -> None:
     generator = XDraftGenerator(_CapturingProvider(variants))
 
@@ -202,13 +207,46 @@ def test_x_draft_generator_rejects_invalid_provider_output(
         generator.generate(
             content_brief=_build_content_brief(),
             account_key="ai_tools_daily",
-            account=_build_account_config(max_chars=60),
+            account=_build_account_config(max_chars=max_chars),
             prompt_profile=PromptProfileConfig(
                 system_template="System {{ account_key }}",
                 user_template="User {{ title }} {{ landing_url }}",
             ),
             variant_count=2,
         )
+
+
+def test_x_draft_generator_shortens_overlong_variants_that_include_the_required_url() -> None:
+    generator = XDraftGenerator(
+        _CapturingProvider(
+            (
+                (
+                    "This draft has too many words to fit into a very small limit but still points "
+                    "to the right article https://example.com/articles/1 and leaves extra trailing copy"
+                ),
+                (
+                    "Second draft keeps the article context intact while using more words than the "
+                    "channel limit allows https://example.com/articles/1 with extra overflow"
+                ),
+            )
+        )
+    )
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=90),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert len(variants) == 2
+    assert all(len(variant) <= 90 for variant in variants)
+    assert all(variant.count("https://example.com/articles/1") == 1 for variant in variants)
+    assert all(variant.endswith("https://example.com/articles/1") for variant in variants)
 
 
 def test_x_draft_generator_prefers_article_url_over_content_landing_url() -> None:

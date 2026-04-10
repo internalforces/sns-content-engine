@@ -248,6 +248,67 @@ def test_generate_drafts_uses_openai_provider_when_api_key_is_present(
     assert recording_client.payloads[0]["model"] == "gpt-5.4-mini"
 
 
+def test_generate_drafts_shortens_overlong_openai_variants_before_storing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 120
+        """,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    recording_client = _RecordingOpenAIClient(
+        _StubOpenAIResponse(
+            '{"variants":['
+            '"This OpenAI draft uses too many words before the required link and needs to be shortened for X '
+            'while still keeping the important article reference https://gilgop.cloud/ai-tools with trailing overflow",'
+            '"Another OpenAI variant also runs long before it reaches the required link and should be trimmed down '
+            'safely for storage https://gilgop.cloud/ai-tools with extra detail",'
+            '"A third OpenAI variant stays verbose long enough to exceed the channel limit unless the generator '
+            'compacts the supporting copy https://gilgop.cloud/ai-tools with more overflow"'
+            "]}"
+        )
+    )
+    monkeypatch.setattr(
+        openai_provider_module,
+        "_build_default_openai_responses_client",
+        lambda **_: recording_client,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+
+    assert len(stored_drafts) == 3
+    assert all(len(draft.body) <= 120 for draft in stored_drafts)
+    assert all(draft.body.count("https://gilgop.cloud/ai-tools") == 1 for draft in stored_drafts)
+    assert all(draft.body.endswith("https://gilgop.cloud/ai-tools") for draft in stored_drafts)
+
+
 def test_generate_drafts_honors_providers_yaml_routing_when_present(
     monkeypatch,
     tmp_path: Path,

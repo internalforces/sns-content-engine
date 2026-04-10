@@ -236,6 +236,11 @@ def _validate_variants(
             raise DraftGenerationError(f"variant {index} is empty after normalization")
         if request.landing_url not in normalized:
             raise DraftGenerationError(f"variant {index} is missing the landing URL")
+        normalized = _coerce_variant_to_fit(
+            normalized,
+            landing_url=request.landing_url,
+            max_chars=request.max_chars,
+        )
         if len(normalized) > request.max_chars:
             raise DraftGenerationError(
                 f"variant {index} exceeds max_chars ({len(normalized)} > {request.max_chars})"
@@ -251,6 +256,69 @@ def _validate_variants(
 
 def _normalize_body(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", value).strip()
+
+
+def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> str:
+    normalized = _normalize_body(value)
+    if len(normalized) <= max_chars:
+        return normalized
+
+    shortened = _fit_text_with_url(
+        text=normalized.replace(landing_url, " "),
+        landing_url=landing_url,
+        max_chars=max_chars,
+    )
+    return _normalize_body(shortened)
+
+
+def _fit_text_with_url(*, text: str, landing_url: str, max_chars: int) -> str:
+    available = max_chars - len(landing_url)
+    if available < 0:
+        return landing_url
+
+    normalized_text = _normalize_body(text)
+    if not normalized_text:
+        return landing_url
+
+    supporting_limit = max(available - 1, 0)
+    if supporting_limit == 0:
+        return landing_url
+
+    shortened_text = _shorten_text(normalized_text, limit=supporting_limit)
+    if not shortened_text:
+        return landing_url
+
+    return f"{shortened_text} {landing_url}".strip()
+
+
+def _shorten_text(text: str, *, limit: int) -> str:
+    if limit <= 0:
+        return ""
+
+    normalized = _normalize_body(text)
+    if len(normalized) <= limit:
+        return normalized
+
+    words = normalized.split(" ")
+    kept_words: list[str] = []
+
+    for word in words:
+        candidate = word if not kept_words else f"{' '.join(kept_words)} {word}"
+        if len(candidate) > limit:
+            break
+        kept_words.append(word)
+
+    if not kept_words:
+        return normalized[:limit].rstrip()
+
+    shortened = " ".join(kept_words)
+    if len(shortened) == limit:
+        return shortened
+
+    if len(shortened) + 4 <= limit:
+        return f"{shortened} ..."
+
+    return shortened
 
 
 def _validate_variant_count(variant_count: int) -> None:
