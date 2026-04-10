@@ -4,16 +4,16 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Manual review queue</p>
-        <h2>Pending operator decisions</h2>
+        <p class="console-card-label">수동 검토 대기열</p>
+        <h2>운영자 판단 대기 중</h2>
       </div>
-      <span class="console-badge">Task 03</span>
+      <span class="console-badge">작업 03</span>
     </div>
     <p class="console-card-copy">
-      This page exposes the current queue directly from the shared review workflow helper while keeping the existing manual-review gate untouched.
+      이 페이지는 기존 수동 검토 게이트를 그대로 유지하면서, 공용 검토 워크플로 헬퍼의 현재 대기열을 직접 보여줍니다.
     </p>
     <p class="console-card-copy">
-      Each queue row now links into one draft workspace so operators can inspect provenance, brief context, enrichment, audit history, and sibling variants without leaving the console.
+      각 대기열 행은 하나의 초안 작업공간으로 연결되어, 운영자가 콘솔을 벗어나지 않고도 출처 정보, 브리프 콘텍스트, 보강 상태, 감사 이력, 같은 브리프의 다른 버전을 함께 확인할 수 있습니다.
     </p>
   </section>
 
@@ -30,8 +30,8 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Queue order</p>
-        <h2>Drafts awaiting review</h2>
+        <p class="console-card-label">대기열 순서</p>
+        <h2>검토를 기다리는 초안</h2>
       </div>
     </div>
     {% if pending_review_rows %}
@@ -39,12 +39,12 @@
         <table class="console-table">
           <thead>
             <tr>
-              <th>Queue</th>
-              <th>Draft</th>
-              <th>Routing</th>
-              <th>Title</th>
-              <th>Body preview</th>
-              <th>Created</th>
+              <th>순번</th>
+              <th>초안</th>
+              <th>라우팅</th>
+              <th>제목</th>
+              <th>본문 미리보기</th>
+              <th>생성됨</th>
             </tr>
           </thead>
           <tbody>
@@ -72,7 +72,7 @@
         </table>
       </div>
     {% else %}
-      <p class="console-empty">No drafts are currently waiting for manual review.</p>
+      <p class="console-empty">현재 수동 검토를 기다리는 초안이 없습니다.</p>
     {% endif %}
   </section>
 {% endblock %}
