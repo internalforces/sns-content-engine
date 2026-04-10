@@ -144,6 +144,7 @@ def test_run_local_pipeline_records_run_history_and_generates_pending_review_dra
     assert result.status is PipelineRunStatus.SUCCEEDED
     assert result.ingest_discovered_count == 1
     assert result.ingest_saved_count == 1
+    assert result.duplicate_count == 0
     assert result.enrichment_enriched_count == 1
     assert result.brief_created_count == 1
     assert result.draft_created_variant_count == 3

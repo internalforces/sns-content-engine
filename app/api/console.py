@@ -73,7 +73,7 @@ _KOREAN_LABELS = {
     "reject": "반려",
     "rejected": "반려됨",
     "restricted": "제한됨",
-    "run_local": "전체 파이프라인",
+    "run_local": "뉴스 수집",
     "reusable": "재사용 가능",
     "rss_discovered": "RSS 수집",
     "running": "실행 중",
@@ -877,7 +877,7 @@ def _render_console_scheduler_page(
     context = _build_console_context(
         request,
         page_title="스케줄러",
-        page_description="후보 수집, 저장, 기사 보강, 전체 파이프라인, 백필, 발행 예정 처리를 현재 워크플로 경로에 맞춰 실행하는 브라우저 제어 화면입니다.",
+        page_description="뉴스 수집, 발견만 확인, 저장, 기사 보강, 백필, 발행 예정 처리를 현재 워크플로 경로에 맞춰 실행하는 브라우저 제어 화면입니다.",
         active_nav_key="scheduler",
         config_dir=config_dir,
         database_url=database_url,
@@ -966,9 +966,10 @@ def _build_scheduler_action_success_feedback(
             f"{result.enriched_count}개를 보강했고 {result.skipped_count}개를 정책에 따라 건너뛰었습니다."
         )
     elif action == "run_local":
+        duplicate_count = getattr(result, "duplicate_count", 0)
         message = (
-            f"전체 파이프라인이 완료되었습니다. 발견 {result.ingest_discovered_count}, 저장 {result.ingest_saved_count}, "
-            f"보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다. "
+            f"뉴스 수집이 완료되었습니다. 발견 {result.ingest_discovered_count}, 저장 {result.ingest_saved_count}, "
+            f"중복 차단 {duplicate_count}, 보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다. "
             "생성된 초안은 검토 대기열에 저장되었습니다."
         )
     elif action == "backfill":
@@ -1092,16 +1093,24 @@ def _build_scheduler_action_result(
             database_url=database_url,
             draft_ids=tuple(getattr(result, "created_draft_ids", ()) or ()),
         )
+        duplicate_reason_rows = [
+            {
+                "label": _humanize_label(reason),
+                "value": str(count),
+            }
+            for reason, count in tuple(getattr(result, "duplicate_reasons", ()) or ())
+        ]
         return {
             "kind": "run_local",
-            "title": "전체 파이프라인 요약",
-            "badge": "전체 파이프라인",
-            "summary": "발견부터 저장, 기사 보강, 브리프 생성, 초안 생성까지 현재 로컬 워크플로를 한 번 실행했습니다.",
+            "title": "뉴스 수집 요약",
+            "badge": "뉴스 수집",
+            "summary": "발견부터 저장, 기사 보강, 브리프 생성, 초안 생성까지 현재 로컬 뉴스 수집 워크플로를 한 번 실행했습니다.",
             "metrics": [
                 {"label": "실행 ID", "value": str(result.pipeline_run_id)},
                 {"label": "상태", "value": _humanize_label(result.status.value)},
                 {"label": "발견", "value": str(result.ingest_discovered_count)},
                 {"label": "저장", "value": str(result.ingest_saved_count)},
+                {"label": "중복 차단", "value": str(getattr(result, "duplicate_count", 0))},
                 {"label": "보강", "value": str(result.enrichment_enriched_count)},
                 {"label": "브리프", "value": str(result.brief_created_count)},
                 {"label": "초안", "value": str(result.draft_created_variant_count)},
@@ -1111,6 +1120,7 @@ def _build_scheduler_action_result(
                 str(request.url_for("console_pending_review")),
                 query_params,
             ),
+            "duplicate_reasons": duplicate_reason_rows,
             "created_drafts": created_draft_rows,
         }
 
@@ -1285,7 +1295,7 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="스케줄러",
-            description="후보 수집, 저장, 기사 보강, 전체 파이프라인, 백필, 드라이런 우선 발행을 실행하는 제어 화면입니다.",
+            description="뉴스 수집, 발견만 확인, 저장, 기사 보강, 백필, 드라이런 우선 발행을 실행하는 제어 화면입니다.",
             status="준비됨",
             href=_append_query_params(str(request.url_for("console_scheduler")), query_params),
             active=active_nav_key == "scheduler",

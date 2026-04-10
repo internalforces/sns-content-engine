@@ -10,7 +10,8 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.operations import log_workflow_exception, log_workflow_result, log_workflow_start
-from app.scheduler.jobs import backfill_publish_jobs, publish_due_jobs, scheduler_discover
+from app.scheduler.jobs import backfill_publish_jobs, publish_due_jobs
+from app.workflows.run_local_pipeline import run_local_pipeline
 
 
 def build_scheduler_runtime(
@@ -22,17 +23,21 @@ def build_scheduler_runtime(
     publish_due_interval_seconds: int = 60,
     scheduler: BlockingScheduler | None = None,
 ) -> BlockingScheduler:
-    """Build a blocking APScheduler instance with dry-run publish execution."""
+    """Build a blocking APScheduler instance with collection, backfill, and dry-run publish jobs."""
 
     runtime = scheduler or BlockingScheduler(timezone="UTC")
     runtime.add_job(
         _build_logged_job(
-            workflow="discover",
-            runner=partial(scheduler_discover, config_dir=config_dir),
+            workflow="run_local",
+            runner=partial(
+                run_local_pipeline,
+                config_dir=config_dir,
+                database_url=database_url,
+            ),
         ),
         trigger=IntervalTrigger(minutes=discover_interval_minutes, timezone="UTC"),
-        id="discover",
-        name="discover",
+        id="run_local",
+        name="run_local",
         replace_existing=True,
     )
     runtime.add_job(

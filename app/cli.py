@@ -331,6 +331,11 @@ def run_local_command(
     typer.echo(f"status: {result.status.value}")
     typer.echo(f"discovered: {result.ingest_discovered_count}")
     typer.echo(f"saved: {result.ingest_saved_count}")
+    duplicate_count = getattr(result, "duplicate_count", None)
+    if duplicate_count is not None:
+        typer.echo(f"duplicates blocked: {duplicate_count}")
+        for reason, count in getattr(result, "duplicate_reasons", ()):
+            typer.echo(f"duplicates[{reason}]: {count}")
     typer.echo(f"enriched: {result.enrichment_enriched_count}")
     typer.echo(f"briefs created: {result.brief_created_count}")
     typer.echo(f"draft variants created: {result.draft_created_variant_count}")
@@ -821,7 +826,7 @@ def scheduler_run_command(
         typer.Option(
             "--discover-interval-minutes",
             min=1,
-            help="Interval in minutes for the discover job.",
+            help="Interval in minutes for the run-local collection job.",
         ),
     ] = 30,
     backfill_interval_minutes: Annotated[
@@ -855,8 +860,8 @@ def scheduler_run_command(
         _exit_with_error(exc)
     typer.echo(
         "scheduler registered jobs: "
-        "discover, backfill, publish_due "
-        f"(discover={discover_interval_minutes}m, "
+        "run_local, backfill, publish_due "
+        f"(run_local={discover_interval_minutes}m, "
         f"backfill={backfill_interval_minutes}m, "
         f"publish_due={publish_due_interval_seconds}s, dry_run=true)"
     )

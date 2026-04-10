@@ -552,6 +552,8 @@ def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
                 "status": PipelineRunStatus.PARTIAL,
                 "ingest_discovered_count": 6,
                 "ingest_saved_count": 4,
+                "duplicate_count": 2,
+                "duplicate_reasons": (("source_identity", 2),),
                 "enrichment_enriched_count": 3,
                 "brief_created_count": 3,
                 "draft_created_variant_count": 9,
@@ -567,6 +569,8 @@ def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
     assert "status: partial" in result.stdout
     assert "discovered: 6" in result.stdout
     assert "saved: 4" in result.stdout
+    assert "duplicates blocked: 2" in result.stdout
+    assert "duplicates[source_identity]: 2" in result.stdout
     assert "enriched: 3" in result.stdout
     assert "briefs created: 3" in result.stdout
     assert "draft variants created: 9" in result.stdout
@@ -915,7 +919,7 @@ def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) ->
     assert captured["backfill_interval_minutes"] == 15
     assert captured["publish_due_interval_seconds"] == 60
     assert captured["started"] is True
-    assert "scheduler registered jobs: discover, backfill, publish_due" in result.stdout
+    assert "scheduler registered jobs: run_local, backfill, publish_due" in result.stdout
     assert "dry_run=true" in result.stdout
 
 

@@ -844,12 +844,12 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "스케줄러" in response.text
-    assert "후보 수집, 저장, 보강, 파이프라인, 백필, 발행 예정 처리" in response.text
+    assert "뉴스 수집, 발견만 확인, 저장, 보강, 백필, 발행 예정 처리" in response.text
     assert "이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다." in response.text
-    assert "후보 수집 실행" in response.text
+    assert "뉴스 수집 실행" in response.text
+    assert "발견만 실행" in response.text
     assert "수집 저장 실행" in response.text
     assert "기사 보강 실행" in response.text
-    assert "전체 파이프라인 실행" in response.text
     assert "백필 실행" in response.text
     assert "발행 예정 처리 실행" in response.text
     assert "이번 실행에만 실발행 허용" in response.text
@@ -1008,6 +1008,8 @@ def test_scheduler_actions_run_local_post_renders_summary() -> None:
             brief_created_count=3,
             draft_created_variant_count=9,
             failure_count=1,
+            duplicate_count=2,
+            duplicate_reasons=(("source_identity", 2),),
         )
 
     client = TestClient(create_app(run_local_pipeline_runner=stub_run_local_pipeline))
@@ -1023,10 +1025,12 @@ def test_scheduler_actions_run_local_post_renders_summary() -> None:
         "config_dir": "/tmp/operator-config",
         "database_url": "sqlite+pysqlite:////tmp/operator.db",
     }
-    assert "전체 파이프라인 완료" in response.text
-    assert "전체 파이프라인이 완료되었습니다. 발견 6, 저장 4, 보강 3, 브리프 3, 초안 9건입니다. 생성된 초안은 검토 대기열에 저장되었습니다." in response.text
+    assert "뉴스 수집 완료" in response.text
+    assert "뉴스 수집이 완료되었습니다. 발견 6, 저장 4, 중복 차단 2, 보강 3, 브리프 3, 초안 9건입니다. 생성된 초안은 검토 대기열에 저장되었습니다." in response.text
     assert "실행 ID" in response.text
     assert "부분 완료" in response.text
+    assert "중복 차단" in response.text
+    assert "소스 고유 ID 중복 2" in response.text
 
 
 def test_scheduler_actions_run_local_post_lists_created_draft_links() -> None:
@@ -1044,6 +1048,7 @@ def test_scheduler_actions_run_local_post_lists_created_draft_links() -> None:
             brief_created_count=2,
             draft_created_variant_count=2,
             failure_count=0,
+            duplicate_count=0,
             created_draft_ids=(401, 402),
         )
 
@@ -1366,7 +1371,7 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
 
     scheduler_response = client.get("/console/scheduler", params=params)
     assert scheduler_response.status_code == 200
-    assert "후보 수집 실행" in scheduler_response.text
+    assert "뉴스 수집 실행" in scheduler_response.text
     assert "수집 저장 실행" in scheduler_response.text
     assert "기사 보강 실행" in scheduler_response.text
     assert "발행 예정 처리 실행" in scheduler_response.text

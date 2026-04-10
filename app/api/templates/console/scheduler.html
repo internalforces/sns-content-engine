@@ -5,7 +5,7 @@
     <div class="console-card-header">
       <div>
         <p class="console-card-label">운영 제어</p>
-        <h2>후보 수집, 저장, 보강, 파이프라인, 백필, 발행 예정 처리</h2>
+        <h2>뉴스 수집, 발견만 확인, 저장, 보강, 백필, 발행 예정 처리</h2>
       </div>
       <span class="console-badge">작업 07</span>
     </div>
@@ -159,14 +159,23 @@
         {% elif scheduler_action_result.kind == "run_local" %}
           <div class="console-panel-grid">
             <article class="console-panel">
-              <p class="console-card-label">저장된 초안</p>
-              <h3>검토 대기열에서 바로 확인</h3>
+              <p class="console-card-label">저장 결과</p>
+              <h3>검토 대기열과 중복 차단 사유</h3>
               <p class="console-card-copy">
                 생성된 초안은 데이터베이스에 저장되며 기존 검토 대기 워크플로에서 바로 열 수 있습니다.
               </p>
               <p class="console-card-copy">
                 <a class="console-link" href="{{ scheduler_action_result.pending_review_href }}">검토 대기열 열기</a>
               </p>
+              {% if scheduler_action_result.duplicate_reasons %}
+                <ul class="console-checklist">
+                  {% for item in scheduler_action_result.duplicate_reasons %}
+                    <li>{{ item.label }} {{ item.value }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="console-empty">이번 실행에서 보고된 중복 차단이 없습니다.</p>
+              {% endif %}
             </article>
 
             <article class="console-panel">
@@ -268,13 +277,21 @@
       </div>
     </div>
 
+    <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="run_local">
+      <p class="console-card-label">뉴스 수집</p>
+      <h3>발견부터 초안 저장까지 한 번에</h3>
+      <p class="console-card-copy">현재 로컬 파이프라인 경로를 그대로 실행해 수집 저장, 기사 보강, 브리프 생성, 초안 생성을 한 번에 진행합니다. 생성된 초안은 기존 정책대로 검토 대기에 저장됩니다.</p>
+      <button class="console-button" type="submit">뉴스 수집 실행</button>
+    </form>
+
     <div class="console-action-grid">
       <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
         <input type="hidden" name="action" value="discover">
-        <p class="console-card-label">후보 수집</p>
-        <h3>새 소스 후보 찾기</h3>
+        <p class="console-card-label">발견만 확인</p>
+        <h3>새 소스 후보만 점검</h3>
         <p class="console-card-copy">현재 스케줄러 discover 경로를 그대로 실행합니다. 이 작업은 후보를 찾기만 하고 데이터베이스에는 저장하지 않습니다.</p>
-        <button class="console-button" type="submit">후보 수집 실행</button>
+        <button class="console-button" type="submit">발견만 실행</button>
       </form>
 
       <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
@@ -301,14 +318,6 @@
         <button class="console-button" type="submit">백필 실행</button>
       </form>
     </div>
-
-    <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
-      <input type="hidden" name="action" value="run_local">
-      <p class="console-card-label">전체 파이프라인</p>
-      <h3>발견부터 초안 생성까지 한 번에</h3>
-      <p class="console-card-copy">현재 로컬 파이프라인 경로를 그대로 실행해 수집 저장, 기사 보강, 브리프 생성, 초안 생성을 한 번에 진행합니다. 생성된 초안은 기존 정책대로 검토 대기로 남습니다.</p>
-      <button class="console-button" type="submit">전체 파이프라인 실행</button>
-    </form>
 
     <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
       <input type="hidden" name="action" value="publish_due">
