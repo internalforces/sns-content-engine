@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.config import ConfigError
+from app.env import load_project_env
 from app.storage import DatabaseSchemaError, PublishJobState
 
 if TYPE_CHECKING:
@@ -1153,4 +1154,5 @@ def _build_api_error_response(*, status_code: int, error_code: str, message: str
     return JSONResponse(status_code=status_code, content=payload.model_dump())
 
 
+load_project_env()
 app = create_app()

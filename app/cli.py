@@ -9,6 +9,7 @@ import typer
 
 from app import __version__
 from app.connectors.llm import DraftGenerationProviderError
+from app.env import load_project_env
 from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
@@ -931,6 +932,7 @@ def _exit_with_error(exc: Exception) -> None:
 
 def main() -> None:
     """Run the CLI application."""
+    load_project_env()
     app()
 
 
