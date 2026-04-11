@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from app.connectors.llm import DraftGenerationProviderError
 from app.config import ConfigError
 from app.storage import DatabaseSchemaError, PublishJobState
 from app.workflows.history_queries import PublishJobNotFoundError
@@ -32,6 +33,7 @@ _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 _DEFAULT_ARTICLE_LIMIT = 25
 _DEFAULT_PUBLISH_JOB_LIMIT = 25
 _SCHEDULER_LIVE_VALUES = {"1", "on", "true", "yes"}
+_MANUAL_UPLOAD_CHANNELS = frozenset({"linkedin", "threads"})
 _KOREAN_LABELS = {
     "analysis": "분석",
     "approve": "승인",
@@ -40,18 +42,23 @@ _KOREAN_LABELS = {
     "backfill": "백필",
     "brief_build": "브리프 생성",
     "cancelled": "취소됨",
+    "canonical_url": "대표 URL 중복",
     "discover": "수집",
     "discovery_only": "탐색 전용",
     "draft_generate": "초안 생성",
     "dry_run": "드라이런",
     "edit": "수정",
+    "enrich": "기사 보강",
     "enriched": "보강 완료",
+    "existing": "기존 있음",
     "failed": "실패",
     "html_fetch": "HTML 수집",
+    "ingest": "수집 저장",
     "in_progress": "진행 중",
     "linkedin": "LinkedIn",
     "manual_local": "로컬 수동 실행",
     "news": "뉴스",
+    "normalized_title_hash": "정규화 제목 중복",
     "opinion": "의견",
     "other": "기타",
     "partial": "부분 완료",
@@ -63,9 +70,11 @@ _KOREAN_LABELS = {
     "publish_due": "발행 예정 처리",
     "published": "발행 완료",
     "publishing": "발행 중",
+    "recent_fingerprint": "최근 내용 중복",
     "reject": "반려",
     "rejected": "반려됨",
     "restricted": "제한됨",
+    "run_local": "뉴스 수집",
     "reusable": "재사용 가능",
     "rss_discovered": "RSS 수집",
     "running": "실행 중",
@@ -73,8 +82,10 @@ _KOREAN_LABELS = {
     "schedule": "예약",
     "scheduled": "예약됨",
     "skipped": "건너뜀",
+    "source_identity": "소스 고유 ID 중복",
     "succeeded": "성공",
     "summary_regenerate": "요약 재생성",
+    "threads": "Threads",
     "topic_takeaway": "핵심 요약",
     "trend_insight": "트렌드 인사이트",
     "tutorial": "튜토리얼",
@@ -419,7 +430,7 @@ async def post_console_scheduler_action(
     form_data = await _parse_console_form_body(request)
     action = (form_data.get("action") or "").strip().lower()
 
-    if action not in {"discover", "backfill", "publish_due"}:
+    if action not in {"discover", "ingest", "enrich", "run_local", "backfill", "publish_due"}:
         return _render_console_scheduler_page(
             request,
             config_dir=config_dir,
@@ -427,8 +438,8 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
-                action_label="스케줄러 작업",
-                message="폼을 제출하기 전에 지원되는 스케줄러 작업을 선택하세요.",
+                action_label="운영 작업",
+                message="폼을 제출하기 전에 지원되는 운영 작업을 선택하세요.",
             ),
         )
 
@@ -465,6 +476,18 @@ async def post_console_scheduler_action(
                 message=str(exc),
             ),
         )
+    except DraftGenerationProviderError as exc:
+        return _render_console_scheduler_page(
+            request,
+            config_dir=config_dir,
+            database_url=database_url,
+            status_code=422,
+            feedback=_build_scheduler_action_feedback(
+                kind="error",
+                action_label=_humanize_label(action),
+                message=str(exc),
+            ),
+        )
 
     return _render_console_scheduler_page(
         request,
@@ -475,8 +498,10 @@ async def post_console_scheduler_action(
             result=result,
         ),
         action_result=_build_scheduler_action_result(
+            request,
             action=action,
             result=result,
+            database_url=database_url,
         ),
     )
 
@@ -810,8 +835,13 @@ def _normalize_review_action_form_data(form_data: dict[str, str]) -> dict[str, s
 
 def _build_review_action_success_feedback(result) -> dict[str, str]:
     action_label = _humanize_label(result.action_type.value)
+    approved_message = (
+        "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다."
+        if getattr(result, "channel", None) not in _MANUAL_UPLOAD_CHANNELS
+        else "초안이 승인되었습니다. 이제 이 작업공간에서 수동 업로드용 본문을 복사해 게시할 수 있습니다."
+    )
     messages = {
-        "approve": "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다.",
+        "approve": approved_message,
         "reject": "초안이 반려되었습니다. 반려 사유가 감사 이력에 기록되었습니다.",
         "edit": "초안 본문이 수정되었습니다. 수정 내용이 감사 이력에 기록되었습니다.",
         "schedule": (
@@ -854,7 +884,7 @@ def _render_console_scheduler_page(
     context = _build_console_context(
         request,
         page_title="스케줄러",
-        page_description="현재 스케줄러 래퍼를 그대로 재사용하면서, 수집·백필·발행 예정 처리를 드라이런 기본값으로 실행하는 브라우저 제어 화면입니다.",
+        page_description="뉴스 수집, 발견만 확인, 저장, 기사 보강, 백필, 발행 예정 처리를 현재 워크플로 경로에 맞춰 실행하는 브라우저 제어 화면입니다.",
         active_nav_key="scheduler",
         config_dir=config_dir,
         database_url=database_url,
@@ -889,6 +919,21 @@ def _execute_console_scheduler_action(
         return request.app.state.console_scheduler_discover_runner(
             config_dir=config_dir,
         )
+    if action == "ingest":
+        return request.app.state.console_ingest_sources_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "enrich":
+        return request.app.state.console_enrich_articles_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
+    if action == "run_local":
+        return request.app.state.console_run_local_pipeline_runner(
+            config_dir=config_dir,
+            database_url=database_url,
+        )
     if action == "backfill":
         return request.app.state.console_scheduler_backfill_runner(
             config_dir=config_dir,
@@ -914,8 +959,25 @@ def _build_scheduler_action_success_feedback(
     action_label = _humanize_label(action)
     if action == "discover":
         message = (
-            f"수집이 완료되었습니다. {len(result.processed_sources)}개의 설정된 소스에서 "
+            f"후보 수집이 완료되었습니다. {len(result.processed_sources)}개의 설정된 소스에서 "
             f"{result.discovered_count}개의 항목을 발견했습니다."
+        )
+    elif action == "ingest":
+        message = (
+            f"수집 저장이 완료되었습니다. {result.discovered_count}개의 발견 후보 중 "
+            f"{result.saved_count}개를 저장했고 {result.duplicate_count}개 중복을 차단했습니다."
+        )
+    elif action == "enrich":
+        message = (
+            f"기사 보강이 완료되었습니다. {result.processed_count}개의 저장된 수집 항목 중 "
+            f"{result.enriched_count}개를 보강했고 {result.skipped_count}개를 정책에 따라 건너뛰었습니다."
+        )
+    elif action == "run_local":
+        duplicate_count = getattr(result, "duplicate_count", 0)
+        message = (
+            f"뉴스 수집이 완료되었습니다. 발견 {result.ingest_discovered_count}, 저장 {result.ingest_saved_count}, "
+            f"중복 차단 {duplicate_count}, 보강 {result.enrichment_enriched_count}, 브리프 {result.brief_created_count}, 초안 {result.draft_created_variant_count}건입니다. "
+            "생성된 초안은 검토 대기열에 저장되었습니다."
         )
     elif action == "backfill":
         message = (
@@ -949,19 +1011,23 @@ def _build_scheduler_action_feedback(
 
 
 def _build_scheduler_action_result(
+    request: Request,
     *,
     action: str,
     result,
+    database_url: str | None,
 ) -> dict[str, object]:
+    query_params = _extract_console_query_params(request)
+
     if action == "discover":
         processed_sources = list(result.processed_sources)
         failure_messages = list(result.failure_messages)
         return {
             "kind": "discover",
-            "title": "수집 요약",
-            "badge": "수집",
+            "title": "후보 수집 요약",
+            "badge": "후보 수집",
             "summary": (
-                f"수집이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
+                f"후보 수집이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
                 f"{result.discovered_count}개의 발견 항목을 기록했습니다."
             ),
             "metrics": [
@@ -971,6 +1037,98 @@ def _build_scheduler_action_result(
             ],
             "processed_sources": processed_sources,
             "failure_messages": failure_messages,
+        }
+
+    if action == "ingest":
+        processed_sources = list(result.processed_sources)
+        failure_messages = [failure.format_for_cli() for failure in result.failures]
+        return {
+            "kind": "ingest",
+            "title": "수집 저장 요약",
+            "badge": "수집 저장",
+            "summary": (
+                f"수집 저장이 {len(processed_sources)}개의 설정된 소스를 확인했고 "
+                f"{result.saved_count}개의 새 항목을 저장했습니다."
+            ),
+            "metrics": [
+                {"label": "발견 후보", "value": str(result.discovered_count)},
+                {"label": "저장", "value": str(result.saved_count)},
+                {"label": "중복 차단", "value": str(result.duplicate_count)},
+                {"label": "실패", "value": str(result.failure_count)},
+            ],
+            "processed_sources": processed_sources,
+            "duplicate_reasons": [
+                {
+                    "label": _humanize_label(reason),
+                    "value": str(count),
+                }
+                for reason, count in result.duplicate_counts_by_reason().items()
+            ],
+            "failure_messages": failure_messages,
+        }
+
+    if action == "enrich":
+        failure_counts = result.failure_counts_by_stage()
+        return {
+            "kind": "enrich",
+            "title": "기사 보강 요약",
+            "badge": "기사 보강",
+            "summary": (
+                f"기사 보강이 저장된 수집 항목 {result.processed_count}건을 확인했고 "
+                f"{result.enriched_count}건을 보강했습니다."
+            ),
+            "metrics": [
+                {"label": "처리한 항목", "value": str(result.processed_count)},
+                {"label": "보강 완료", "value": str(result.enriched_count)},
+                {"label": "기존 완료", "value": str(result.existing_count)},
+                {"label": "정책상 건너뜀", "value": str(result.skipped_count)},
+                {"label": "실패", "value": str(result.failed_count)},
+            ],
+            "failure_stages": [
+                {
+                    "label": _humanize_label(stage),
+                    "value": str(count),
+                }
+                for stage, count in failure_counts.items()
+            ],
+        }
+
+    if action == "run_local":
+        created_draft_rows = _build_scheduler_created_draft_rows(
+            request,
+            query_params=query_params,
+            database_url=database_url,
+            draft_ids=tuple(getattr(result, "created_draft_ids", ()) or ()),
+        )
+        duplicate_reason_rows = [
+            {
+                "label": _humanize_label(reason),
+                "value": str(count),
+            }
+            for reason, count in tuple(getattr(result, "duplicate_reasons", ()) or ())
+        ]
+        return {
+            "kind": "run_local",
+            "title": "뉴스 수집 요약",
+            "badge": "뉴스 수집",
+            "summary": "발견부터 저장, 기사 보강, 브리프 생성, 초안 생성까지 현재 로컬 뉴스 수집 워크플로를 한 번 실행했습니다.",
+            "metrics": [
+                {"label": "실행 ID", "value": str(result.pipeline_run_id)},
+                {"label": "상태", "value": _humanize_label(result.status.value)},
+                {"label": "발견", "value": str(result.ingest_discovered_count)},
+                {"label": "저장", "value": str(result.ingest_saved_count)},
+                {"label": "중복 차단", "value": str(getattr(result, "duplicate_count", 0))},
+                {"label": "보강", "value": str(result.enrichment_enriched_count)},
+                {"label": "브리프", "value": str(result.brief_created_count)},
+                {"label": "초안", "value": str(result.draft_created_variant_count)},
+                {"label": "실패", "value": str(result.failure_count)},
+            ],
+            "pending_review_href": _append_query_params(
+                str(request.url_for("console_pending_review")),
+                query_params,
+            ),
+            "duplicate_reasons": duplicate_reason_rows,
+            "created_drafts": created_draft_rows,
         }
 
     if action == "backfill":
@@ -1010,6 +1168,45 @@ def _build_scheduler_action_result(
         ],
         "outcomes": [_build_scheduler_publish_due_outcome_row(outcome) for outcome in result.outcomes],
     }
+
+
+def _build_scheduler_created_draft_rows(
+    request: Request,
+    *,
+    query_params: dict[str, str],
+    database_url: str | None,
+    draft_ids: tuple[int, ...],
+) -> list[dict[str, str]]:
+    if not draft_ids:
+        return []
+
+    pending_result = request.app.state.console_pending_review_drafts_lister(
+        database_url=database_url,
+    )
+    pending_by_id = {
+        row.draft_id: row
+        for row in pending_result.drafts
+    }
+    rows: list[dict[str, str]] = []
+
+    for draft_id in draft_ids:
+        pending_row = pending_by_id.get(draft_id)
+        rows.append(
+            {
+                "draft_label": f"초안 {draft_id}",
+                "detail_href": _append_query_params(
+                    str(request.url_for("console_review_detail", draft_id=draft_id)),
+                    query_params,
+                ),
+                "title": pending_row.title if pending_row is not None else "생성된 초안",
+                "body_preview": _truncate_text(
+                    pending_row.body if pending_row is not None else "초안 본문은 상세 화면에서 확인하세요.",
+                    limit=180,
+                ),
+            }
+        )
+
+    return rows
 
 
 def _build_scheduler_backfill_outcome_row(outcome) -> dict[str, str]:
@@ -1105,7 +1302,7 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="스케줄러",
-            description="수집, 백필, 드라이런 우선 발행 실행을 위한 안전한 브라우저 제어 화면입니다.",
+            description="뉴스 수집, 발견만 확인, 저장, 기사 보강, 백필, 드라이런 우선 발행을 실행하는 제어 화면입니다.",
             status="준비됨",
             href=_append_query_params(str(request.url_for("console_scheduler")), query_params),
             active=active_nav_key == "scheduler",
@@ -1667,6 +1864,7 @@ def _build_review_action_form_state(
     draft = detail.draft
     state_value = draft.state.value
     values = form_values or {}
+    manual_upload = state_value == "approved" and draft.channel in _MANUAL_UPLOAD_CHANNELS
 
     if state_value == "pending_review":
         state_hint = (
@@ -1674,10 +1872,27 @@ def _build_review_action_form_state(
             "예약은 승인 이후에만 열립니다."
         )
         read_only_notice = ""
+        manual_upload_copy = ""
+        manual_upload_helper = ""
     elif state_value == "approved":
-        state_hint = (
-            "이미 승인이 기록되어 있습니다. 공용 검토 워크플로에서 다음으로 가능한 작업은 예약입니다."
-        )
+        if manual_upload:
+            state_hint = (
+                "이미 승인이 기록되어 있습니다. 이 채널은 현재 브라우저 자동 업로드 대신 "
+                "수동 업로드용 본문을 복사해 게시하는 흐름을 권장합니다."
+            )
+            manual_upload_copy = (
+                f"{_humanize_label(draft.channel)} 게시창에 아래 본문을 그대로 붙여넣고, 업로드 후 외부 게시 링크를 운영 기록에 남기세요."
+            )
+            manual_upload_helper = (
+                "현재 이 채널은 프로젝트 내 live publisher가 연결되어 있지 않아 예약 발행 버튼을 숨깁니다. "
+                "본문 줄바꿈과 번호 구조를 유지한 채 수동 게시하는 것이 가장 안전합니다."
+            )
+        else:
+            state_hint = (
+                "이미 승인이 기록되어 있습니다. 공용 검토 워크플로에서 다음으로 가능한 작업은 예약입니다."
+            )
+            manual_upload_copy = ""
+            manual_upload_helper = ""
         read_only_notice = ""
     else:
         state_hint = (
@@ -1686,6 +1901,8 @@ def _build_review_action_form_state(
         read_only_notice = (
             "이 초안의 현재 상태에서는 브라우저 작업을 수행할 수 없습니다. 아래 검토 이력에서 최종 결정을 확인하세요."
         )
+        manual_upload_copy = ""
+        manual_upload_helper = ""
 
     return {
         "action_href": _append_query_params(
@@ -1697,9 +1914,14 @@ def _build_review_action_form_state(
         "edit_body": values.get("edit_body", draft.body),
         "scheduled_for": values.get("scheduled_for", ""),
         "show_pending_actions": state_value == "pending_review",
-        "show_schedule_action": state_value == "approved",
+        "show_schedule_action": state_value == "approved" and not manual_upload,
+        "show_manual_upload_guidance": manual_upload,
         "state_hint": state_hint,
         "read_only_notice": read_only_notice,
+        "manual_upload_title": f"{_humanize_label(draft.channel)} 수동 업로드",
+        "manual_upload_copy": manual_upload_copy,
+        "manual_upload_helper": manual_upload_helper,
+        "manual_upload_body": draft.body,
     }
 
 

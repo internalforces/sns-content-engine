@@ -567,19 +567,20 @@ def test_publish_job_detail_endpoint_returns_not_found_error(tmp_path: Path) -> 
 def test_control_plane_read_endpoints_share_consistent_linked_context(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
-    attributed_body = (
+    attributed_body_template = (
         "Useful AI automation workflows for operators via AI Tools Daily "
-        "example.com https://gilgop.cloud/ai-tools"
+        "example.com {article_url}"
     )
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(
             session,
             variant_index=0,
             created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
-            body=attributed_body,
+            body=attributed_body_template,
             include_provenance=True,
             include_article_enrichment=True,
         )
+    attributed_body = attributed_body_template.format(article_url=draft.article_url)
 
     approve_draft(
         draft.id,
@@ -655,6 +656,7 @@ def test_control_plane_read_endpoints_share_consistent_linked_context(tmp_path: 
         == publish_detail_payload["source_item"]["title"]
     )
     assert review_payload["provenance"]["source_url"] == publish_detail_payload["provenance"]["source_url"]
+    assert review_payload["provenance"]["article_url"] == publish_detail_payload["provenance"]["article_url"]
     assert review_payload["article_enrichment"]["article_url"] == review_payload["source_item"]["source_url"].replace(
         "/drafts/",
         "/articles/",
@@ -935,7 +937,7 @@ def test_review_detail_endpoint_returns_full_draft_context(tmp_path: Path) -> No
     assert payload["reviewed_at"] is None
     assert payload["provenance"]["source_name"] == "AI Tools Daily"
     assert payload["provenance"]["source_url"].startswith("https://example.com/drafts/")
-    assert payload["provenance"]["article_url"] == payload["provenance"]["source_url"]
+    assert payload["provenance"]["article_url"] == payload["article_enrichment"]["article_url"]
     assert payload["provenance"]["source_published_at"] == "2026-03-17T12:00:00+00:00"
     assert payload["provenance"]["source_policy_mode"] == "reusable"
     assert payload["brief"]["brief_id"] > 0
@@ -1434,11 +1436,13 @@ def _create_draft_variant(
     include_article_enrichment: bool = False,
 ) -> DraftVariant:
     source_number = next(_DRAFT_SOURCE_COUNTER)
+    source_url = f"https://example.com/drafts/{source_number}"
+    article_url = f"https://example.com/articles/{source_number}" if include_article_enrichment else None
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
             external_id=f"draft-entry-{source_number}",
-            source_url=f"https://example.com/drafts/{source_number}",
+            source_url=source_url,
             title=f"Draft source {source_number}",
             summary="RSS summary for review" if include_article_enrichment else None,
             published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
@@ -1452,7 +1456,7 @@ def _create_draft_variant(
             ArticleEnrichment(
                 source_item_id=source_item.id,
                 source_name="AI Tools Daily",
-                article_url=f"https://example.com/articles/{source_number}",
+                article_url=article_url,
                 published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
                 discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
                 regenerated_summary="Regenerated article summary for operators",
@@ -1460,6 +1464,9 @@ def _create_draft_variant(
                 classification="analysis",
             )
         )
+    if article_url is not None:
+        body = body.format(article_url=article_url)
+    body = body.format(source_url=source_url)
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,
@@ -1482,8 +1489,8 @@ def _create_draft_variant(
             body=body,
             created_at=created_at,
             source_name="AI Tools Daily" if include_provenance else None,
-            source_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
-            article_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            source_url=source_url if include_provenance else None,
+            article_url=(article_url or source_url) if include_provenance else None,
             source_published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
             if include_provenance
             else None,

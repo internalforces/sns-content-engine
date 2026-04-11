@@ -14,7 +14,7 @@ from app.connectors.sources.base import (
     SourceParseError,
     fetch_url_bytes,
 )
-from app.connectors.sources.normalizer import normalize_raw_source_item
+from app.connectors.sources.normalizer import normalize_raw_source_item, source_url_matches_prefixes
 from app.domain.source_ingestion import (
     RawSourceItem,
     SourceConnectorResult,
@@ -40,9 +40,9 @@ class RssSourceConnector(SourceConnector):
 
         try:
             if _local_name(root.tag) == "rss":
-                return self._discover_rss_items(source_id, root)
+                return self._discover_rss_items(source_id, root, config=config)
             if _local_name(root.tag) == "feed":
-                return self._discover_atom_entries(source_id, root)
+                return self._discover_atom_entries(source_id, root, config=config)
         except SourceParseError as exc:
             return _failure_result(source_id, exc.stage, str(exc))
 
@@ -60,7 +60,13 @@ class RssSourceConnector(SourceConnector):
         except OSError as exc:
             raise SourceFetchError(f"could not fetch {url}: {exc}") from exc
 
-    def _discover_rss_items(self, source_id: str, root: ElementTree.Element) -> SourceConnectorResult:
+    def _discover_rss_items(
+        self,
+        source_id: str,
+        root: ElementTree.Element,
+        *,
+        config: RssSourceConfig,
+    ) -> SourceConnectorResult:
         channel = _find_child_named(root, "channel")
         if channel is None:
             raise SourceParseError("RSS feed is missing channel")
@@ -88,12 +94,17 @@ class RssSourceConnector(SourceConnector):
                 item_key=f"item {index}",
                 items=items,
                 failures=failures,
+                include_url_prefixes=config.include_url_prefixes,
             )
 
         return SourceConnectorResult(items=tuple(items), failures=tuple(failures))
 
     def _discover_atom_entries(
-        self, source_id: str, root: ElementTree.Element
+        self,
+        source_id: str,
+        root: ElementTree.Element,
+        *,
+        config: RssSourceConfig,
     ) -> SourceConnectorResult:
         items = []
         failures = []
@@ -119,6 +130,7 @@ class RssSourceConnector(SourceConnector):
                 item_key=f"entry {index}",
                 items=items,
                 failures=failures,
+                include_url_prefixes=config.include_url_prefixes,
             )
 
         return SourceConnectorResult(items=tuple(items), failures=tuple(failures))
@@ -130,9 +142,16 @@ def _append_normalized_item(
     item_key: str,
     items: list,
     failures: list[SourceDiscoveryFailure],
+    include_url_prefixes,
 ) -> None:
     try:
-        items.append(normalize_raw_source_item(raw_item))
+        normalized_item = normalize_raw_source_item(raw_item)
+        if not source_url_matches_prefixes(
+            normalized_item.source_url,
+            include_url_prefixes,
+        ):
+            return
+        items.append(normalized_item)
     except SourceNormalizationError as exc:
         failures.append(
             SourceDiscoveryFailure(

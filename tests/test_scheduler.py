@@ -561,8 +561,8 @@ def test_scheduler_runtime_logs_failures_without_raising(monkeypatch, capsys) ->
 
     monkeypatch.setattr(
         runtime_module,
-        "scheduler_discover",
-        lambda config_dir=None: (_ for _ in ()).throw(RuntimeError("discover boom")),
+        "run_local_pipeline",
+        lambda config_dir=None, database_url=None: (_ for _ in ()).throw(RuntimeError("run-local boom")),
     )
     monkeypatch.setattr(
         runtime_module,
@@ -580,13 +580,13 @@ def test_scheduler_runtime_logs_failures_without_raising(monkeypatch, capsys) ->
 
     runtime_module.build_scheduler_runtime(scheduler=FakeScheduler())
 
-    assert set(registered_jobs) == {"discover", "backfill", "publish_due"}
-    assert registered_jobs["discover"]() is None
+    assert set(registered_jobs) == {"run_local", "backfill", "publish_due"}
+    assert registered_jobs["run_local"]() is None
 
     captured = capsys.readouterr()
-    assert "event=workflow component=scheduler status=started workflow=discover" in captured.err
-    assert "event=workflow component=scheduler status=failed workflow=discover" in captured.err
-    assert 'error="discover boom"' in captured.err
+    assert "event=workflow component=scheduler status=started workflow=run_local" in captured.err
+    assert "event=workflow component=scheduler status=failed workflow=run_local" in captured.err
+    assert 'error="run-local boom"' in captured.err
 
 
 def test_publish_due_jobs_live_defaults_to_config_publisher_resolver(session_factory, monkeypatch) -> None:

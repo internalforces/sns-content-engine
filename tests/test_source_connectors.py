@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import app.connectors.sources.base as source_base_module
 from app.config import GdeltSourceConfig, ManualCsvSourceConfig, RssSourceConfig, SitemapSourceConfig
 from app.connectors.sources import (
     GdeltSourceConnector,
@@ -113,6 +114,63 @@ def test_rss_connector_extracts_category_tags_for_matching() -> None:
     assert result.items[0].source_tags == ("ai", "automation")
 
 
+def test_fetch_url_bytes_sends_default_user_agent(monkeypatch) -> None:
+    captured = {}
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"<rss/>"
+
+    def fake_urlopen(request, *, timeout):
+        captured["user_agent"] = request.headers["User-agent"]
+        captured["timeout"] = timeout
+        return _Response()
+
+    monkeypatch.setattr(source_base_module, "urlopen", fake_urlopen)
+
+    assert source_base_module.fetch_url_bytes("https://example.com/feed.xml") == b"<rss/>"
+    assert captured["user_agent"].startswith("sns-content-engine/source-discovery")
+    assert captured["timeout"] == 10.0
+
+
+def test_rss_connector_filters_items_by_include_url_prefixes() -> None:
+    feed_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Mixed Feed</title>
+    <item>
+      <guid>guide-1</guid>
+      <link>https://example.com/guides/ai-workflows</link>
+      <title>AI Workflows</title>
+    </item>
+    <item>
+      <guid>seo-1</guid>
+      <link>https://example.com/seo/title-generator</link>
+      <title>SEO Title Generator</title>
+    </item>
+  </channel>
+</rss>
+"""
+    connector = RssSourceConnector(fetch_bytes=lambda _: feed_xml)
+    config = RssSourceConfig(
+        type="rss",
+        url="https://example.com/feed.xml",
+        include_url_prefixes=("https://example.com/guides",),
+    )
+
+    result = connector.discover("ai_tools_rss", config)
+
+    assert result.failures == ()
+    assert len(result.items) == 1
+    assert result.items[0].source_url == "https://example.com/guides/ai-workflows"
+
+
 def test_sitemap_connector_discovers_normalized_items_from_fixture() -> None:
     sitemap_xml = (FIXTURES_DIR / "sample_sitemap.xml").read_bytes()
     connector = SitemapSourceConnector(fetch_bytes=lambda _: sitemap_xml)
@@ -125,6 +183,33 @@ def test_sitemap_connector_discovers_normalized_items_from_fixture() -> None:
     assert result.items[0].title == "First Post"
     assert result.items[0].published_at == datetime(2026, 3, 15, 0, 0, tzinfo=timezone.utc)
     assert result.items[1].title == "Second Post"
+
+
+def test_sitemap_connector_filters_items_by_include_url_prefixes() -> None:
+    sitemap_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://example.com/guides/ai-workflows</loc>
+    <lastmod>2026-03-15</lastmod>
+  </url>
+  <url>
+    <loc>https://example.com/seo/title-generator</loc>
+    <lastmod>2026-03-16</lastmod>
+  </url>
+</urlset>
+"""
+    connector = SitemapSourceConnector(fetch_bytes=lambda _: sitemap_xml)
+    config = SitemapSourceConfig(
+        type="sitemap",
+        url="https://example.com/sitemap.xml",
+        include_url_prefixes=("https://example.com/seo",),
+    )
+
+    result = connector.discover("seo_tools_sitemap", config)
+
+    assert result.failures == ()
+    assert len(result.items) == 1
+    assert result.items[0].source_url == "https://example.com/seo/title-generator"
 
 
 def test_manual_csv_connector_discovers_items_from_fixture_file() -> None:

@@ -23,4 +23,4 @@
 
 ## Example-config assumption
 - The repository now includes example finance-local config files under `config/examples/finance_local/` as operator samples only.
-- Those files are intentionally placeholders and must be copied and edited locally before real use.
+- Those files now point to a conservative public monetary-policy feed by default, but operators should still copy and edit them for real use.

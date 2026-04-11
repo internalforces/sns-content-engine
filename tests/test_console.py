@@ -10,6 +10,7 @@ from textwrap import dedent
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import (
     BackfillChannelResult,
     BackfillResult,
@@ -42,7 +43,20 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
+from app.workflows import (
+    EnrichArticleOutcome,
+    EnrichArticlesResult,
+    IngestSourcesResult,
+    RunLocalPipelineResult,
+    SourceIngestOutcome,
+)
+from app.workflows.review_queue import (
+    PendingReviewDraft,
+    PendingReviewDraftsResult,
+    approve_draft,
+    edit_draft,
+    schedule_draft,
+)
 
 _DRAFT_SOURCE_COUNTER = count()
 
@@ -333,18 +347,24 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
 def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
-    attributed_body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    attributed_body_template = (
+        "AI Tools Daily via example.com: Useful AI automation workflows for operators {article_url}"
+    )
     with session_scope(session_factory) as session:
         draft = _create_review_detail_draft(
             session,
             variant_index=0,
             created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
-            body=attributed_body,
+            body=attributed_body_template,
             include_provenance=True,
             include_article_enrichment=True,
         )
+    attributed_body = attributed_body_template.format(article_url=draft.article_url)
 
-    edited_body = "AI Tools Daily via example.com: Edited AI automation workflow summary for operators https://gilgop.cloud/ai-tools"
+    edited_body = (
+        "AI Tools Daily via example.com: Edited AI automation workflow summary for operators "
+        f"{draft.article_url}"
+    )
     edit_draft(
         draft.id,
         body=edited_body,
@@ -503,6 +523,52 @@ def test_review_actions_reject_success_records_reason(tmp_path: Path) -> None:
 
     assert stored_draft is not None
     assert stored_draft.state is DraftVariantState.REJECTED
+
+
+def test_review_detail_shows_manual_upload_guidance_for_approved_linkedin_draft(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    structured_body = (
+        "1. One-line summary\n"
+        "A professional summary.\n"
+        "2. Key points\n"
+        "- First point\n"
+        "- Second point\n"
+        "- Third point\n"
+        "3. Keywords\n"
+        "AI, Workflow\n"
+        "4. Background/Context\n"
+        "Context line.\n"
+        "5. Forward impact\n"
+        "Impact line.\n"
+        "6. Insight\n"
+        "Insight line.\n"
+        "7. One-line conclusion\n"
+        "Conclusion line.\n"
+        "8. URL\n"
+        "https://example.com/articles/1"
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=structured_body,
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "LinkedIn 수동 업로드" in response.text
+    assert "이 채널은 현재 브라우저 자동 업로드 대신 수동 업로드용 본문을 복사해 게시하는 흐름을 권장합니다." in response.text
+    assert "발행 작업 만들기" not in response.text
+    assert "1. One-line summary" in response.text
+    assert "8. URL" in response.text
 
 
 def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> None:
@@ -824,9 +890,12 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "스케줄러" in response.text
-    assert "수집, 백필, 발행 예정 처리" in response.text
-    assert "이 브라우저 세션에서 아직 실행된 스케줄러 작업이 없습니다." in response.text
-    assert "수집 실행" in response.text
+    assert "뉴스 수집, 발견만 확인, 저장, 보강, 백필, 발행 예정 처리" in response.text
+    assert "이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다." in response.text
+    assert "뉴스 수집 실행" in response.text
+    assert "발견만 실행" in response.text
+    assert "수집 저장 실행" in response.text
+    assert "기사 보강 실행" in response.text
     assert "백필 실행" in response.text
     assert "발행 예정 처리 실행" in response.text
     assert "이번 실행에만 실발행 허용" in response.text
@@ -855,9 +924,228 @@ def test_scheduler_actions_discover_post_renders_summary() -> None:
     assert response.status_code == 200
     assert captured == {"config_dir": "/tmp/operator-config"}
     assert "수집 완료" in response.text
-    assert "수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
+    assert "후보 수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
     assert "ai_tools_rss" in response.text
     assert "manual_csv: feed parse failed" in response.text
+
+
+def test_scheduler_actions_ingest_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_ingest_sources(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> IngestSourcesResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return IngestSourcesResult(
+            outcomes=(
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-1",
+                        source_url="https://example.com/posts/1",
+                        title="Fresh item",
+                    ),
+                    status="saved",
+                    source_item_id=10,
+                ),
+                SourceIngestOutcome(
+                    candidate=SourceItemCandidate(
+                        source_id="ai_tools_rss",
+                        external_id="entry-2",
+                        source_url="https://example.com/posts/2",
+                        title="Duplicate item",
+                    ),
+                    status="duplicate",
+                    duplicate_reason=DuplicateReason.CANONICAL_URL,
+                    matched_item_id=9,
+                ),
+            ),
+            failures=(
+                SourceDiscoveryFailure(
+                    source_id="ai_tools_manual",
+                    stage="read",
+                    message="csv missing",
+                ),
+            ),
+            processed_sources=("ai_tools_manual", "ai_tools_rss"),
+        )
+
+    client = TestClient(create_app(ingest_sources_runner=stub_ingest_sources))
+    response = _post_console_scheduler_action(
+        client,
+        action="ingest",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "수집 저장 완료" in response.text
+    assert "수집 저장이 완료되었습니다. 2개의 발견 후보 중 1개를 저장했고 1개 중복을 차단했습니다." in response.text
+    assert "대표 URL 중복 1" in response.text
+    assert "ai_tools_manual [read] csv missing" in response.text
+
+
+def test_scheduler_actions_enrich_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_enrich_articles(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> EnrichArticlesResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return EnrichArticlesResult(
+            processed_source_item_ids=(1, 2, 3),
+            outcomes=(
+                EnrichArticleOutcome(source_item_id=1, status="enriched", article_enrichment_id=21),
+                EnrichArticleOutcome(source_item_id=2, status="skipped", article_enrichment_id=22),
+                EnrichArticleOutcome(
+                    source_item_id=3,
+                    status="failed",
+                    article_enrichment_id=23,
+                    failure_code="extract_failed",
+                    failure_stage=PipelineStage.ARTICLE_EXTRACT,
+                ),
+            ),
+        )
+
+    client = TestClient(create_app(enrich_articles_runner=stub_enrich_articles))
+    response = _post_console_scheduler_action(
+        client,
+        action="enrich",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "기사 보강 완료" in response.text
+    assert "기사 보강이 완료되었습니다. 3개의 저장된 수집 항목 중 1개를 보강했고 1개를 정책에 따라 건너뛰었습니다." in response.text
+    assert "본문 추출 1" in response.text
+
+
+def test_scheduler_actions_run_local_post_renders_summary() -> None:
+    captured: dict[str, object] = {}
+
+    def stub_run_local_pipeline(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> RunLocalPipelineResult:
+        captured["config_dir"] = config_dir
+        captured["database_url"] = database_url
+        return RunLocalPipelineResult(
+            pipeline_run_id=77,
+            status=PipelineRunStatus.PARTIAL,
+            ingest_discovered_count=6,
+            ingest_saved_count=4,
+            enrichment_enriched_count=3,
+            brief_created_count=3,
+            draft_created_variant_count=9,
+            failure_count=1,
+            duplicate_count=2,
+            duplicate_reasons=(("source_identity", 2),),
+        )
+
+    client = TestClient(create_app(run_local_pipeline_runner=stub_run_local_pipeline))
+    response = _post_console_scheduler_action(
+        client,
+        action="run_local",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "config_dir": "/tmp/operator-config",
+        "database_url": "sqlite+pysqlite:////tmp/operator.db",
+    }
+    assert "뉴스 수집 완료" in response.text
+    assert "뉴스 수집이 완료되었습니다. 발견 6, 저장 4, 중복 차단 2, 보강 3, 브리프 3, 초안 9건입니다. 생성된 초안은 검토 대기열에 저장되었습니다." in response.text
+    assert "실행 ID" in response.text
+    assert "부분 완료" in response.text
+    assert "중복 차단" in response.text
+    assert "소스 고유 ID 중복 2" in response.text
+
+
+def test_scheduler_actions_run_local_post_lists_created_draft_links() -> None:
+    def stub_run_local_pipeline(
+        *,
+        config_dir: str,
+        database_url: str | None = None,
+    ) -> RunLocalPipelineResult:
+        return RunLocalPipelineResult(
+            pipeline_run_id=77,
+            status=PipelineRunStatus.SUCCEEDED,
+            ingest_discovered_count=2,
+            ingest_saved_count=2,
+            enrichment_enriched_count=2,
+            brief_created_count=2,
+            draft_created_variant_count=2,
+            failure_count=0,
+            duplicate_count=0,
+            created_draft_ids=(401, 402),
+        )
+
+    def stub_pending_review_drafts_lister(
+        *,
+        database_url: str | None = None,
+    ) -> PendingReviewDraftsResult:
+        return PendingReviewDraftsResult(
+            drafts=(
+                PendingReviewDraft(
+                    draft_id=401,
+                    account_key="finance_insights_daily",
+                    channel="x",
+                    variant_index=0,
+                    created_at=datetime(2026, 4, 11, 9, 0, tzinfo=timezone.utc),
+                    title="Fed minutes draft",
+                    body="First saved draft body with article url https://example.com/articles/401",
+                ),
+                PendingReviewDraft(
+                    draft_id=402,
+                    account_key="finance_insights_daily",
+                    channel="x",
+                    variant_index=1,
+                    created_at=datetime(2026, 4, 11, 9, 1, tzinfo=timezone.utc),
+                    title="Rate statement draft",
+                    body="Second saved draft body with article url https://example.com/articles/402",
+                ),
+            ),
+        )
+
+    client = TestClient(
+        create_app(
+            run_local_pipeline_runner=stub_run_local_pipeline,
+            pending_review_drafts_lister=stub_pending_review_drafts_lister,
+        )
+    )
+    response = _post_console_scheduler_action(
+        client,
+        action="run_local",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 200
+    assert "검토 대기열 열기" in response.text
+    assert "초안 401" in response.text
+    assert "Fed minutes draft" in response.text
+    assert "초안 402" in response.text
+    assert "Rate statement draft" in response.text
+    assert "/console/reviews/pending" in response.text
+    assert "/console/reviews/401" in response.text
 
 
 def test_scheduler_actions_backfill_post_renders_summary() -> None:
@@ -1129,7 +1417,9 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
 
     scheduler_response = client.get("/console/scheduler", params=params)
     assert scheduler_response.status_code == 200
-    assert "수집 실행" in scheduler_response.text
+    assert "뉴스 수집 실행" in scheduler_response.text
+    assert "수집 저장 실행" in scheduler_response.text
+    assert "기사 보강 실행" in scheduler_response.text
     assert "발행 예정 처리 실행" in scheduler_response.text
     assert "이번 실행에만 실발행 허용" in scheduler_response.text
 
@@ -1163,16 +1453,17 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
-    body = "AI Tools Daily via example.com: Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    body_template = "AI Tools Daily via example.com: Useful AI automation workflows for operators {article_url}"
     with session_scope(session_factory) as session:
         draft = _create_review_detail_draft(
             session,
             variant_index=0,
             created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
-            body=body,
+            body=body_template,
             include_provenance=True,
             include_article_enrichment=True,
         )
+    body = body_template.format(article_url=draft.article_url)
 
     database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
     config_dir = str(tmp_path)
@@ -1372,11 +1663,13 @@ def _create_review_detail_draft(
     include_article_enrichment: bool = False,
 ) -> DraftVariant:
     source_number = next(_DRAFT_SOURCE_COUNTER)
+    source_url = f"https://example.com/drafts/{source_number}"
+    article_url = f"https://example.com/articles/{source_number}" if include_article_enrichment else None
     source_item = SourceItemRepository(session).add(
         SourceItem(
             source_key="ai_tools_rss",
             external_id=f"draft-entry-{source_number}",
-            source_url=f"https://example.com/drafts/{source_number}",
+            source_url=source_url,
             title=f"Draft source {source_number}",
             summary="RSS summary for review" if include_article_enrichment else None,
             published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
@@ -1390,7 +1683,7 @@ def _create_review_detail_draft(
             ArticleEnrichment(
                 source_item_id=source_item.id,
                 source_name="AI Tools Daily",
-                article_url=f"https://example.com/articles/{source_number}",
+                article_url=article_url,
                 published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc),
                 discovered_at=datetime(2026, 3, 18, 9, 1, tzinfo=timezone.utc),
                 regenerated_summary="Regenerated article summary for operators",
@@ -1398,6 +1691,9 @@ def _create_review_detail_draft(
                 classification="analysis",
             )
         )
+    if article_url is not None:
+        body = body.format(article_url=article_url)
+    body = body.format(source_url=source_url)
     brief = ContentBriefRepository(session).add(
         ContentBrief(
             source_item_id=source_item.id,
@@ -1420,8 +1716,8 @@ def _create_review_detail_draft(
             body=body,
             created_at=created_at,
             source_name="AI Tools Daily" if include_provenance else None,
-            source_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
-            article_url=f"https://example.com/drafts/{source_number}" if include_provenance else None,
+            source_url=source_url if include_provenance else None,
+            article_url=(article_url or source_url) if include_provenance else None,
             source_published_at=datetime(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
             if include_provenance
             else None,

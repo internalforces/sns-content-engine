@@ -39,13 +39,13 @@ def test_draft_validator_errors_when_schedule_requires_attribution_but_body_omit
     )
 
     result = validator.validate(
-        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        "Useful AI automation workflows for operators https://example.com/articles/1",
         content_brief=content_brief,
         account_key="ai_tools_daily",
         account=_build_account_config(),
         channel="x",
         draft=_build_draft_variant(
-            body="Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+            body="Useful AI automation workflows for operators https://example.com/articles/1",
             source_name="AI Tools Daily",
         ),
         enforce_policy_requirements=True,
@@ -85,7 +85,7 @@ def test_draft_validator_errors_when_restricted_source_full_text_reuse_is_schedu
     )
 
     result = validator.validate(
-        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        "Useful AI automation workflows for operators https://example.com/articles/1",
         content_brief=content_brief,
         account_key="ai_tools_daily",
         account=_build_account_config(),
@@ -108,13 +108,13 @@ def test_draft_validator_accepts_policy_compliant_schedule_requirements() -> Non
     )
 
     result = validator.validate(
-        "Useful AI automation workflows from AI Tools Daily https://gilgop.cloud/ai-tools",
+        "Useful AI automation workflows from AI Tools Daily https://example.com/articles/1",
         content_brief=content_brief,
         account_key="ai_tools_daily",
         account=_build_account_config(),
         channel="x",
         draft=_build_draft_variant(
-            body="Useful AI automation workflows from AI Tools Daily https://gilgop.cloud/ai-tools",
+            body="Useful AI automation workflows from AI Tools Daily https://example.com/articles/1",
             source_name="AI Tools Daily",
         ),
         enforce_policy_requirements=True,
@@ -335,6 +335,44 @@ def test_draft_validator_accepts_live_landing_url_when_required() -> None:
 
     assert result.is_valid is True
     assert result.issues == ()
+
+
+def test_draft_validator_accepts_expected_article_url_when_available() -> None:
+    validator = DraftValidator()
+    content_brief = _build_content_brief(source_name="AI Tools Daily")
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://example.com/articles/1",
+        content_brief=content_brief,
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            landing_url="https://gilgop.cloud/ai-tools",
+            allowed_url_prefixes=("https://gilgop.cloud/ai-tools",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is True
+    assert result.issues == ()
+
+
+def test_draft_validator_flags_mismatched_article_url_when_available() -> None:
+    validator = DraftValidator()
+    content_brief = _build_content_brief(source_name="AI Tools Daily")
+
+    result = validator.validate(
+        "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+        content_brief=content_brief,
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            landing_url="https://gilgop.cloud/ai-tools",
+            allowed_url_prefixes=("https://gilgop.cloud/ai-tools",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is False
+    assert _issue_codes(result) == {"landing_url_mismatch"}
 
 
 def test_draft_validator_ignores_rejected_and_stale_duplicates() -> None:

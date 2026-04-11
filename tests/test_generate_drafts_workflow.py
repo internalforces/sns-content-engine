@@ -13,6 +13,7 @@ import pytest
 from app.connectors.llm import (
     CodexWrapperDraftGenerationProvider,
     DraftGenerationProviderError,
+    FakeLLMProvider,
 )
 from app.storage import (
     ArticleEnrichment,
@@ -28,7 +29,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows import generate_drafts
+from app.workflows.generate_drafts import generate_drafts
 
 
 def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None:
@@ -39,7 +40,11 @@ def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None
         brief = _create_content_brief(session, account_key="ai_tools_daily")
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert result.processed_content_brief_ids == (brief_id,)
     assert result.created_count == 1
@@ -55,6 +60,117 @@ def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None
     assert [draft.variant_index for draft in stored_drafts] == [0, 1, 2]
     assert all(draft.state is DraftVariantState.PENDING_REVIEW for draft in stored_drafts)
     assert all("https://gilgop.cloud/ai-tools" in draft.body for draft in stored_drafts)
+
+
+def test_generate_drafts_creates_multichannel_variants_for_linkedin_and_threads(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                render:
+                  max_chars: 3000
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                render:
+                  max_chars: 10000
+        """,
+        prompts_yaml="""
+        profiles:
+          ai_tools_default:
+            system_template: "System for {{ account_key }} on {{ channel }}"
+            user_template: "Write about {{ title }} and use {{ landing_url }}"
+        """,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(
+            session,
+            account_key="ai_tools_daily",
+            article_url="https://example.com/articles/ai-tools-canonical",
+        )
+        brief_id = brief.id
+
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
+
+    assert result.processed_content_brief_ids == (brief_id,)
+    assert result.created_count == 3
+    assert result.existing_count == 0
+    assert result.no_channel_count == 0
+    assert result.created_variant_count == 9
+    assert result.counts_by_status() == {"created": 3}
+
+    with session_scope(session_factory) as session:
+        x_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+        linkedin_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "linkedin",
+        )
+        threads_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "threads",
+        )
+
+    assert len(x_drafts) == 3
+    assert len(linkedin_drafts) == 3
+    assert len(threads_drafts) == 3
+    assert linkedin_drafts[0].body.startswith("1. One-line summary\n")
+    assert "\n2. Key points\n" in linkedin_drafts[0].body
+    assert linkedin_drafts[0].body.endswith("https://example.com/articles/ai-tools-canonical")
+    assert threads_drafts[0].body.startswith("1. One-line summary\n")
+    assert "\n8. URL\nhttps://example.com/articles/ai-tools-canonical" in threads_drafts[0].body
+
+
+def test_generate_drafts_uses_article_url_when_enrichment_exists(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(
+            session,
+            account_key="ai_tools_daily",
+            article_url="https://example.com/articles/ai-tools-canonical",
+        )
+        brief_id = brief.id
+
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "x",
+        )
+
+    assert len(stored_drafts) == 3
+    assert all("https://example.com/articles/ai-tools-canonical" in draft.body for draft in stored_drafts)
 
 
 def test_generate_drafts_is_idempotent_when_x_drafts_already_exist(tmp_path: Path) -> None:
@@ -81,7 +197,7 @@ def test_generate_drafts_is_idempotent_when_x_drafts_already_exist(tmp_path: Pat
     assert len(stored_drafts) == 3
 
 
-def test_generate_drafts_reports_no_channel_when_account_lacks_x(tmp_path: Path) -> None:
+def test_generate_drafts_creates_threads_variants_when_account_has_no_x_channel(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     _write_project_config(
         tmp_path,
@@ -98,9 +214,15 @@ def test_generate_drafts_reports_no_channel_when_account_lacks_x(tmp_path: Path)
             channels:
               threads:
                 schedule:
-                  cron: "0 9 * * *"
+                  cron: "0 11 * * *"
                 render:
-                  max_chars: 280
+                  max_chars: 10000
+        """,
+        prompts_yaml="""
+        profiles:
+          ai_tools_default:
+            system_template: "System for {{ account_key }} on {{ channel }}"
+            user_template: "Write about {{ title }} and use {{ landing_url }}"
         """,
     )
 
@@ -108,19 +230,27 @@ def test_generate_drafts_reports_no_channel_when_account_lacks_x(tmp_path: Path)
         brief = _create_content_brief(session, account_key="threads_only_daily")
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert result.processed_content_brief_ids == (brief_id,)
-    assert result.created_count == 0
+    assert result.created_count == 1
     assert result.existing_count == 0
-    assert result.no_channel_count == 1
-    assert result.created_variant_count == 0
-    assert result.counts_by_status() == {"no_channel": 1}
+    assert result.no_channel_count == 0
+    assert result.created_variant_count == 3
+    assert result.counts_by_status() == {"created": 1}
 
     with session_scope(session_factory) as session:
-        stored_drafts = DraftVariantRepository(session).list()
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "threads",
+        )
 
-    assert stored_drafts == []
+    assert len(stored_drafts) == 3
+    assert stored_drafts[0].body.startswith("1. One-line summary\n")
 
 
 def test_generate_drafts_skips_missing_account_and_continues_processing(tmp_path: Path) -> None:
@@ -220,6 +350,67 @@ def test_generate_drafts_uses_openai_provider_when_api_key_is_present(
     ]
     assert result.provider_names == ("openai",)
     assert recording_client.payloads[0]["model"] == "gpt-5.4-mini"
+
+
+def test_generate_drafts_shortens_overlong_openai_variants_before_storing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 120
+        """,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    recording_client = _RecordingOpenAIClient(
+        _StubOpenAIResponse(
+            '{"variants":['
+            '"This OpenAI draft uses too many words before the required link and needs to be shortened for X '
+            'while still keeping the important article reference https://gilgop.cloud/ai-tools with trailing overflow",'
+            '"Another OpenAI variant also runs long before it reaches the required link and should be trimmed down '
+            'safely for storage https://gilgop.cloud/ai-tools with extra detail",'
+            '"A third OpenAI variant stays verbose long enough to exceed the channel limit unless the generator '
+            'compacts the supporting copy https://gilgop.cloud/ai-tools with more overflow"'
+            "]}"
+        )
+    )
+    monkeypatch.setattr(
+        openai_provider_module,
+        "_build_default_openai_responses_client",
+        lambda **_: recording_client,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(session, account_key="ai_tools_daily")
+        brief_id = brief.id
+
+    result = generate_drafts(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(brief_id, "x")
+
+    assert len(stored_drafts) == 3
+    assert all(len(draft.body) <= 120 for draft in stored_drafts)
+    assert all(draft.body.count("https://gilgop.cloud/ai-tools") == 1 for draft in stored_drafts)
+    assert all(draft.body.endswith("https://gilgop.cloud/ai-tools") for draft in stored_drafts)
 
 
 def test_generate_drafts_honors_providers_yaml_routing_when_present(
@@ -453,7 +644,12 @@ def _create_content_brief(
     )
 
 
-def _write_project_config(path: Path, *, accounts_yaml: str | None = None) -> None:
+def _write_project_config(
+    path: Path,
+    *,
+    accounts_yaml: str | None = None,
+    prompts_yaml: str | None = None,
+) -> None:
     _write_file(
         path / "accounts.yaml",
         accounts_yaml
@@ -477,7 +673,8 @@ def _write_project_config(path: Path, *, accounts_yaml: str | None = None) -> No
     )
     _write_file(
         path / "prompts.yaml",
-        """
+        prompts_yaml
+        or """
         profiles:
           ai_tools_default:
             system_template: "System for {{ account_key }} on {{ channel }}"

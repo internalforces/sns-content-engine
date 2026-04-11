@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from app.config.schemas import (
     GdeltSourceConfig,
@@ -24,6 +24,8 @@ SourceConfigT = TypeVar(
     GdeltSourceConfig,
 )
 BytesFetcher = Callable[[str], bytes]
+_DEFAULT_TIMEOUT_SECONDS = 10.0
+_DEFAULT_USER_AGENT = "sns-content-engine/source-discovery (+https://example.local)"
 
 
 class SourceConnectorError(RuntimeError):
@@ -58,11 +60,20 @@ class SourceConnector(ABC):
         """Discover normalized source item candidates for one source."""
 
 
-def fetch_url_bytes(url: str, *, timeout_seconds: float = 10.0) -> bytes:
+def fetch_url_bytes(
+    url: str,
+    *,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+    user_agent: str = _DEFAULT_USER_AGENT,
+) -> bytes:
     """Fetch remote bytes content with a conservative timeout."""
 
+    request = Request(
+        url,
+        headers={"User-Agent": user_agent.strip() or _DEFAULT_USER_AGENT},
+    )
     try:
-        with urlopen(url, timeout=timeout_seconds) as response:
+        with urlopen(request, timeout=timeout_seconds) as response:
             return response.read()
     except HTTPError as exc:
         raise SourceFetchError(f"HTTP {exc.code} while fetching {url}") from exc

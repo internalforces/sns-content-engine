@@ -61,7 +61,7 @@
         <article class="console-panel">
           <p class="console-card-label">초안 본문</p>
           <h3>현재 문안</h3>
-          <p class="console-card-copy">{{ review_detail.body }}</p>
+          <div class="console-body-block">{{ review_detail.body }}</div>
         </article>
       </div>
     {% endif %}
@@ -146,6 +146,17 @@
           <p class="console-card-copy">저장되는 발행 슬롯이 모호하지 않도록 타임존 오프셋이 포함된 ISO 8601 시각을 사용하세요.</p>
           <button class="console-button" type="submit">초안 예약</button>
         </form>
+      {% elif review_action_forms.show_manual_upload_guidance %}
+        <article class="console-action-card console-action-card-wide">
+          <p class="console-card-label">수동 업로드</p>
+          <h3>{{ review_action_forms.manual_upload_title }}</h3>
+          <p class="console-card-copy">{{ review_action_forms.manual_upload_copy }}</p>
+          <label class="console-field" for="manual-upload-body">
+            <span>업로드용 본문</span>
+            <textarea class="console-textarea" id="manual-upload-body" readonly>{{ review_action_forms.manual_upload_body }}</textarea>
+          </label>
+          <p class="console-card-copy">{{ review_action_forms.manual_upload_helper }}</p>
+        </article>
       {% else %}
         <p class="console-empty">{{ review_action_forms.read_only_notice }}</p>
       {% endif %}

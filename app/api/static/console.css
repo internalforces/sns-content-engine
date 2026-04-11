@@ -87,6 +87,12 @@ body.console-shell {
   line-height: 1.6;
 }
 
+.console-body-block {
+  color: var(--console-muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .console-hero-status {
   display: flex;
   flex-wrap: wrap;

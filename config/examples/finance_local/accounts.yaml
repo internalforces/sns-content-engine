@@ -5,14 +5,16 @@ accounts:
       - finance_primary
     prompt_profile: finance_insight_default
     landing:
-      fallback_url: https://odtoolbase.com/finance-hub
+      fallback_url: https://www.federalreserve.gov/monetarypolicy.htm
       rules: []
     matching:
       include_keywords:
         - market
         - policy
-        - earnings
         - macro
+        - fomc
+        - monetary policy
+        - rate
       exclude_keywords:
         - coupon
         - casino
@@ -20,6 +22,7 @@ accounts:
         - markets
         - policy
         - macro
+        - monetary policy
       strict_topic_guard: true
     validation:
       profile: finance_strict

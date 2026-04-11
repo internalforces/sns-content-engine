@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.config import ConfigError
+from app.env import load_project_env
 from app.storage import DatabaseSchemaError, PublishJobState
 
 if TYPE_CHECKING:
@@ -22,6 +23,11 @@ if TYPE_CHECKING:
         SchedulerDiscoverResult,
     )
     from app.storage import DraftVariant, ReviewAction
+    from app.workflows import (
+        EnrichArticlesResult,
+        IngestSourcesResult,
+        RunLocalPipelineResult,
+    )
     from app.workflows.history_queries import (
         ArticleStatusResult,
         ArticleStatusRow,
@@ -389,6 +395,9 @@ def create_app(
     publish_jobs_lister: Callable[..., PublishJobListResult] | None = None,
     publish_job_detail_fetcher: Callable[..., PublishJobDetailResult] | None = None,
     scheduler_discover_runner: Callable[..., SchedulerDiscoverResult] | None = None,
+    ingest_sources_runner: Callable[..., IngestSourcesResult] | None = None,
+    enrich_articles_runner: Callable[..., EnrichArticlesResult] | None = None,
+    run_local_pipeline_runner: Callable[..., RunLocalPipelineResult] | None = None,
     scheduler_backfill_runner: Callable[..., BackfillResult] | None = None,
     scheduler_publish_due_runner: Callable[..., PublishDueResult] | None = None,
     pending_review_drafts_lister: Callable[..., PendingReviewDraftsResult] | None = None,
@@ -430,6 +439,20 @@ def create_app(
         from app.scheduler import scheduler_discover as default_scheduler_discover_runner
 
         scheduler_discover_runner = default_scheduler_discover_runner
+    if ingest_sources_runner is None:
+        from app.workflows.ingest_sources import ingest_sources as default_ingest_sources_runner
+
+        ingest_sources_runner = default_ingest_sources_runner
+    if enrich_articles_runner is None:
+        from app.workflows.enrich_articles import enrich_articles as default_enrich_articles_runner
+
+        enrich_articles_runner = default_enrich_articles_runner
+    if run_local_pipeline_runner is None:
+        from app.workflows.run_local_pipeline import (
+            run_local_pipeline as default_run_local_pipeline_runner,
+        )
+
+        run_local_pipeline_runner = default_run_local_pipeline_runner
     if scheduler_backfill_runner is None:
         from app.scheduler import backfill_publish_jobs as default_scheduler_backfill_runner
 
@@ -486,6 +509,9 @@ def create_app(
     application.state.console_publish_jobs_lister = publish_jobs_lister
     application.state.console_publish_job_detail_fetcher = publish_job_detail_fetcher
     application.state.console_scheduler_discover_runner = scheduler_discover_runner
+    application.state.console_ingest_sources_runner = ingest_sources_runner
+    application.state.console_enrich_articles_runner = enrich_articles_runner
+    application.state.console_run_local_pipeline_runner = run_local_pipeline_runner
     application.state.console_scheduler_backfill_runner = scheduler_backfill_runner
     application.state.console_scheduler_publish_due_runner = scheduler_publish_due_runner
     application.state.console_pending_review_drafts_lister = pending_review_drafts_lister
@@ -1128,4 +1154,5 @@ def _build_api_error_response(*, status_code: int, error_code: str, message: str
     return JSONResponse(status_code=status_code, content=payload.model_dump())
 
 
+load_project_env()
 app = create_app()

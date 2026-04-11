@@ -96,36 +96,56 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/examples/all_domain_news")
 
     account = registry.get_account("all_domain_news_daily")
-    channel = account.channels["x"]
+    x_channel = account.channels["x"]
+    linkedin_channel = account.channels["linkedin"]
+    threads_channel = account.channels["threads"]
     official_source = registry.get_source("official_updates_reusable")
     corporate_source = registry.get_source("corporate_ir_reusable")
     gdelt_source = registry.get_source("gdelt_latest_discovery")
     wikinews_source = registry.get_source("wikinews_attribution_friendly")
 
     assert account.topic == "All-domain latest news"
-    assert account.prompt_profile == "all_domain_factual_x_post"
+    assert account.prompt_profile == "all_domain_social_news_post"
     assert list(account.source_sets) == ["all_domain_primary"]
-    assert str(account.landing.fallback_url) == "https://newsroom.example.com/daily-brief"
-    assert account.matching.include_keywords == ("policy", "launch", "update", "report", "statement")
+    assert str(account.landing.fallback_url) == "https://www.federalreserve.gov/newsevents/pressreleases.htm"
+    assert account.matching.include_keywords == (
+        "announces",
+        "minutes",
+        "policy",
+        "launch",
+        "update",
+        "report",
+        "statement",
+        "nvidia",
+        "wikinews",
+        "federal reserve",
+    )
     assert account.matching.exclude_keywords == ("coupon", "giveaway", "rumor")
-    assert account.matching.source_tags == ("official", "newsroom", "wikinews")
+    assert account.matching.source_tags == ("press release", "wikinews")
     assert account.validation.profile == "standard"
-    assert channel.validation.max_links == 1
-    assert channel.validation.recent_duplicate_window_days == 2
+    assert x_channel.render.max_chars == 280
+    assert x_channel.validation.max_links == 1
+    assert x_channel.validation.recent_duplicate_window_days == 2
+    assert linkedin_channel.render.max_chars == 3000
+    assert linkedin_channel.validation.max_links == 1
+    assert linkedin_channel.validation.recent_duplicate_window_days == 2
+    assert threads_channel.render.max_chars == 10000
+    assert threads_channel.validation.max_links == 1
+    assert threads_channel.validation.recent_duplicate_window_days == 2
 
     assert isinstance(official_source, RssSourceConfig)
     assert official_source.policy_mode == "reusable"
     assert official_source.require_attribution is True
     assert official_source.allow_full_text_fetch is True
-    assert "government-style feed" in official_source.notes
+    assert str(official_source.url) == "https://www.federalreserve.gov/feeds/press_all.xml"
+    assert official_source.notes == "Live Federal Reserve all press releases RSS feed."
 
-    assert isinstance(corporate_source, SitemapSourceConfig)
+    assert isinstance(corporate_source, RssSourceConfig)
     assert corporate_source.policy_mode == "reusable"
     assert corporate_source.require_attribution is True
     assert corporate_source.allow_llm_rewrite is True
-    assert corporate_source.extraction is not None
-    assert corporate_source.extraction.prefer_selectors == (".article-body",)
-    assert corporate_source.extraction.exclude_selectors == (".related-links",)
+    assert str(corporate_source.url) == "https://nvidianews.nvidia.com/cats/press_release.xml"
+    assert corporate_source.notes == "Live NVIDIA Newsroom press releases RSS feed."
 
     assert isinstance(gdelt_source, GdeltSourceConfig)
     assert gdelt_source.query == "domain:news"
@@ -137,10 +157,14 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert isinstance(wikinews_source, RssSourceConfig)
     assert wikinews_source.policy_mode == "reusable"
     assert wikinews_source.require_attribution is True
-    assert wikinews_source.notes == "Sample Wikinews-style source with attribution-friendly defaults."
+    assert str(wikinews_source.url) == "https://en.wikinews.org/w/index.php?title=Special:NewsFeed&feed=rss"
+    assert wikinews_source.notes == "Live English Wikinews RSS feed with attribution-friendly defaults."
 
     assert registry.get_prompt_profile("all_domain_review_default").system_template.startswith(
         "You are the review-first editor"
+    )
+    assert registry.get_prompt_profile("all_domain_social_news_post").system_template.startswith(
+        "You are the review-first social editor"
     )
     assert registry.get_prompt_profile("all_domain_general_news_summary").system_template.startswith(
         "You are the review-first editor"
@@ -164,6 +188,32 @@ def test_registry_loads_all_domain_example_config_directory() -> None:
     assert registry.get_source_set("discovery_only_monitoring").sources == (
         "gdelt_latest_discovery",
     )
+
+
+def test_registry_loads_finance_local_example_config_directory() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/examples/finance_local")
+
+    account = registry.get_account("finance_insights_daily")
+    source = registry.get_source("finance_macro_rss")
+
+    assert account.topic == "Finance market insights"
+    assert str(account.landing.fallback_url) == "https://www.federalreserve.gov/monetarypolicy.htm"
+    assert account.matching.include_keywords == (
+        "market",
+        "policy",
+        "macro",
+        "fomc",
+        "monetary policy",
+        "rate",
+    )
+    assert account.matching.source_tags == ("markets", "policy", "macro", "monetary policy")
+    assert account.matching.strict_topic_guard is True
+
+    assert isinstance(source, RssSourceConfig)
+    assert str(source.url) == "https://www.federalreserve.gov/feeds/press_monetary.xml"
+    assert source.duplicate_window_days == 14
+
+    assert registry.get_source_set("finance_primary").sources == ("finance_macro_rss",)
 
 
 def test_registry_is_deeply_immutable() -> None:
@@ -535,12 +585,14 @@ def test_sources_load_policy_overrides_for_supported_variants(tmp_path: Path) ->
     assert rss_source.allow_llm_rewrite is False
     assert rss_source.require_attribution is True
     assert rss_source.notes == "Aggregator feed for discovery only"
+    assert tuple(str(prefix) for prefix in rss_source.include_url_prefixes) == ()
 
     assert sitemap_source.policy_mode == "restricted"
     assert sitemap_source.allow_full_text_fetch is True
     assert sitemap_source.allow_llm_rewrite is True
     assert sitemap_source.require_attribution is True
     assert sitemap_source.notes is None
+    assert tuple(str(prefix) for prefix in sitemap_source.include_url_prefixes) == ()
 
     assert isinstance(manual_source, ManualCsvSourceConfig)
     assert manual_source.policy_mode == "reusable"
@@ -548,6 +600,65 @@ def test_sources_load_policy_overrides_for_supported_variants(tmp_path: Path) ->
     assert manual_source.allow_llm_rewrite is True
     assert manual_source.require_attribution is False
     assert manual_source.notes == "Operator-curated reusable seeds"
+
+
+def test_source_variants_load_include_url_prefixes(tmp_path: Path) -> None:
+    _write_valid_prompts_yaml(tmp_path)
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_sitemap:
+            type: sitemap
+            url: https://example.com/sitemap.xml
+            include_url_prefixes:
+              - https://example.com/guides
+          seo_tools_rss:
+            type: rss
+            url: https://example.com/feed.xml
+            include_url_prefixes:
+              - https://example.com/seo
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_sitemap
+              - seo_tools_rss
+        """,
+    )
+
+    registry = ConfigRegistry.from_directory(tmp_path)
+    sitemap_source = registry.get_source("ai_tools_sitemap")
+    rss_source = registry.get_source("seo_tools_rss")
+
+    assert isinstance(sitemap_source, SitemapSourceConfig)
+    assert tuple(str(prefix) for prefix in sitemap_source.include_url_prefixes) == (
+        "https://example.com/guides",
+    )
+    assert isinstance(rss_source, RssSourceConfig)
+    assert tuple(str(prefix) for prefix in rss_source.include_url_prefixes) == (
+        "https://example.com/seo",
+    )
 
 
 def test_invalid_source_policy_mode_raises_validation_error(tmp_path: Path) -> None:

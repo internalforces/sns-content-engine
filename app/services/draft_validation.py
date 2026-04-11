@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from app.config import AccountConfig
 from app.services.prompt_renderer import build_domain_sensitivity
+from app.services.x_draft_generator import resolve_draft_link_url
 from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls, topic_keywords
 from app.storage import ContentBrief, DraftVariant, DraftVariantState, SourcePolicyMode
 
@@ -272,16 +273,16 @@ def _validate_landing_url_rules(
     account: AccountConfig,
     landing_url_status_fetcher: LandingUrlStatusFetcher | None,
 ) -> tuple[DraftValidationIssue, ...]:
-    expected_landing_url = content_brief.landing_url
+    expected_landing_url = resolve_draft_link_url(content_brief)
     body_urls = tuple(_URL_RE.findall(body))
     issues: list[DraftValidationIssue] = []
 
     if expected_landing_url not in body_urls:
         issue_code = "landing_url_missing" if not body_urls else "landing_url_mismatch"
         message = (
-            "draft is missing the expected landing URL"
+            "draft is missing the expected URL"
             if issue_code == "landing_url_missing"
-            else "draft uses a landing URL that does not match the content brief"
+            else "draft uses a URL that does not match the draft source"
         )
         issues.append(
             DraftValidationIssue(
@@ -294,6 +295,9 @@ def _validate_landing_url_rules(
                 },
             )
         )
+        return tuple(issues)
+
+    if expected_landing_url != content_brief.landing_url:
         return tuple(issues)
 
     issues.extend(
