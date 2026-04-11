@@ -15,6 +15,25 @@ from app.storage import ContentBrief, SourcePolicyMode
 _WHITESPACE_RE = re.compile(r"\s+")
 _LINE_BREAK_RE = re.compile(r"\n{3,}")
 _STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
+_STRUCTURED_SECTION_LABELS = (
+    "1. One-line summary",
+    "2. Key points",
+    "3. Keywords",
+    "4. Background/Context",
+    "5. Forward impact",
+    "6. Insight",
+    "7. One-line conclusion",
+    "8. URL",
+)
+_STRUCTURED_SECTION_LIMITS = {
+    "1. One-line summary": 180,
+    "2. Key points": 540,
+    "3. Keywords": 160,
+    "4. Background/Context": 320,
+    "5. Forward impact": 320,
+    "6. Insight": 320,
+    "7. One-line conclusion": 160,
+}
 
 
 class DraftGenerationError(ValueError):
@@ -97,7 +116,18 @@ class XDraftGenerator:
             key_points=tuple(content_brief.key_points),
         )
         variants = self._llm_provider.generate_variants(request)
-        return _validate_variants(variants, request=request)
+        try:
+            return _validate_variants(variants, request=request)
+        except DraftGenerationError as error:
+            if channel not in _STRUCTURED_CHANNELS:
+                raise
+
+            retry_request = _build_structured_retry_request(
+                request,
+                failure_message=str(error),
+            )
+            retry_variants = self._llm_provider.generate_variants(retry_request)
+            return _validate_variants(retry_variants, request=retry_request)
 
 
 def _build_render_context(
@@ -228,6 +258,33 @@ def _build_user_prompt(
     )
 
 
+def _build_structured_retry_request(
+    request: DraftGenerationRequest,
+    *,
+    failure_message: str,
+) -> DraftGenerationRequest:
+    revision_note = (
+        "\n\nRevision requirements:\n"
+        f"- Previous attempt failed validation: {failure_message}\n"
+        "- Retry from scratch.\n"
+        "- Keep sections 1, 4, 5, 6, and 7 to one short sentence each.\n"
+        "- Keep section 2 to exactly 3 short bullet lines.\n"
+        "- Keep section 3 to a short comma-separated keyword list.\n"
+        "- Put the exact required URL only in section 8.\n"
+        "- Do not use bold markers, extra headings, or trailing notes."
+    )
+    return DraftGenerationRequest(
+        channel=request.channel,
+        system_prompt=f"{request.system_prompt}{revision_note}",
+        user_prompt=f"{request.user_prompt}{revision_note}",
+        landing_url=request.landing_url,
+        max_chars=request.max_chars,
+        variant_count=request.variant_count,
+        title=request.title,
+        key_points=request.key_points,
+    )
+
+
 def resolve_draft_link_url(content_brief: ContentBrief) -> str:
     """Return the URL that generated drafts should include."""
 
@@ -293,14 +350,22 @@ def _validate_variants(
         normalized = _normalize_variant_body(variant, channel=request.channel)
         if not normalized:
             raise DraftGenerationError(f"variant {index} is empty after normalization")
-        if request.landing_url not in normalized:
-            raise DraftGenerationError(f"variant {index} is missing the landing URL")
         if _channel_uses_compaction(request.channel):
+            if request.landing_url not in normalized:
+                raise DraftGenerationError(f"variant {index} is missing the landing URL")
             normalized = _coerce_variant_to_fit(
                 normalized,
                 landing_url=request.landing_url,
                 max_chars=request.max_chars,
             )
+        elif request.channel in _STRUCTURED_CHANNELS:
+            normalized = _coerce_structured_variant_to_fit(
+                normalized,
+                landing_url=request.landing_url,
+                max_chars=request.max_chars,
+            )
+        if request.landing_url not in normalized:
+            raise DraftGenerationError(f"variant {index} is missing the landing URL")
         if len(normalized) > request.max_chars:
             raise DraftGenerationError(
                 f"variant {index} exceeds max_chars ({len(normalized)} > {request.max_chars})"
@@ -349,6 +414,100 @@ def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> s
         max_chars=max_chars,
     )
     return _normalize_body(shortened)
+
+
+def _coerce_structured_variant_to_fit(
+    value: str,
+    *,
+    landing_url: str,
+    max_chars: int,
+) -> str:
+    if len(value) <= max_chars and landing_url in value:
+        return value
+
+    sections = _parse_structured_sections(value)
+    if sections is None:
+        return value
+
+    rendered = _render_structured_sections(
+        sections,
+        landing_url=landing_url,
+    )
+    if len(rendered) <= max_chars:
+        return rendered
+
+    return value
+
+
+def _parse_structured_sections(value: str) -> dict[str, list[str]] | None:
+    labels = set(_STRUCTURED_SECTION_LABELS)
+    sections = {label: [] for label in _STRUCTURED_SECTION_LABELS}
+    current_label: str | None = None
+
+    for raw_line in value.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line in labels:
+            current_label = line
+            continue
+        if current_label is None:
+            continue
+        sections[current_label].append(line)
+
+    parsed_section_count = sum(bool(sections[label]) for label in _STRUCTURED_SECTION_LABELS[:-1])
+    if parsed_section_count == 0:
+        return None
+
+    return sections
+
+
+def _render_structured_sections(
+    sections: Mapping[str, list[str]],
+    *,
+    landing_url: str,
+) -> str:
+    lines: list[str] = []
+
+    for label in _STRUCTURED_SECTION_LABELS[:-1]:
+        lines.append(label)
+        if label == "2. Key points":
+            lines.extend(_render_structured_key_points(sections.get(label, ())))
+            continue
+
+        raw_content = " ".join(sections.get(label, ()))
+        content = _normalize_body(raw_content)
+        if content:
+            lines.append(
+                _shorten_text(
+                    content,
+                    limit=_STRUCTURED_SECTION_LIMITS[label],
+                )
+            )
+
+    lines.extend(("8. URL", landing_url))
+    return "\n".join(lines).strip()
+
+
+def _render_structured_key_points(lines: list[str] | tuple[str, ...]) -> list[str]:
+    normalized_items = [
+        _normalize_body(re.sub(r"^[-*•]\s*", "", line))
+        for line in lines
+        if _normalize_body(line)
+    ]
+    selected_items = normalized_items[:5]
+    if not selected_items:
+        return []
+
+    per_item_limit = max(
+        48,
+        _STRUCTURED_SECTION_LIMITS["2. Key points"] // len(selected_items),
+    )
+    return [
+        f"- {_shorten_text(item, limit=per_item_limit)}"
+        for item in selected_items
+        if item
+    ]
 
 
 def _fit_text_with_url(*, text: str, landing_url: str, max_chars: int) -> str:
