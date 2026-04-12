@@ -51,6 +51,19 @@ class DraftProvenanceSnapshot:
     policy_mode: SourcePolicyMode | None
 
 
+@dataclass(frozen=True, slots=True)
+class ChannelStyleGuidance:
+    """Audience and tone guidance for a target publishing channel."""
+
+    audience: str
+    voice: str
+    editorial_goal: str
+    reader_focus: str
+    implication_focus: str
+    system_constraints: tuple[str, ...]
+    user_constraints: tuple[str, ...]
+
+
 class XDraftGenerator:
     """Generate validated social draft variants from stored content briefs."""
 
@@ -146,6 +159,7 @@ def _build_render_context(
         tags=tuple(content_brief.tags),
         topic=account.topic,
     )
+    style = _channel_style_guidance(channel)
     return {
         "account_key": account_key,
         "topic": account.topic,
@@ -171,6 +185,11 @@ def _build_render_context(
         "sensitivity_matched_terms": sensitivity.matched_terms,
         "sensitivity_guidance": sensitivity.prompt_guidance,
         "sensitivity_review_note": sensitivity.review_note,
+        "channel_audience": style.audience,
+        "channel_voice": style.voice,
+        "channel_editorial_goal": style.editorial_goal,
+        "channel_reader_focus": style.reader_focus,
+        "channel_implication_focus": style.implication_focus,
     }
 
 
@@ -195,6 +214,7 @@ def _build_system_prompt(
         )
 
     channel_label = _channel_label(channel)
+    style = _channel_style_guidance(channel)
     return (
         f"{base_prompt}\n\n"
         "Channel constraints:\n"
@@ -214,7 +234,8 @@ def _build_system_prompt(
         "- Put the required URL only in section 8.\n"
         "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
         "- Attribute the insight to the source context instead of claiming certainty.\n"
-        "- Keep each section skimmable for manual operator review."
+        "- Keep each section skimmable for manual operator review.\n"
+        + "\n".join(style.system_constraints)
     )
 
 
@@ -238,11 +259,7 @@ def _build_user_prompt(
             "- Avoid language that sounds like financial advice."
         )
 
-    channel_copy = (
-        "- Keep the tone professional and insight-led for business readers.\n"
-        if channel == "linkedin"
-        else "- Keep the tone readable and social-first while staying factual.\n"
-    )
+    style = _channel_style_guidance(channel)
     return (
         f"{base_prompt}\n\n"
         "Output requirements:\n"
@@ -252,7 +269,8 @@ def _build_user_prompt(
         "- Keep the numbered section labels exactly as written in the system instructions.\n"
         "- Section 2 should contain 3 to 5 bullet-style lines.\n"
         "- Section 3 should list concise keywords separated by commas.\n"
-        f"{channel_copy}"
+        + "\n".join(style.user_constraints)
+        + "\n"
         "- Mention the source context when it helps credibility.\n"
         "- Avoid language that sounds like financial advice."
     )
@@ -282,6 +300,81 @@ def _build_structured_retry_request(
         variant_count=request.variant_count,
         title=request.title,
         key_points=request.key_points,
+    )
+
+
+def _channel_style_guidance(channel: str) -> ChannelStyleGuidance:
+    if channel == "linkedin":
+        return ChannelStyleGuidance(
+            audience=(
+                "operators, functional leaders, founders, investors, and other B2B "
+                "decision-makers"
+            ),
+            voice="measured, executive-summary, and insight-led",
+            editorial_goal=(
+                "help a professional reader understand what changed, why it matters, "
+                "and which strategic or operating signal to watch"
+            ),
+            reader_focus=(
+                "Frame the update for managers, operators, and market-facing "
+                "professionals who want decision-useful context."
+            ),
+            implication_focus=(
+                "business impact, strategic context, execution risk, market "
+                "relevance, or policy significance"
+            ),
+            system_constraints=(
+                "- Write for operators, founders, investors, and functional leaders rather than general entertainment audiences.",
+                "- Favor measured B2B language, executive-summary phrasing, and decision-useful context.",
+                "- Highlight strategic, operational, market, or policy implications only when supported by the source.",
+                "- Avoid casual slang, creator-style hype, or viral bait.",
+            ),
+            user_constraints=(
+                "- Make section 1 read like an executive summary line for a professional audience.",
+                "- Make section 5 explain the practical business, operating, market, or policy implication.",
+                "- Make section 6 feel like a decision-useful takeaway for a professional reader.",
+                "- Keep section 7 crisp and boardroom-ready rather than playful.",
+            ),
+        )
+
+    if channel == "threads":
+        return ChannelStyleGuidance(
+            audience="broad social readers scanning quickly for timely, worth-sharing updates",
+            voice="clear, lively, social-first, and factual",
+            editorial_goal=(
+                "help a fast-scrolling reader grasp the update quickly and see why "
+                "it is worth sharing right now"
+            ),
+            reader_focus=(
+                "Frame the update for curious social readers who want a quick, "
+                "readable summary."
+            ),
+            implication_focus=(
+                "why the update is timely, surprising, conversation-worthy, or "
+                "useful to pass along right now"
+            ),
+            system_constraints=(
+                "- Write for fast-scrolling social readers rather than formal corporate audiences.",
+                "- Favor punchier, conversational phrasing while staying factual and sourced.",
+                "- Surface the most talk-worthy, timely angle without becoming clickbait.",
+                "- Avoid dense corporate jargon or over-explaining routine context.",
+            ),
+            user_constraints=(
+                "- Make section 1 feel like a crisp hook grounded in the verified update.",
+                "- Keep section 2 skimmable, concrete, and easy to quote back.",
+                "- Make section 5 explain why people may care about or share this now.",
+                "- Make section 6 feel timely and conversation-worthy without overclaiming.",
+            ),
+        )
+
+    return ChannelStyleGuidance(
+        audience="general social readers",
+        voice="clear, concise, and factual",
+        editorial_goal="help readers understand the verified update quickly",
+        reader_focus="Frame the update for a broad social audience.",
+        implication_focus="the clearest verified reason this update matters",
+        system_constraints=(),
+        user_constraints=(),
     )
 
 

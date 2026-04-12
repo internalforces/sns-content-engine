@@ -26,20 +26,35 @@ _STRUCTURED_SUMMARY_SUFFIXES = (
     "stands out as the update most worth a quick operator scan.",
     "is the development to keep on the immediate review list.",
 )
-_STRUCTURED_IMPACT_LINES = (
-    "Next impact to monitor: how this update changes execution, planning, or stakeholder expectations.",
-    "Forward impact: watch for downstream shifts in priorities, partnerships, or delivery plans.",
-    "What changes next: track whether teams need to adjust operating assumptions after this announcement.",
+_LINKEDIN_IMPACT_LINES = (
+    "Next impact to monitor: how this update changes execution priorities, partner expectations, or market positioning.",
+    "Forward impact: watch for downstream shifts in planning, compliance, capital allocation, or customer messaging.",
+    "What changes next: teams may need to revisit operating assumptions, stakeholder narratives, or roadmap timing.",
 )
-_STRUCTURED_INSIGHT_LINES = (
-    "Insight: {channel_label} readers can treat this as a practical signal rather than a final conclusion.",
-    "Insight: the most useful takeaway is the directional change this creates for operators and decision-makers.",
-    "Insight: this matters most as an execution signal, not as a standalone headline.",
+_THREADS_IMPACT_LINES = (
+    "Why it may spread now: this update gives people a quick, concrete reason to react, share, or compare notes.",
+    "What people may watch next: the follow-on angle is whether this turns into a bigger public conversation fast.",
+    "Why it matters right now: the development is easy to grasp and timely enough to travel beyond niche followers.",
 )
-_STRUCTURED_CONCLUSION_LINES = (
-    "Bottom line: keep the source-linked update in view before making downstream decisions.",
-    "Bottom line: review the source-linked update before changing plans or messaging.",
-    "Bottom line: the source-linked details are where the real operating implications show up.",
+_LINKEDIN_INSIGHT_LINES = (
+    "Insight: treat this as a decision-useful signal for operators and business readers, not a final conclusion.",
+    "Insight: the most useful takeaway is the directional change this creates for teams, partners, and decision-makers.",
+    "Insight: this matters most as an operating or market signal rather than a headline to skim and forget.",
+)
+_THREADS_INSIGHT_LINES = (
+    "Insight: the share-worthy angle is the verified development itself, not extra speculation layered on top.",
+    "Insight: this lands best as a fast social takeaway people can pass along without losing the factual core.",
+    "Insight: the value here is a clear, timely update that gives readers something concrete to talk about now.",
+)
+_LINKEDIN_CONCLUSION_LINES = (
+    "Bottom line: keep the source-linked update in view before changing plans, positioning, or stakeholder messaging.",
+    "Bottom line: review the source-linked details before adjusting decisions, operations, or external communication.",
+    "Bottom line: the source-linked facts are where the real strategic and operating implications show up.",
+)
+_THREADS_CONCLUSION_LINES = (
+    "Bottom line: this is the part people will likely quote, repost, and discuss first.",
+    "Bottom line: the source-linked update gives readers a clean, timely takeaway to share.",
+    "Bottom line: if this keeps moving, the linked report is the quickest factual place to start.",
 )
 _STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
 _WORD_RE = re.compile(r"[A-Za-z0-9']+")
@@ -204,13 +219,17 @@ def _generate_structured_variants(request: DraftGenerationRequest) -> tuple[str,
     variants: list[str] = []
     prompt_focus = _build_prompt_focus(request)
     keywords = _build_keywords(request)
+    summary_suffixes = _structured_summary_suffixes(request.channel)
+    impact_lines = _structured_impact_lines(request.channel)
+    insight_lines = _structured_insight_lines(request.channel)
+    conclusion_lines = _structured_conclusion_lines(request.channel)
 
     for index in range(request.variant_count):
         key_point = _select_key_point(request.key_points, index=index) or request.title
         secondary_point = _select_key_point(request.key_points, index=min(index + 1, request.variant_count - 1))
         title = request.title.rstrip(".")
         summary = _shorten_text(
-            f"{title} {prompt_focus or _STRUCTURED_SUMMARY_SUFFIXES[index]}",
+            f"{title} {prompt_focus or summary_suffixes[index]}",
             limit=220,
         )
         key_points = [
@@ -222,21 +241,23 @@ def _generate_structured_variants(request: DraftGenerationRequest) -> tuple[str,
             ),
         ]
         background = _shorten_text(
-            f"Source context centers on {prompt_focus or title.lower()} and keeps the post anchored to the originating report.",
+            _structured_background_line(
+                request.channel,
+                prompt_focus=prompt_focus,
+                title=title,
+            ),
             limit=240,
         )
         forward_impact = _shorten_text(
-            _STRUCTURED_IMPACT_LINES[index],
+            impact_lines[index],
             limit=240,
         )
         insight = _shorten_text(
-            _STRUCTURED_INSIGHT_LINES[index].format(
-                channel_label="LinkedIn" if request.channel == "linkedin" else "Threads"
-            ),
+            insight_lines[index],
             limit=220,
         )
         conclusion = _shorten_text(
-            _STRUCTURED_CONCLUSION_LINES[index],
+            conclusion_lines[index],
             limit=180,
         )
         body = "\n".join(
@@ -321,6 +342,63 @@ def _build_keywords(request: DraftGenerationRequest) -> tuple[str, ...]:
         return ("news", "update", request.channel)
 
     return tuple(word.title() for word in words)
+
+
+def _structured_summary_suffixes(channel: str) -> tuple[str, ...]:
+    if channel == "linkedin":
+        return (
+            "is the clearest verified update for operators and market watchers.",
+            "stands out as the development most worth a quick executive scan.",
+            "is the signal professionals may want on the immediate review list.",
+        )
+    if channel == "threads":
+        return (
+            "is the clearest verified update people will likely talk about next.",
+            "stands out as the development most worth a fast social read.",
+            "is the update most likely to travel once readers see the source context.",
+        )
+    return _STRUCTURED_SUMMARY_SUFFIXES
+
+
+def _structured_background_line(channel: str, *, prompt_focus: str | None, title: str) -> str:
+    focus = prompt_focus or title.lower()
+    if channel == "linkedin":
+        return (
+            f"Source context centers on {focus} and keeps the post anchored to the originating report "
+            "so professional readers can interpret the update with business and operating context."
+        )
+    if channel == "threads":
+        return (
+            f"Source context centers on {focus} and keeps the post anchored to the originating report "
+            "so the update stays easy to share without losing the factual core."
+        )
+    return (
+        f"Source context centers on {focus} and keeps the post anchored to the originating report."
+    )
+
+
+def _structured_impact_lines(channel: str) -> tuple[str, ...]:
+    if channel == "linkedin":
+        return _LINKEDIN_IMPACT_LINES
+    if channel == "threads":
+        return _THREADS_IMPACT_LINES
+    return _LINKEDIN_IMPACT_LINES
+
+
+def _structured_insight_lines(channel: str) -> tuple[str, ...]:
+    if channel == "linkedin":
+        return _LINKEDIN_INSIGHT_LINES
+    if channel == "threads":
+        return _THREADS_INSIGHT_LINES
+    return _LINKEDIN_INSIGHT_LINES
+
+
+def _structured_conclusion_lines(channel: str) -> tuple[str, ...]:
+    if channel == "linkedin":
+        return _LINKEDIN_CONCLUSION_LINES
+    if channel == "threads":
+        return _THREADS_CONCLUSION_LINES
+    return _LINKEDIN_CONCLUSION_LINES
 
 
 def _shorten_text(text: str, *, limit: int) -> str:
