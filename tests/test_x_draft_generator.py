@@ -58,6 +58,38 @@ def test_fake_llm_provider_output_changes_when_prompts_change() -> None:
     assert provider.generate_variants(left) != provider.generate_variants(right)
 
 
+def test_fake_llm_provider_distinguishes_linkedin_and_threads_structured_tone() -> None:
+    provider = FakeLLMProvider()
+    linkedin_request = DraftGenerationRequest(
+        channel="linkedin",
+        system_prompt="Write for operators, founders, investors, and functional leaders.",
+        user_prompt="Keep the framing decision-useful and B2B.",
+        landing_url="https://example.com/articles/1",
+        max_chars=3000,
+        variant_count=2,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops", "Better scheduling"),
+    )
+    threads_request = DraftGenerationRequest(
+        channel="threads",
+        system_prompt="Write for fast-scrolling social readers.",
+        user_prompt="Keep the framing social-first and worth sharing.",
+        landing_url="https://example.com/articles/1",
+        max_chars=10000,
+        variant_count=2,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops", "Better scheduling"),
+    )
+
+    linkedin_variants = provider.generate_variants(linkedin_request)
+    threads_variants = provider.generate_variants(threads_request)
+
+    assert "business and operating context" in linkedin_variants[0]
+    assert "decision-useful signal for operators and business readers" in linkedin_variants[0]
+    assert "Why it may spread now" in threads_variants[0]
+    assert "easy to share without losing the factual core" in threads_variants[0]
+
+
 def test_fake_llm_provider_uses_guide_cta_for_guide_landings() -> None:
     provider = FakeLLMProvider()
     request = DraftGenerationRequest(
@@ -189,6 +221,54 @@ def test_x_draft_generator_preserves_multiline_structure_for_linkedin_channel() 
     assert provider.request is not None
     assert provider.request.channel == "linkedin"
     assert "1. One-line summary" in provider.request.system_prompt
+
+
+@pytest.mark.parametrize(
+    ("channel", "system_phrase", "user_phrase"),
+    [
+        (
+            "linkedin",
+            "operators, functional leaders, founders, investors, and other B2B decision-makers",
+            "business impact, strategic context, execution risk, market relevance, or policy significance",
+        ),
+        (
+            "threads",
+            "broad social readers scanning quickly for timely, worth-sharing updates",
+            "why the update is timely, surprising, conversation-worthy, or useful to pass along right now",
+        ),
+    ],
+)
+def test_x_draft_generator_exposes_channel_style_context_to_prompt_templates(
+    channel: str,
+    system_phrase: str,
+    user_phrase: str,
+) -> None:
+    provider = _CapturingProvider(
+        (
+            "1. One-line summary\nSummary line.\n2. Key points\n- First point\n- Second point\n- Third point\n3. Keywords\nAI, Workflow\n4. Background/Context\nContext line.\n5. Forward impact\nImpact line.\n6. Insight\nInsight line.\n7. One-line conclusion\nConclusion line.\n8. URL\nhttps://example.com/articles/1",
+            "1. One-line summary\nAnother summary line.\n2. Key points\n- First point\n- Second point\n- Third point\n3. Keywords\nAI, Workflow\n4. Background/Context\nContext line.\n5. Forward impact\nImpact line.\n6. Insight\nInsight line.\n7. One-line conclusion\nConclusion line.\n8. URL\nhttps://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    generator.generate(
+        content_brief=_build_content_brief(),
+        account_key="ai_tools_daily",
+        account=_build_account_config(
+            max_chars=3000 if channel == "linkedin" else 10000,
+            channels=(channel,),
+        ),
+        prompt_profile=PromptProfileConfig(
+            system_template="Audience {{ channel_audience }} / Voice {{ channel_voice }} / Goal {{ channel_editorial_goal }}",
+            user_template="Reader {{ channel_reader_focus }} / Implications {{ channel_implication_focus }}",
+        ),
+        variant_count=2,
+        channel=channel,
+    )
+
+    assert provider.request is not None
+    assert system_phrase in provider.request.system_prompt
+    assert user_phrase in provider.request.user_prompt
 
 
 @pytest.mark.parametrize(
