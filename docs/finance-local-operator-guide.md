@@ -16,7 +16,7 @@
 
 ## Recommended local setup
 1. Copy the example files from `config/examples/finance_local/` into your own local config directory.
-2. Replace the example RSS URL and landing URL values with your local test values.
+2. Keep the bundled starter feed or replace the RSS URL and landing URL values with your local test values.
 3. Initialize a fresh database with `sns-engine db init`.
 4. Run the pipeline with `sns-engine run-local`.
 5. Inspect results with `sns-engine history runs`, `sns-engine history failures`, and `sns-engine review list`.

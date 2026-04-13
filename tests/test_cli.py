@@ -15,11 +15,19 @@ from app.connectors.llm import DraftGenerationProviderError
 from app.config import ConfigValidationError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import BackfillResult, PublishDueOutcome, PublishDueResult, SchedulerDiscoverResult
-from app.storage import DatabaseSchemaError, DraftVariantState, PublishJobState, ReviewActionType
+from app.storage import (
+    DatabaseSchemaError,
+    DraftVariantState,
+    PipelineStage,
+    PublishJobState,
+    ReviewActionType,
+)
 from app.workflows import (
     BuildContentBriefOutcome,
     BuildContentBriefsResult,
     DiscoverSourcesResult,
+    EnrichArticleOutcome,
+    EnrichArticlesResult,
     GenerateDraftOutcome,
     GenerateDraftsResult,
     IngestSourcesResult,
@@ -331,6 +339,53 @@ def test_ingest_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
     assert "database schema is outdated" in result.output
 
 
+def test_enrich_articles_command_reports_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "enrich_articles",
+        lambda _config_dir, database_url=None: EnrichArticlesResult(
+            processed_source_item_ids=(1, 2, 3, 4),
+            outcomes=(
+                EnrichArticleOutcome(source_item_id=1, status="enriched", article_enrichment_id=10),
+                EnrichArticleOutcome(source_item_id=2, status="existing", article_enrichment_id=11),
+                EnrichArticleOutcome(source_item_id=3, status="skipped", article_enrichment_id=12),
+                EnrichArticleOutcome(
+                    source_item_id=4,
+                    status="failed",
+                    article_enrichment_id=13,
+                    failure_code="fetch_blocked",
+                    failure_stage=PipelineStage.HTML_FETCH,
+                ),
+            ),
+        ),
+    )
+
+    result = runner.invoke(app, ["enrich-articles"])
+
+    assert result.exit_code == 0
+    assert "processed 4 ingested source items" in result.stdout
+    assert "enriched: 1" in result.stdout
+    assert "existing: 1" in result.stdout
+    assert "skipped: 1" in result.stdout
+    assert "failed: 1" in result.stdout
+    assert "failures[html_fetch]: 1" in result.stdout
+
+
+def test_enrich_articles_command_surfaces_schema_errors_cleanly(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "enrich_articles",
+        lambda _config_dir, database_url=None: (_ for _ in ()).throw(
+            DatabaseSchemaError("database schema is outdated")
+        ),
+    )
+
+    result = runner.invoke(app, ["enrich-articles"])
+
+    assert result.exit_code == 1
+    assert "database schema is outdated" in result.output
+
+
 def test_build_briefs_command_reports_summary(monkeypatch) -> None:
     monkeypatch.setattr(
         cli_module,
@@ -497,6 +552,8 @@ def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
                 "status": PipelineRunStatus.PARTIAL,
                 "ingest_discovered_count": 6,
                 "ingest_saved_count": 4,
+                "duplicate_count": 2,
+                "duplicate_reasons": (("source_identity", 2),),
                 "enrichment_enriched_count": 3,
                 "brief_created_count": 3,
                 "draft_created_variant_count": 9,
@@ -512,6 +569,8 @@ def test_run_local_command_reports_pipeline_summary(monkeypatch) -> None:
     assert "status: partial" in result.stdout
     assert "discovered: 6" in result.stdout
     assert "saved: 4" in result.stdout
+    assert "duplicates blocked: 2" in result.stdout
+    assert "duplicates[source_identity]: 2" in result.stdout
     assert "enriched: 3" in result.stdout
     assert "briefs created: 3" in result.stdout
     assert "draft variants created: 9" in result.stdout
@@ -546,7 +605,7 @@ def test_generate_drafts_command_reports_summary(monkeypatch) -> None:
     assert "processed 2 content briefs" in result.stdout
     assert "draft sets created: 1" in result.stdout
     assert "draft sets existing: 1" in result.stdout
-    assert "no x channel: 0" in result.stdout
+    assert "no configured channel: 0" in result.stdout
     assert "missing account: 0" in result.stdout
     assert "draft variants created: 3" in result.stdout
 
@@ -860,7 +919,7 @@ def test_scheduler_run_command_registers_jobs_and_starts_runtime(monkeypatch) ->
     assert captured["backfill_interval_minutes"] == 15
     assert captured["publish_due_interval_seconds"] == 60
     assert captured["started"] is True
-    assert "scheduler registered jobs: discover, backfill, publish_due" in result.stdout
+    assert "scheduler registered jobs: run_local, backfill, publish_due" in result.stdout
     assert "dry_run=true" in result.stdout
 
 
@@ -902,6 +961,7 @@ def test_help_command_is_available() -> None:
     assert "db" in result.stdout
     assert "build-briefs" in result.stdout
     assert "discover" in result.stdout
+    assert "enrich-articles" in result.stdout
     assert "generate-drafts" in result.stdout
     assert "ingest" in result.stdout
     assert "review" in result.stdout

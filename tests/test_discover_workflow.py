@@ -15,7 +15,7 @@ from app.connectors.sources import (
     SourceFetchError,
     SourceConnectorRegistry,
 )
-from app.workflows import discover_sources
+from app.workflows.discover_sources import discover_sources
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "sources"
 

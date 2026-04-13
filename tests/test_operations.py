@@ -37,7 +37,8 @@ def test_run_healthcheck_flags_bundled_sample_config_directory(tmp_path: Path) -
     assert readiness_check.status == "failed"
     assert "bundled sample config directory" in readiness_check.message
     assert "config/examples/all_domain_news" in readiness_check.message
-    assert "placeholder URLs detected" in readiness_check.message
+    assert "placeholder URLs detected" not in readiness_check.message
+    assert "replace the sample URLs before real runs" in readiness_check.message
 
 
 def test_run_healthcheck_flags_placeholder_urls_in_working_config(tmp_path: Path) -> None:

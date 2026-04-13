@@ -4,64 +4,64 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Review workspace</p>
+        <p class="console-card-label">검토 작업공간</p>
         {% if review_detail_missing %}
-          <h2>Draft could not be loaded</h2>
+          <h2>초안을 불러올 수 없습니다</h2>
         {% else %}
           <h2>{{ review_detail.draft_label }} · {{ review_detail.variant_label }}</h2>
         {% endif %}
       </div>
-      <span class="console-badge">{% if review_detail_missing %}404{% else %}Task 05{% endif %}</span>
+      <span class="console-badge">{% if review_detail_missing %}404{% else %}작업 05{% endif %}</span>
     </div>
     <p class="console-card-copy">
-      <a class="console-link" href="{{ pending_review_href }}">Back to pending review queue</a>
+      <a class="console-link" href="{{ pending_review_href }}">검토 대기열로 돌아가기</a>
     </p>
     {% if review_detail_missing %}
       <p class="console-empty">{{ review_detail_missing.message }}</p>
       <p class="console-card-copy">
-        The draft may not exist in this database, or it may belong to a different operator context than the current query parameters.
+        이 초안은 현재 데이터베이스에 없거나, 현재 쿼리 파라미터와 다른 운영 콘텍스트에 속해 있을 수 있습니다.
       </p>
     {% else %}
       <div class="console-panel-grid">
         <article class="console-panel">
-          <p class="console-card-label">Draft status</p>
+          <p class="console-card-label">초안 상태</p>
           <h3>{{ review_detail.draft_label }}</h3>
           <dl class="console-definition-list">
             <div>
-              <dt>Account key</dt>
+              <dt>계정 키</dt>
               <dd>{{ review_detail.account_key }}</dd>
             </div>
             <div>
-              <dt>Channel</dt>
+              <dt>채널</dt>
               <dd>{{ review_detail.channel }}</dd>
             </div>
             <div>
-              <dt>Variant</dt>
+              <dt>버전</dt>
               <dd>{{ review_detail.variant_label }}</dd>
             </div>
             <div>
-              <dt>State</dt>
+              <dt>상태</dt>
               <dd>{{ review_detail.draft_state }}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>생성됨</dt>
               <dd>{{ review_detail.created_at }}</dd>
             </div>
             <div>
-              <dt>Reviewed</dt>
+              <dt>검토됨</dt>
               <dd>{{ review_detail.reviewed_at }}</dd>
             </div>
             <div>
-              <dt>Rejection reason</dt>
+              <dt>반려 사유</dt>
               <dd>{{ review_detail.rejection_reason }}</dd>
             </div>
           </dl>
         </article>
 
         <article class="console-panel">
-          <p class="console-card-label">Draft body</p>
-          <h3>Current text</h3>
-          <p class="console-card-copy">{{ review_detail.body }}</p>
+          <p class="console-card-label">초안 본문</p>
+          <h3>현재 문안</h3>
+          <div class="console-body-block">{{ review_detail.body }}</div>
         </article>
       </div>
     {% endif %}
@@ -71,8 +71,8 @@
     <section class="console-card">
       <div class="console-card-header">
         <div>
-          <p class="console-card-label">Review actions</p>
-          <h2>Workflow-aligned browser mutations</h2>
+          <p class="console-card-label">검토 작업</p>
+          <h2>워크플로에 맞춘 브라우저 변경 작업</h2>
         </div>
       </div>
       <p class="console-card-copy">{{ review_action_forms.state_hint }}</p>
@@ -87,65 +87,76 @@
         <div class="console-action-grid">
           <form class="console-action-card" method="post" action="{{ review_action_forms.action_href }}">
             <input type="hidden" name="action" value="approve">
-            <p class="console-card-label">Approve</p>
-            <h3>Approve draft</h3>
+            <p class="console-card-label">승인</p>
+            <h3>초안 승인</h3>
             <label class="console-field" for="approve-reviewer">
-              <span>Reviewer</span>
+              <span>검토자</span>
               <input class="console-input" id="approve-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
             </label>
-            <button class="console-button" type="submit">Approve for scheduling</button>
+            <button class="console-button" type="submit">예약 가능 상태로 승인</button>
           </form>
 
           <form class="console-action-card" method="post" action="{{ review_action_forms.action_href }}">
             <input type="hidden" name="action" value="reject">
-            <p class="console-card-label">Reject</p>
-            <h3>Reject draft</h3>
+            <p class="console-card-label">반려</p>
+            <h3>초안 반려</h3>
             <label class="console-field" for="reject-reviewer">
-              <span>Reviewer</span>
+              <span>검토자</span>
               <input class="console-input" id="reject-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
             </label>
             <label class="console-field" for="reject-reason">
-              <span>Reason</span>
+              <span>사유</span>
               <input class="console-input" id="reject-reason" name="reason" type="text" value="{{ review_action_forms.reject_reason }}">
             </label>
-            <button class="console-button console-button-muted" type="submit">Reject draft</button>
+            <button class="console-button console-button-muted" type="submit">초안 반려</button>
           </form>
         </div>
 
         <form class="console-action-card console-action-card-wide" method="post" action="{{ review_action_forms.action_href }}">
           <input type="hidden" name="action" value="edit">
-          <p class="console-card-label">Edit</p>
-          <h3>Edit draft body</h3>
+          <p class="console-card-label">수정</p>
+          <h3>초안 본문 수정</h3>
           <div class="console-form-grid">
             <label class="console-field" for="edit-reviewer">
-              <span>Reviewer</span>
+              <span>검토자</span>
               <input class="console-input" id="edit-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
             </label>
           </div>
           <label class="console-field" for="edit-body">
-            <span>Updated body</span>
+            <span>수정된 본문</span>
             <textarea class="console-textarea" id="edit-body" name="body">{{ review_action_forms.edit_body }}</textarea>
           </label>
-          <button class="console-button" type="submit">Save edited draft</button>
+          <button class="console-button" type="submit">수정한 초안 저장</button>
         </form>
       {% elif review_action_forms.show_schedule_action %}
         <form class="console-action-card console-action-card-wide" method="post" action="{{ review_action_forms.action_href }}">
           <input type="hidden" name="action" value="schedule">
-          <p class="console-card-label">Schedule</p>
-          <h3>Create a publish job</h3>
+          <p class="console-card-label">예약</p>
+          <h3>발행 작업 만들기</h3>
           <div class="console-form-grid">
             <label class="console-field" for="schedule-reviewer">
-              <span>Reviewer</span>
+              <span>검토자</span>
               <input class="console-input" id="schedule-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
             </label>
             <label class="console-field" for="schedule-datetime">
-              <span>Scheduled for</span>
+              <span>예약 시각</span>
               <input class="console-input" id="schedule-datetime" name="scheduled_for" type="text" value="{{ review_action_forms.scheduled_for }}" placeholder="2026-03-18T09:00:00+09:00">
             </label>
           </div>
-          <p class="console-card-copy">Use an ISO 8601 timestamp with a timezone offset so the stored publish slot stays unambiguous.</p>
-          <button class="console-button" type="submit">Schedule draft</button>
+          <p class="console-card-copy">저장되는 발행 슬롯이 모호하지 않도록 타임존 오프셋이 포함된 ISO 8601 시각을 사용하세요.</p>
+          <button class="console-button" type="submit">초안 예약</button>
         </form>
+      {% elif review_action_forms.show_manual_upload_guidance %}
+        <article class="console-action-card console-action-card-wide">
+          <p class="console-card-label">수동 업로드</p>
+          <h3>{{ review_action_forms.manual_upload_title }}</h3>
+          <p class="console-card-copy">{{ review_action_forms.manual_upload_copy }}</p>
+          <label class="console-field" for="manual-upload-body">
+            <span>업로드용 본문</span>
+            <textarea class="console-textarea" id="manual-upload-body" readonly>{{ review_action_forms.manual_upload_body }}</textarea>
+          </label>
+          <p class="console-card-copy">{{ review_action_forms.manual_upload_helper }}</p>
+        </article>
       {% else %}
         <p class="console-empty">{{ review_action_forms.read_only_notice }}</p>
       {% endif %}
@@ -155,41 +166,41 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Provenance</p>
-            <h2>Stored source context</h2>
+            <p class="console-card-label">출처 정보</p>
+            <h2>저장된 소스 콘텍스트</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Source name</dt>
+            <dt>소스 이름</dt>
             <dd>{{ review_detail.provenance.source_name }}</dd>
           </div>
           <div>
-            <dt>Source URL</dt>
+            <dt>소스 URL</dt>
             <dd>
               {% if review_detail.provenance.source_url %}
                 <a class="console-link" href="{{ review_detail.provenance.source_url }}">{{ review_detail.provenance.source_url }}</a>
               {% else %}
-                Not recorded
+                기록 없음
               {% endif %}
             </dd>
           </div>
           <div>
-            <dt>Article URL</dt>
+            <dt>아티클 URL</dt>
             <dd>
               {% if review_detail.provenance.article_url %}
                 <a class="console-link" href="{{ review_detail.provenance.article_url }}">{{ review_detail.provenance.article_url }}</a>
               {% else %}
-                Not recorded
+                기록 없음
               {% endif %}
             </dd>
           </div>
           <div>
-            <dt>Published</dt>
+            <dt>발행 시각</dt>
             <dd>{{ review_detail.provenance.source_published_at }}</dd>
           </div>
           <div>
-            <dt>Policy mode</dt>
+            <dt>정책 모드</dt>
             <dd>{{ review_detail.provenance.source_policy_mode }}</dd>
           </div>
         </dl>
@@ -198,34 +209,34 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Brief</p>
+            <p class="console-card-label">브리프</p>
             <h2>{{ review_detail.brief.title }}</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Brief ID</dt>
+            <dt>브리프 ID</dt>
             <dd>{{ review_detail.brief.brief_id }}</dd>
           </div>
           <div>
-            <dt>Summary</dt>
+            <dt>요약</dt>
             <dd>{{ review_detail.brief.summary }}</dd>
           </div>
           <div>
-            <dt>Landing URL</dt>
+            <dt>랜딩 URL</dt>
             <dd><a class="console-link" href="{{ review_detail.brief.landing_url }}">{{ review_detail.brief.landing_url }}</a></dd>
           </div>
           <div>
-            <dt>Angle</dt>
+            <dt>각도</dt>
             <dd>{{ review_detail.brief.angle }}</dd>
           </div>
           <div>
-            <dt>Language</dt>
+            <dt>언어</dt>
             <dd>{{ review_detail.brief.language }}</dd>
           </div>
           <div>
-            <dt>Tags</dt>
-            <dd>{{ review_detail.brief.tags | join(", ") if review_detail.brief.tags else "No tags recorded." }}</dd>
+            <dt>태그</dt>
+            <dd>{{ review_detail.brief.tags | join(", ") if review_detail.brief.tags else "기록된 태그 없음" }}</dd>
           </div>
         </dl>
         {% if review_detail.brief.key_points %}
@@ -242,42 +253,42 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Source item</p>
+            <p class="console-card-label">소스 항목</p>
             <h2>{{ review_detail.source_item.title }}</h2>
           </div>
         </div>
         <dl class="console-definition-list">
           <div>
-            <dt>Source item ID</dt>
+            <dt>소스 항목 ID</dt>
             <dd>{{ review_detail.source_item.source_item_id }}</dd>
           </div>
           <div>
-            <dt>Source key</dt>
+            <dt>소스 키</dt>
             <dd>{{ review_detail.source_item.source_key }}</dd>
           </div>
           <div>
-            <dt>External ID</dt>
+            <dt>외부 ID</dt>
             <dd>{{ review_detail.source_item.external_id }}</dd>
           </div>
           <div>
-            <dt>Summary</dt>
+            <dt>요약</dt>
             <dd>{{ review_detail.source_item.summary }}</dd>
           </div>
           <div>
-            <dt>Source URL</dt>
+            <dt>소스 URL</dt>
             <dd><a class="console-link" href="{{ review_detail.source_item.source_url }}">{{ review_detail.source_item.source_url }}</a></dd>
           </div>
           <div>
-            <dt>Canonical URL</dt>
+            <dt>정규 URL</dt>
             <dd><a class="console-link" href="{{ review_detail.source_item.canonical_url }}">{{ review_detail.source_item.canonical_url }}</a></dd>
           </div>
           <div>
-            <dt>Published</dt>
+            <dt>발행 시각</dt>
             <dd>{{ review_detail.source_item.published_at }}</dd>
           </div>
           <div>
-            <dt>Policy</dt>
-            <dd>{{ review_detail.source_item.policy_mode }} / Attribution {{ review_detail.source_item.require_attribution }}</dd>
+            <dt>정책</dt>
+            <dd>{{ review_detail.source_item.policy_mode }} / 출처 표기 {{ review_detail.source_item.require_attribution }}</dd>
           </div>
         </dl>
       </article>
@@ -285,38 +296,38 @@
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">Article enrichment</p>
-            <h2>{% if review_detail.article_enrichment %}Linked enrichment{% else %}No enrichment linked{% endif %}</h2>
+            <p class="console-card-label">아티클 보강</p>
+            <h2>{% if review_detail.article_enrichment %}연결된 보강 정보{% else %}연결된 보강 정보 없음{% endif %}</h2>
           </div>
         </div>
         {% if review_detail.article_enrichment %}
           <dl class="console-definition-list">
             <div>
-              <dt>Enrichment ID</dt>
+              <dt>보강 ID</dt>
               <dd>{{ review_detail.article_enrichment.article_enrichment_id }}</dd>
             </div>
             <div>
-              <dt>Source name</dt>
+              <dt>소스 이름</dt>
               <dd>{{ review_detail.article_enrichment.source_name }}</dd>
             </div>
             <div>
-              <dt>Article URL</dt>
+              <dt>아티클 URL</dt>
               <dd><a class="console-link" href="{{ review_detail.article_enrichment.article_url }}">{{ review_detail.article_enrichment.article_url }}</a></dd>
             </div>
             <div>
-              <dt>Published</dt>
+              <dt>발행 시각</dt>
               <dd>{{ review_detail.article_enrichment.published_at }}</dd>
             </div>
             <div>
-              <dt>Discovered</dt>
+              <dt>발견 시각</dt>
               <dd>{{ review_detail.article_enrichment.discovered_at }}</dd>
             </div>
             <div>
-              <dt>Classification</dt>
+              <dt>분류</dt>
               <dd>{{ review_detail.article_enrichment.classification }}</dd>
             </div>
             <div>
-              <dt>Regenerated summary</dt>
+              <dt>재생성된 요약</dt>
               <dd>{{ review_detail.article_enrichment.regenerated_summary }}</dd>
             </div>
           </dl>
@@ -328,7 +339,7 @@
             </ul>
           {% endif %}
         {% else %}
-          <p class="console-empty">No article enrichment is linked to this draft yet.</p>
+          <p class="console-empty">이 초안에 연결된 아티클 보강 정보가 아직 없습니다.</p>
         {% endif %}
       </article>
     </section>
@@ -336,8 +347,8 @@
     <section class="console-card">
       <div class="console-card-header">
         <div>
-          <p class="console-card-label">Audit trail</p>
-          <h2>Recorded review actions</h2>
+          <p class="console-card-label">감사 이력</p>
+          <h2>기록된 검토 작업</h2>
         </div>
       </div>
       {% if review_detail.review_actions %}
@@ -345,11 +356,11 @@
           <table class="console-table">
             <thead>
               <tr>
-                <th>Action</th>
-                <th>Reviewer</th>
-                <th>State change</th>
-                <th>Text diff</th>
-                <th>Scheduling</th>
+                <th>작업</th>
+                <th>검토자</th>
+                <th>상태 변경</th>
+                <th>본문 변경</th>
+                <th>예약</th>
               </tr>
             </thead>
             <tbody>
@@ -358,7 +369,7 @@
                   <td>
                     <div class="console-stack">
                       <strong>{{ action.action_type }}</strong>
-                      <span>Action {{ action.action_id }}</span>
+                      <span>작업 {{ action.action_id }}</span>
                       <span>{{ action.created_at }}</span>
                     </div>
                   </td>
@@ -371,13 +382,13 @@
                   </td>
                   <td>
                     <div class="console-stack">
-                      <span>Before: {{ action.before_text }}</span>
-                      <span>After: {{ action.after_text }}</span>
+                      <span>이전: {{ action.before_text }}</span>
+                      <span>이후: {{ action.after_text }}</span>
                     </div>
                   </td>
                   <td>
                     <div class="console-stack">
-                      <span>Scheduled {{ action.scheduled_for }}</span>
+                      <span>예약 {{ action.scheduled_for }}</span>
                       {% if action.publish_job_href %}
                         <a class="console-link" href="{{ action.publish_job_href }}">{{ action.publish_job_label }}</a>
                       {% else %}
@@ -391,15 +402,15 @@
           </table>
         </div>
       {% else %}
-        <p class="console-empty">No review actions have been recorded for this draft yet.</p>
+        <p class="console-empty">이 초안에 기록된 검토 작업이 아직 없습니다.</p>
       {% endif %}
     </section>
 
     <section class="console-card">
       <div class="console-card-header">
         <div>
-          <p class="console-card-label">Sibling variants</p>
-          <h2>Same brief and channel</h2>
+          <p class="console-card-label">다른 버전</p>
+          <h2>같은 브리프와 채널</h2>
         </div>
       </div>
       {% if review_detail.sibling_variants %}
@@ -407,10 +418,10 @@
           <table class="console-table">
             <thead>
               <tr>
-                <th>Draft</th>
-                <th>State</th>
-                <th>Body</th>
-                <th>Timing</th>
+                <th>초안</th>
+                <th>상태</th>
+                <th>본문</th>
+                <th>시각</th>
               </tr>
             </thead>
             <tbody>
@@ -431,8 +442,8 @@
                   <td>{{ variant.body }}</td>
                   <td>
                     <div class="console-stack">
-                      <span>Created {{ variant.created_at }}</span>
-                      <span>Reviewed {{ variant.reviewed_at }}</span>
+                      <span>생성 {{ variant.created_at }}</span>
+                      <span>검토 {{ variant.reviewed_at }}</span>
                     </div>
                   </td>
                 </tr>
@@ -441,7 +452,7 @@
           </table>
         </div>
       {% else %}
-        <p class="console-empty">No sibling variants are available for this brief and channel yet.</p>
+        <p class="console-empty">이 브리프와 채널 조합에 다른 버전 초안이 아직 없습니다.</p>
       {% endif %}
     </section>
   {% endif %}

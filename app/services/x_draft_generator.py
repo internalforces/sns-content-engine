@@ -1,4 +1,4 @@
-"""X-specific draft generation service."""
+"""Channel-aware social draft generation service."""
 
 from __future__ import annotations
 
@@ -13,6 +13,27 @@ from app.services.prompt_renderer import PromptRenderer, build_domain_sensitivit
 from app.storage import ContentBrief, SourcePolicyMode
 
 _WHITESPACE_RE = re.compile(r"\s+")
+_LINE_BREAK_RE = re.compile(r"\n{3,}")
+_STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
+_STRUCTURED_SECTION_LABELS = (
+    "1. One-line summary",
+    "2. Key points",
+    "3. Keywords",
+    "4. Background/Context",
+    "5. Forward impact",
+    "6. Insight",
+    "7. One-line conclusion",
+    "8. URL",
+)
+_STRUCTURED_SECTION_LIMITS = {
+    "1. One-line summary": 180,
+    "2. Key points": 540,
+    "3. Keywords": 160,
+    "4. Background/Context": 320,
+    "5. Forward impact": 320,
+    "6. Insight": 320,
+    "7. One-line conclusion": 160,
+}
 
 
 class DraftGenerationError(ValueError):
@@ -30,8 +51,21 @@ class DraftProvenanceSnapshot:
     policy_mode: SourcePolicyMode | None
 
 
+@dataclass(frozen=True, slots=True)
+class ChannelStyleGuidance:
+    """Audience and tone guidance for a target publishing channel."""
+
+    audience: str
+    voice: str
+    editorial_goal: str
+    reader_focus: str
+    implication_focus: str
+    system_constraints: tuple[str, ...]
+    user_constraints: tuple[str, ...]
+
+
 class XDraftGenerator:
-    """Generate validated X-ready draft variants from stored content briefs."""
+    """Generate validated social draft variants from stored content briefs."""
 
     def __init__(
         self,
@@ -50,45 +84,63 @@ class XDraftGenerator:
         account: AccountConfig,
         prompt_profile: PromptProfileConfig,
         variant_count: int,
+        channel: str = "x",
     ) -> tuple[str, ...]:
         _validate_variant_count(variant_count)
 
-        if "x" not in account.channels:
-            raise DraftGenerationError(f"account {account_key!r} does not define an x channel")
+        if channel not in account.channels:
+            raise DraftGenerationError(
+                f"account {account_key!r} does not define channel {channel!r}"
+            )
 
-        channel_config = account.channels["x"]
+        channel_config = account.channels[channel]
+        draft_link_url = resolve_draft_link_url(content_brief)
         render_context = _build_render_context(
             content_brief=content_brief,
             account_key=account_key,
             account=account,
-            channel="x",
+            channel=channel,
             max_chars=channel_config.render.max_chars,
+            draft_link_url=draft_link_url,
         )
         rendered_prompt = self._prompt_renderer.render(
             prompt_profile,
             context=render_context,
         )
         request = DraftGenerationRequest(
-            channel="x",
+            channel=channel,
             system_prompt=_build_system_prompt(
                 rendered_prompt.system_prompt,
+                channel=channel,
                 max_chars=channel_config.render.max_chars,
                 variant_count=variant_count,
             ),
             user_prompt=_build_user_prompt(
                 rendered_prompt.user_prompt,
-                landing_url=content_brief.landing_url,
+                channel=channel,
+                landing_url=draft_link_url,
                 max_chars=channel_config.render.max_chars,
                 variant_count=variant_count,
             ),
-            landing_url=content_brief.landing_url,
+            landing_url=draft_link_url,
             max_chars=channel_config.render.max_chars,
             variant_count=variant_count,
             title=content_brief.title,
             key_points=tuple(content_brief.key_points),
         )
         variants = self._llm_provider.generate_variants(request)
-        return _validate_variants(variants, request=request)
+        try:
+            return _validate_variants(variants, request=request)
+        except DraftGenerationError as error:
+            if channel not in _STRUCTURED_CHANNELS:
+                raise
+
+            retry_request = _build_structured_retry_request(
+                request,
+                failure_message=str(error),
+            )
+            retry_variants = self._llm_provider.generate_variants(retry_request)
+            return _validate_variants(retry_variants, request=retry_request)
 
 
 def _build_render_context(
@@ -98,6 +150,7 @@ def _build_render_context(
     account: AccountConfig,
     channel: str,
     max_chars: int,
+    draft_link_url: str,
 ) -> Mapping[str, object]:
     provenance = build_draft_provenance_snapshot(content_brief)
     sensitivity = build_domain_sensitivity(
@@ -106,6 +159,7 @@ def _build_render_context(
         tags=tuple(content_brief.tags),
         topic=account.topic,
     )
+    style = _channel_style_guidance(channel)
     return {
         "account_key": account_key,
         "topic": account.topic,
@@ -116,9 +170,12 @@ def _build_render_context(
         "key_points": tuple(content_brief.key_points),
         "tags": tuple(content_brief.tags),
         "angle": content_brief.angle,
-        "landing_url": content_brief.landing_url,
+        "landing_url": draft_link_url,
+        "content_landing_url": content_brief.landing_url,
         "language": content_brief.language,
         "source_url": provenance.article_url or provenance.source_url,
+        "article_url": provenance.article_url,
+        "original_source_url": provenance.source_url,
         "source_name": provenance.source_name,
         "article_summary": _article_summary(content_brief),
         "policy_mode": provenance.policy_mode.value if provenance.policy_mode is not None else None,
@@ -128,39 +185,204 @@ def _build_render_context(
         "sensitivity_matched_terms": sensitivity.matched_terms,
         "sensitivity_guidance": sensitivity.prompt_guidance,
         "sensitivity_review_note": sensitivity.review_note,
+        "channel_audience": style.audience,
+        "channel_voice": style.voice,
+        "channel_editorial_goal": style.editorial_goal,
+        "channel_reader_focus": style.reader_focus,
+        "channel_implication_focus": style.implication_focus,
     }
 
 
-def _build_system_prompt(base_prompt: str, *, max_chars: int, variant_count: int) -> str:
+def _build_system_prompt(
+    base_prompt: str,
+    *,
+    channel: str,
+    max_chars: int,
+    variant_count: int,
+) -> str:
+    if channel == "x" or channel not in _STRUCTURED_CHANNELS:
+        channel_label = _channel_label(channel)
+        return (
+            f"{base_prompt}\n\n"
+            "Channel constraints:\n"
+            f"- Output plain-text {channel_label} drafts only.\n"
+            f"- Return exactly {variant_count} distinct variants.\n"
+            f"- Keep every variant at or under {max_chars} characters.\n"
+            "- Include the required URL exactly once in each variant.\n"
+            "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
+            "- Attribute the insight to the source context instead of claiming certainty."
+        )
+
+    channel_label = _channel_label(channel)
+    style = _channel_style_guidance(channel)
     return (
         f"{base_prompt}\n\n"
         "Channel constraints:\n"
-        "- Output plain-text X drafts only.\n"
+        f"- Output plain-text {channel_label} drafts only.\n"
         f"- Return exactly {variant_count} distinct variants.\n"
         f"- Keep every variant at or under {max_chars} characters.\n"
-        "- Include the landing URL exactly once in each variant.\n"
+        "- Use this exact numbered structure with line breaks:\n"
+        "  1. One-line summary\n"
+        "  2. Key points\n"
+        "  3. Keywords\n"
+        "  4. Background/Context\n"
+        "  5. Forward impact\n"
+        "  6. Insight\n"
+        "  7. One-line conclusion\n"
+        "  8. URL\n"
+        "- Put 3 to 5 short bullet-style items inside section 2.\n"
+        "- Put the required URL only in section 8.\n"
         "- Do not give investment advice, price targets, or buy/sell recommendations.\n"
-        "- Attribute the insight to the source context instead of claiming certainty."
+        "- Attribute the insight to the source context instead of claiming certainty.\n"
+        "- Keep each section skimmable for manual operator review.\n"
+        + "\n".join(style.system_constraints)
     )
 
 
 def _build_user_prompt(
     base_prompt: str,
     *,
+    channel: str,
     landing_url: str,
     max_chars: int,
     variant_count: int,
 ) -> str:
+    if channel == "x" or channel not in _STRUCTURED_CHANNELS:
+        return (
+            f"{base_prompt}\n\n"
+            "Output requirements:\n"
+            f"- Variant count: {variant_count}\n"
+            f"- Max characters per variant: {max_chars}\n"
+            f"- Required URL: {landing_url}\n"
+            "- Keep the tone concise and traffic-oriented.\n"
+            "- Mention the source context when it helps credibility.\n"
+            "- Avoid language that sounds like financial advice."
+        )
+
+    style = _channel_style_guidance(channel)
     return (
         f"{base_prompt}\n\n"
         "Output requirements:\n"
         f"- Variant count: {variant_count}\n"
         f"- Max characters per variant: {max_chars}\n"
-        f"- Landing URL: {landing_url}\n"
-        "- Keep the tone concise and traffic-oriented.\n"
+        f"- Required URL: {landing_url}\n"
+        "- Keep the numbered section labels exactly as written in the system instructions.\n"
+        "- Section 2 should contain 3 to 5 bullet-style lines.\n"
+        "- Section 3 should list concise keywords separated by commas.\n"
+        + "\n".join(style.user_constraints)
+        + "\n"
         "- Mention the source context when it helps credibility.\n"
         "- Avoid language that sounds like financial advice."
     )
+
+
+def _build_structured_retry_request(
+    request: DraftGenerationRequest,
+    *,
+    failure_message: str,
+) -> DraftGenerationRequest:
+    revision_note = (
+        "\n\nRevision requirements:\n"
+        f"- Previous attempt failed validation: {failure_message}\n"
+        "- Retry from scratch.\n"
+        "- Keep sections 1, 4, 5, 6, and 7 to one short sentence each.\n"
+        "- Keep section 2 to exactly 3 short bullet lines.\n"
+        "- Keep section 3 to a short comma-separated keyword list.\n"
+        "- Put the exact required URL only in section 8.\n"
+        "- Do not use bold markers, extra headings, or trailing notes."
+    )
+    return DraftGenerationRequest(
+        channel=request.channel,
+        system_prompt=f"{request.system_prompt}{revision_note}",
+        user_prompt=f"{request.user_prompt}{revision_note}",
+        landing_url=request.landing_url,
+        max_chars=request.max_chars,
+        variant_count=request.variant_count,
+        title=request.title,
+        key_points=request.key_points,
+    )
+
+
+def _channel_style_guidance(channel: str) -> ChannelStyleGuidance:
+    if channel == "linkedin":
+        return ChannelStyleGuidance(
+            audience=(
+                "operators, functional leaders, founders, investors, and other B2B "
+                "decision-makers"
+            ),
+            voice="measured, executive-summary, and insight-led",
+            editorial_goal=(
+                "help a professional reader understand what changed, why it matters, "
+                "and which strategic or operating signal to watch"
+            ),
+            reader_focus=(
+                "Frame the update for managers, operators, and market-facing "
+                "professionals who want decision-useful context."
+            ),
+            implication_focus=(
+                "business impact, strategic context, execution risk, market "
+                "relevance, or policy significance"
+            ),
+            system_constraints=(
+                "- Write for operators, founders, investors, and functional leaders rather than general entertainment audiences.",
+                "- Favor measured B2B language, executive-summary phrasing, and decision-useful context.",
+                "- Highlight strategic, operational, market, or policy implications only when supported by the source.",
+                "- Avoid casual slang, creator-style hype, or viral bait.",
+            ),
+            user_constraints=(
+                "- Make section 1 read like an executive summary line for a professional audience.",
+                "- Make section 5 explain the practical business, operating, market, or policy implication.",
+                "- Make section 6 feel like a decision-useful takeaway for a professional reader.",
+                "- Keep section 7 crisp and boardroom-ready rather than playful.",
+            ),
+        )
+
+    if channel == "threads":
+        return ChannelStyleGuidance(
+            audience="broad social readers scanning quickly for timely, worth-sharing updates",
+            voice="clear, lively, social-first, and factual",
+            editorial_goal=(
+                "help a fast-scrolling reader grasp the update quickly and see why "
+                "it is worth sharing right now"
+            ),
+            reader_focus=(
+                "Frame the update for curious social readers who want a quick, "
+                "readable summary."
+            ),
+            implication_focus=(
+                "why the update is timely, surprising, conversation-worthy, or "
+                "useful to pass along right now"
+            ),
+            system_constraints=(
+                "- Write for fast-scrolling social readers rather than formal corporate audiences.",
+                "- Favor punchier, conversational phrasing while staying factual and sourced.",
+                "- Surface the most talk-worthy, timely angle without becoming clickbait.",
+                "- Avoid dense corporate jargon or over-explaining routine context.",
+            ),
+            user_constraints=(
+                "- Make section 1 feel like a crisp hook grounded in the verified update.",
+                "- Keep section 2 skimmable, concrete, and easy to quote back.",
+                "- Make section 5 explain why people may care about or share this now.",
+                "- Make section 6 feel timely and conversation-worthy without overclaiming.",
+            ),
+        )
+
+    return ChannelStyleGuidance(
+        audience="general social readers",
+        voice="clear, concise, and factual",
+        editorial_goal="help readers understand the verified update quickly",
+        reader_focus="Frame the update for a broad social audience.",
+        implication_focus="the clearest verified reason this update matters",
+        system_constraints=(),
+        user_constraints=(),
+    )
+
+
+def resolve_draft_link_url(content_brief: ContentBrief) -> str:
+    """Return the URL that generated drafts should include."""
+
+    provenance = build_draft_provenance_snapshot(content_brief)
+    return provenance.article_url or content_brief.landing_url
 
 
 def build_draft_provenance_snapshot(content_brief: ContentBrief) -> DraftProvenanceSnapshot:
@@ -218,9 +440,23 @@ def _validate_variants(
     seen: set[str] = set()
 
     for index, variant in enumerate(variants):
-        normalized = _normalize_body(variant)
+        normalized = _normalize_variant_body(variant, channel=request.channel)
         if not normalized:
             raise DraftGenerationError(f"variant {index} is empty after normalization")
+        if _channel_uses_compaction(request.channel):
+            if request.landing_url not in normalized:
+                raise DraftGenerationError(f"variant {index} is missing the landing URL")
+            normalized = _coerce_variant_to_fit(
+                normalized,
+                landing_url=request.landing_url,
+                max_chars=request.max_chars,
+            )
+        elif request.channel in _STRUCTURED_CHANNELS:
+            normalized = _coerce_structured_variant_to_fit(
+                normalized,
+                landing_url=request.landing_url,
+                max_chars=request.max_chars,
+            )
         if request.landing_url not in normalized:
             raise DraftGenerationError(f"variant {index} is missing the landing URL")
         if len(normalized) > request.max_chars:
@@ -238,6 +474,197 @@ def _validate_variants(
 
 def _normalize_body(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", value).strip()
+
+
+def _normalize_variant_body(value: str, *, channel: str) -> str:
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    if channel not in _STRUCTURED_CHANNELS:
+        return _normalize_body(normalized)
+
+    normalized_lines: list[str] = []
+    blank_pending = False
+    for raw_line in normalized.split("\n"):
+        stripped = _normalize_body(raw_line)
+        if not stripped:
+            blank_pending = True
+            continue
+        if blank_pending and normalized_lines:
+            normalized_lines.append("")
+        normalized_lines.append(stripped)
+        blank_pending = False
+
+    return _LINE_BREAK_RE.sub("\n\n", "\n".join(normalized_lines)).strip()
+
+
+def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> str:
+    normalized = _normalize_body(value)
+    if len(normalized) <= max_chars:
+        return normalized
+
+    shortened = _fit_text_with_url(
+        text=normalized.replace(landing_url, " "),
+        landing_url=landing_url,
+        max_chars=max_chars,
+    )
+    return _normalize_body(shortened)
+
+
+def _coerce_structured_variant_to_fit(
+    value: str,
+    *,
+    landing_url: str,
+    max_chars: int,
+) -> str:
+    if len(value) <= max_chars and landing_url in value:
+        return value
+
+    sections = _parse_structured_sections(value)
+    if sections is None:
+        return value
+
+    rendered = _render_structured_sections(
+        sections,
+        landing_url=landing_url,
+    )
+    if len(rendered) <= max_chars:
+        return rendered
+
+    return value
+
+
+def _parse_structured_sections(value: str) -> dict[str, list[str]] | None:
+    labels = set(_STRUCTURED_SECTION_LABELS)
+    sections = {label: [] for label in _STRUCTURED_SECTION_LABELS}
+    current_label: str | None = None
+
+    for raw_line in value.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line in labels:
+            current_label = line
+            continue
+        if current_label is None:
+            continue
+        sections[current_label].append(line)
+
+    parsed_section_count = sum(bool(sections[label]) for label in _STRUCTURED_SECTION_LABELS[:-1])
+    if parsed_section_count == 0:
+        return None
+
+    return sections
+
+
+def _render_structured_sections(
+    sections: Mapping[str, list[str]],
+    *,
+    landing_url: str,
+) -> str:
+    lines: list[str] = []
+
+    for label in _STRUCTURED_SECTION_LABELS[:-1]:
+        lines.append(label)
+        if label == "2. Key points":
+            lines.extend(_render_structured_key_points(sections.get(label, ())))
+            continue
+
+        raw_content = " ".join(sections.get(label, ()))
+        content = _normalize_body(raw_content)
+        if content:
+            lines.append(
+                _shorten_text(
+                    content,
+                    limit=_STRUCTURED_SECTION_LIMITS[label],
+                )
+            )
+
+    lines.extend(("8. URL", landing_url))
+    return "\n".join(lines).strip()
+
+
+def _render_structured_key_points(lines: list[str] | tuple[str, ...]) -> list[str]:
+    normalized_items = [
+        _normalize_body(re.sub(r"^[-*•]\s*", "", line))
+        for line in lines
+        if _normalize_body(line)
+    ]
+    selected_items = normalized_items[:5]
+    if not selected_items:
+        return []
+
+    per_item_limit = max(
+        48,
+        _STRUCTURED_SECTION_LIMITS["2. Key points"] // len(selected_items),
+    )
+    return [
+        f"- {_shorten_text(item, limit=per_item_limit)}"
+        for item in selected_items
+        if item
+    ]
+
+
+def _fit_text_with_url(*, text: str, landing_url: str, max_chars: int) -> str:
+    available = max_chars - len(landing_url)
+    if available < 0:
+        return landing_url
+
+    normalized_text = _normalize_body(text)
+    if not normalized_text:
+        return landing_url
+
+    supporting_limit = max(available - 1, 0)
+    if supporting_limit == 0:
+        return landing_url
+
+    shortened_text = _shorten_text(normalized_text, limit=supporting_limit)
+    if not shortened_text:
+        return landing_url
+
+    return f"{shortened_text} {landing_url}".strip()
+
+
+def _shorten_text(text: str, *, limit: int) -> str:
+    if limit <= 0:
+        return ""
+
+    normalized = _normalize_body(text)
+    if len(normalized) <= limit:
+        return normalized
+
+    words = normalized.split(" ")
+    kept_words: list[str] = []
+
+    for word in words:
+        candidate = word if not kept_words else f"{' '.join(kept_words)} {word}"
+        if len(candidate) > limit:
+            break
+        kept_words.append(word)
+
+    if not kept_words:
+        return normalized[:limit].rstrip()
+
+    shortened = " ".join(kept_words)
+    if len(shortened) == limit:
+        return shortened
+
+    if len(shortened) + 4 <= limit:
+        return f"{shortened} ..."
+
+    return shortened
+
+
+def _channel_uses_compaction(channel: str) -> bool:
+    return channel == "x"
+
+
+def _channel_label(channel: str) -> str:
+    if channel == "linkedin":
+        return "LinkedIn"
+    if channel == "threads":
+        return "Threads"
+    if channel == "x":
+        return "X"
+    return channel
 
 
 def _validate_variant_count(variant_count: int) -> None:

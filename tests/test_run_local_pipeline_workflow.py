@@ -144,10 +144,12 @@ def test_run_local_pipeline_records_run_history_and_generates_pending_review_dra
     assert result.status is PipelineRunStatus.SUCCEEDED
     assert result.ingest_discovered_count == 1
     assert result.ingest_saved_count == 1
+    assert result.duplicate_count == 0
     assert result.enrichment_enriched_count == 1
     assert result.brief_created_count == 1
     assert result.draft_created_variant_count == 3
     assert result.failure_count == 0
+    assert len(result.created_draft_ids) == 3
 
     with session_scope(session_factory) as session:
         pipeline_runs = PipelineRunRepository(session).list()
@@ -186,18 +188,18 @@ routes:
     openai_client = _RecordingOpenAIClient(
         _StubOpenAIResponse(
             '{"variants":['
-            '"OpenAI run-local first https://gilgop.cloud/finance",'
-            '"OpenAI run-local second https://gilgop.cloud/finance",'
-            '"OpenAI run-local third https://gilgop.cloud/finance"'
+            '"OpenAI run-local first https://example.com/articles/finance-1",'
+            '"OpenAI run-local second https://example.com/articles/finance-1",'
+            '"OpenAI run-local third https://example.com/articles/finance-1"'
             "]}"
         )
     )
     codex_client = _RecordingCodexWrapperClient(
         _StubCodexWrapperResponse(
             '{"variants":['
-            '"Codex run-local first https://gilgop.cloud/finance",'
-            '"Codex run-local second https://gilgop.cloud/finance",'
-            '"Codex run-local third https://gilgop.cloud/finance"'
+            '"Codex run-local first https://example.com/articles/finance-1",'
+            '"Codex run-local second https://example.com/articles/finance-1",'
+            '"Codex run-local third https://example.com/articles/finance-1"'
             "]}"
         )
     )
@@ -246,9 +248,9 @@ routes:
 
     assert pipeline_runs[0].summary_json["rewrite_providers"] == ["codex_wrapper"]
     assert [draft.body for draft in stored_drafts] == [
-        "Codex run-local first https://gilgop.cloud/finance",
-        "Codex run-local second https://gilgop.cloud/finance",
-        "Codex run-local third https://gilgop.cloud/finance",
+        "Codex run-local first https://example.com/articles/finance-1",
+        "Codex run-local second https://example.com/articles/finance-1",
+        "Codex run-local third https://example.com/articles/finance-1",
     ]
 
 

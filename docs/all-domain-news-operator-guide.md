@@ -50,8 +50,16 @@ sns-engine review list --database-url sqlite:///data/sns_content_engine.db
 
 If you are continuing from an older local SQLite database, run `sns-engine db upgrade --database-url ...` before the next `run-local` or review workflow.
 
+## Channel direction
+- `X` stays optimized for short, publish-ready posts.
+- `LinkedIn` is the first long-form priority and now fits operator-facing structured review drafts better than X.
+- `Threads` is the second priority and uses the same structured draft shape for broader social distribution.
+- LinkedIn and Threads are currently best treated as manual-upload channels inside this project unless you explicitly wire a publisher integration later.
+
 ## Operator checklist
-- Start from `config/examples/all_domain_news/`, then replace sample URLs with operator-approved sources.
+- `config/examples/all_domain_news/` now ships with verified live defaults for Federal Reserve press releases, NVIDIA Newsroom press releases, English Wikinews, and a separate live GDELT discovery-only source.
+- The example account now includes `x`, `linkedin`, and `threads` channels. X remains short-form, while LinkedIn and Threads generate structured review drafts for manual upload.
+- Swap those URLs only when you have a different operator-approved source list.
 - Keep discovery-only sources in separate source sets when you want discovery coverage without treating them as reusable full-text sources.
 - Read `history failures` as a mixed operator feed: `type=failure` rows are technical problems, and `type=policy_skip` rows are intentional policy decisions.
 - Schedule only drafts that keep provenance intact and satisfy attribution requirements.

@@ -9,21 +9,23 @@ import typer
 
 from app import __version__
 from app.connectors.llm import DraftGenerationProviderError
+from app.env import load_project_env
 from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
+from app.workflows.build_content_briefs import build_content_briefs
+from app.workflows.discover_sources import discover_sources
+from app.workflows.enrich_articles import enrich_articles
+from app.workflows.generate_drafts import generate_drafts
+from app.workflows.ingest_sources import ingest_sources
+from app.workflows.run_local_pipeline import run_local_pipeline
 from app.workflows import (
     ReviewQueueError,
     approve_draft,
-    build_content_briefs,
-    discover_sources,
     edit_draft,
-    generate_drafts,
-    ingest_sources,
     list_pending_review_drafts,
     list_pipeline_failures,
     list_pipeline_runs,
-    run_local_pipeline,
     reject_draft,
     schedule_draft,
 )
@@ -167,6 +169,46 @@ def ingest_command(
     raise typer.Exit(code=1)
 
 
+@app.command("enrich-articles")
+def enrich_articles_command(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, and sources.yaml.",
+        ),
+    ] = Path("config"),
+    database_url: Annotated[
+        str | None,
+        typer.Option(
+            "--database-url",
+            help="Explicit database URL. Falls back to DATABASE_URL, then the project default.",
+        ),
+    ] = None,
+) -> None:
+    """Fetch, extract, and summarize stored ingested source items."""
+
+    try:
+        result = enrich_articles(config_dir, database_url=database_url)
+    except DatabaseSchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"processed {result.processed_count} ingested source items")
+    typer.echo(f"enriched: {result.enriched_count}")
+    typer.echo(f"existing: {result.existing_count}")
+    typer.echo(f"skipped: {result.skipped_count}")
+    typer.echo(f"failed: {result.failed_count}")
+
+    for stage, count in result.failure_counts_by_stage().items():
+        typer.echo(f"failures[{stage}]: {count}")
+
+
 @app.command("build-briefs")
 def build_briefs_command(
     config_dir: Annotated[
@@ -234,7 +276,7 @@ def generate_drafts_command(
         ),
     ] = 3,
 ) -> None:
-    """Generate X-ready draft variants for stored content briefs."""
+    """Generate channel-ready draft variants for stored content briefs."""
 
     try:
         result = generate_drafts(
@@ -249,7 +291,7 @@ def generate_drafts_command(
     typer.echo(f"processed {result.processed_count} content briefs")
     typer.echo(f"draft sets created: {result.created_count}")
     typer.echo(f"draft sets existing: {result.existing_count}")
-    typer.echo(f"no x channel: {result.no_channel_count}")
+    typer.echo(f"no configured channel: {result.no_channel_count}")
     typer.echo(f"missing account: {result.missing_account_count}")
     typer.echo(f"draft variants created: {result.created_variant_count}")
 
@@ -290,6 +332,11 @@ def run_local_command(
     typer.echo(f"status: {result.status.value}")
     typer.echo(f"discovered: {result.ingest_discovered_count}")
     typer.echo(f"saved: {result.ingest_saved_count}")
+    duplicate_count = getattr(result, "duplicate_count", None)
+    if duplicate_count is not None:
+        typer.echo(f"duplicates blocked: {duplicate_count}")
+        for reason, count in getattr(result, "duplicate_reasons", ()):
+            typer.echo(f"duplicates[{reason}]: {count}")
     typer.echo(f"enriched: {result.enrichment_enriched_count}")
     typer.echo(f"briefs created: {result.brief_created_count}")
     typer.echo(f"draft variants created: {result.draft_created_variant_count}")
@@ -780,7 +827,7 @@ def scheduler_run_command(
         typer.Option(
             "--discover-interval-minutes",
             min=1,
-            help="Interval in minutes for the discover job.",
+            help="Interval in minutes for the run-local collection job.",
         ),
     ] = 30,
     backfill_interval_minutes: Annotated[
@@ -814,8 +861,8 @@ def scheduler_run_command(
         _exit_with_error(exc)
     typer.echo(
         "scheduler registered jobs: "
-        "discover, backfill, publish_due "
-        f"(discover={discover_interval_minutes}m, "
+        "run_local, backfill, publish_due "
+        f"(run_local={discover_interval_minutes}m, "
         f"backfill={backfill_interval_minutes}m, "
         f"publish_due={publish_due_interval_seconds}s, dry_run=true)"
     )
@@ -885,6 +932,7 @@ def _exit_with_error(exc: Exception) -> None:
 
 def main() -> None:
     """Run the CLI application."""
+    load_project_env()
     app()
 
 

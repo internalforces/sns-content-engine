@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,15 +16,15 @@
           <p class="console-lede">{{ page_description }}</p>
         </div>
         <div class="console-hero-status">
-          <span class="console-pill">Manual review required</span>
-          <span class="console-pill console-pill-muted">Dry-run publish is the browser default</span>
+          <span class="console-pill">수동 검토 필수</span>
+          <span class="console-pill console-pill-muted">브라우저 기본 발행 경로는 드라이런입니다</span>
         </div>
       </header>
 
       <div class="console-layout">
-        <aside class="console-sidebar" aria-label="Operator console sections">
+        <aside class="console-sidebar" aria-label="운영 콘솔 섹션">
           <div class="console-sidebar-card">
-            <p class="console-sidebar-label">Navigation</p>
+            <p class="console-sidebar-label">탐색</p>
             <ul class="console-nav-list">
               {% for item in console_nav_items %}
                 <li class="console-nav-item{% if item.active %} is-active{% endif %}">

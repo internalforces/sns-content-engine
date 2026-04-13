@@ -42,6 +42,9 @@ class RunLocalPipelineResult:
     brief_created_count: int
     draft_created_variant_count: int
     failure_count: int
+    duplicate_count: int = 0
+    duplicate_reasons: tuple[tuple[str, int], ...] = ()
+    created_draft_ids: tuple[int, ...] = ()
 
 
 def run_local_pipeline(
@@ -250,6 +253,9 @@ def run_local_pipeline(
             brief_created_count=brief_result.created_count,
             draft_created_variant_count=drafts_result.created_variant_count,
             failure_count=total_failures,
+            duplicate_count=ingest_result.duplicate_count,
+            duplicate_reasons=tuple(ingest_result.duplicate_counts_by_reason().items()),
+            created_draft_ids=drafts_result.created_draft_variant_ids,
         )
     finally:
         if owned_engine is not None:

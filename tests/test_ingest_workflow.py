@@ -16,7 +16,7 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows import ingest_sources
+from app.workflows.ingest_sources import ingest_sources
 
 
 class StaticSourceConnector:

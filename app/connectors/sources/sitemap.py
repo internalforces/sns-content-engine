@@ -14,7 +14,7 @@ from app.connectors.sources.base import (
     SourceParseError,
     fetch_url_bytes,
 )
-from app.connectors.sources.normalizer import normalize_raw_source_item
+from app.connectors.sources.normalizer import normalize_raw_source_item, source_url_matches_prefixes
 from app.domain.source_ingestion import (
     RawSourceItem,
     SourceConnectorResult,
@@ -50,6 +50,7 @@ class SitemapSourceConnector(SourceConnector):
         return self._discover_url(
             source_id,
             root_url,
+            config=config,
             root_origin=root_origin,
             visited=set(),
             depth=0,
@@ -60,6 +61,7 @@ class SitemapSourceConnector(SourceConnector):
         source_id: str,
         sitemap_url: str,
         *,
+        config: SitemapSourceConfig,
         root_origin: tuple[str, str, int],
         visited: set[str],
         depth: int,
@@ -103,11 +105,17 @@ class SitemapSourceConnector(SourceConnector):
 
         root_name = _local_name(root.tag)
         if root_name == "urlset":
-            return self._discover_urlset(source_id, root, document_url=sitemap_url)
+            return self._discover_urlset(
+                source_id,
+                root,
+                config=config,
+                document_url=sitemap_url,
+            )
         if root_name == "sitemapindex":
             return self._discover_sitemap_index(
                 source_id,
                 root,
+                config=config,
                 root_origin=root_origin,
                 visited=visited,
                 depth=depth,
@@ -124,6 +132,7 @@ class SitemapSourceConnector(SourceConnector):
         source_id: str,
         root: ElementTree.Element,
         *,
+        config: SitemapSourceConfig,
         root_origin: tuple[str, str, int],
         visited: set[str],
         depth: int,
@@ -147,6 +156,7 @@ class SitemapSourceConnector(SourceConnector):
             nested_result = self._discover_url(
                 source_id,
                 nested_url,
+                config=config,
                 root_origin=root_origin,
                 visited=visited,
                 depth=depth + 1,
@@ -161,6 +171,7 @@ class SitemapSourceConnector(SourceConnector):
         source_id: str,
         root: ElementTree.Element,
         *,
+        config: SitemapSourceConfig,
         document_url: str,
     ) -> SourceConnectorResult:
         items = []
@@ -183,7 +194,13 @@ class SitemapSourceConnector(SourceConnector):
                 },
             )
             try:
-                items.append(normalize_raw_source_item(raw_item))
+                normalized_item = normalize_raw_source_item(raw_item)
+                if not source_url_matches_prefixes(
+                    normalized_item.source_url,
+                    config.include_url_prefixes,
+                ):
+                    continue
+                items.append(normalized_item)
             except SourceNormalizationError as exc:
                 failures.append(
                     SourceDiscoveryFailure(

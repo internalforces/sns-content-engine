@@ -4,55 +4,55 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Run overview</p>
-        <h2>Recent local pipeline activity</h2>
+        <p class="console-card-label">실행 개요</p>
+        <h2>최근 로컬 파이프라인 활동</h2>
       </div>
-      <span class="console-badge">Task 02</span>
+      <span class="console-badge">작업 02</span>
     </div>
 
     {% if dashboard_latest_run %}
       <div class="console-panel-grid">
         <article class="console-panel">
-          <p class="console-card-label">Latest run</p>
+          <p class="console-card-label">최신 실행</p>
           <h3>{{ dashboard_latest_run.workflow_name }}</h3>
           <dl class="console-definition-list">
             <div>
-              <dt>Status</dt>
+              <dt>상태</dt>
               <dd>{{ dashboard_latest_run.status }}</dd>
             </div>
             <div>
-              <dt>Trigger mode</dt>
+              <dt>실행 방식</dt>
               <dd>{{ dashboard_latest_run.trigger_mode }}</dd>
             </div>
             <div>
-              <dt>Started</dt>
+              <dt>시작 시각</dt>
               <dd>{{ dashboard_latest_run.started_at }}</dd>
             </div>
             <div>
-              <dt>Completed</dt>
+              <dt>완료 시각</dt>
               <dd>{{ dashboard_latest_run.completed_at }}</dd>
             </div>
             <div>
-              <dt>Policy summary</dt>
+              <dt>정책 요약</dt>
               <dd>{{ dashboard_latest_run.policy_summary }}</dd>
             </div>
             <div>
-              <dt>Guardrails</dt>
+              <dt>보호 장치</dt>
               <dd>{{ dashboard_latest_run.policy_guardrails }}</dd>
             </div>
             <div>
-              <dt>Rewrite providers</dt>
+              <dt>재작성 제공자</dt>
               <dd>{{ dashboard_latest_run.rewrite_providers }}</dd>
             </div>
             <div>
-              <dt>Latest error code</dt>
+              <dt>최신 오류 코드</dt>
               <dd>{{ dashboard_latest_run.latest_error_code }}</dd>
             </div>
           </dl>
         </article>
 
         <article class="console-panel">
-          <p class="console-card-label">Delivery counts</p>
+          <p class="console-card-label">처리 건수</p>
           <div class="console-metric-grid console-metric-grid-compact">
             {% for count in dashboard_latest_run.counts %}
               <div class="console-metric-card console-metric-card-compact">
@@ -64,7 +64,7 @@
         </article>
       </div>
     {% else %}
-      <p class="console-empty">Run dashboard is waiting for data. No pipeline runs have been recorded yet.</p>
+      <p class="console-empty">실행 대시보드가 데이터를 기다리고 있습니다. 아직 기록된 파이프라인 실행이 없습니다.</p>
     {% endif %}
   </section>
 
@@ -81,8 +81,8 @@
   <section class="console-card">
     <div class="console-card-header">
       <div>
-        <p class="console-card-label">Recent runs</p>
-        <h2>Stored run history</h2>
+        <p class="console-card-label">최근 실행</p>
+        <h2>저장된 실행 이력</h2>
       </div>
     </div>
     {% if dashboard_runs %}
@@ -90,11 +90,11 @@
         <table class="console-table">
           <thead>
             <tr>
-              <th>Workflow</th>
-              <th>Status</th>
-              <th>Counts</th>
-              <th>Policy</th>
-              <th>Timing</th>
+              <th>워크플로</th>
+              <th>상태</th>
+              <th>건수</th>
+              <th>정책</th>
+              <th>시각</th>
             </tr>
           </thead>
           <tbody>
@@ -109,7 +109,7 @@
                 <td>
                   <div class="console-stack">
                     <strong>{{ row.status }}</strong>
-                    <span>Latest error: {{ row.latest_error_code }}</span>
+                    <span>최신 오류: {{ row.latest_error_code }}</span>
                   </div>
                 </td>
                 <td>{{ row.counts_summary }}</td>
@@ -117,13 +117,13 @@
                   <div class="console-stack">
                     <span>{{ row.policy_summary }}</span>
                     <span>{{ row.policy_guardrails }}</span>
-                    <span>Rewrite providers: {{ row.rewrite_providers }}</span>
+                    <span>재작성 제공자: {{ row.rewrite_providers }}</span>
                   </div>
                 </td>
                 <td>
                   <div class="console-stack">
-                    <span>Started {{ row.started_at }}</span>
-                    <span>Completed {{ row.completed_at }}</span>
+                    <span>시작 {{ row.started_at }}</span>
+                    <span>완료 {{ row.completed_at }}</span>
                   </div>
                 </td>
               </tr>
@@ -132,7 +132,7 @@
         </table>
       </div>
     {% else %}
-      <p class="console-empty">No recent runs are available for this operator context yet.</p>
+      <p class="console-empty">현재 운영 콘텍스트에 표시할 최근 실행 이력이 아직 없습니다.</p>
     {% endif %}
   </section>
 
@@ -140,8 +140,8 @@
     <article class="console-card">
       <div class="console-card-header">
         <div>
-          <p class="console-card-label">Technical failures</p>
-          <h2>Readable failure rows</h2>
+          <p class="console-card-label">기술 실패</p>
+          <h2>읽기 쉬운 실패 행</h2>
         </div>
       </div>
       {% if dashboard_failures %}
@@ -149,10 +149,10 @@
           <table class="console-table">
             <thead>
               <tr>
-                <th>Article</th>
-                <th>Failure</th>
-                <th>Policy</th>
-                <th>Updated</th>
+                <th>아티클</th>
+                <th>실패</th>
+                <th>정책</th>
+                <th>업데이트됨</th>
               </tr>
             </thead>
             <tbody>
@@ -172,7 +172,7 @@
                       <span>{{ row.failure_message }}</span>
                     </div>
                   </td>
-                  <td>{{ row.policy_mode }} / Attribution {{ row.require_attribution }}</td>
+                  <td>{{ row.policy_mode }} / 출처 표기 {{ row.require_attribution }}</td>
                   <td>{{ row.updated_at }}</td>
                 </tr>
               {% endfor %}
@@ -180,15 +180,15 @@
           </table>
         </div>
       {% else %}
-        <p class="console-empty">No technical failures are currently visible.</p>
+        <p class="console-empty">현재 표시할 기술 실패가 없습니다.</p>
       {% endif %}
     </article>
 
     <article class="console-card">
       <div class="console-card-header">
         <div>
-          <p class="console-card-label">Policy skips</p>
-          <h2>Intentional policy blocks</h2>
+          <p class="console-card-label">정책상 건너뜀</p>
+          <h2>의도된 정책 차단</h2>
         </div>
       </div>
       {% if dashboard_policy_skips %}
@@ -196,10 +196,10 @@
           <table class="console-table">
             <thead>
               <tr>
-                <th>Article</th>
-                <th>Decision</th>
-                <th>Policy</th>
-                <th>Updated</th>
+                <th>아티클</th>
+                <th>판단</th>
+                <th>정책</th>
+                <th>업데이트됨</th>
               </tr>
             </thead>
             <tbody>
@@ -218,7 +218,7 @@
                       <span>{{ row.policy_decision_reason }}</span>
                     </div>
                   </td>
-                  <td>{{ row.policy_mode }} / Attribution {{ row.require_attribution }}</td>
+                  <td>{{ row.policy_mode }} / 출처 표기 {{ row.require_attribution }}</td>
                   <td>{{ row.updated_at }}</td>
                 </tr>
               {% endfor %}
@@ -226,7 +226,7 @@
           </table>
         </div>
       {% else %}
-        <p class="console-empty">No policy skips are currently visible.</p>
+        <p class="console-empty">현재 표시할 정책상 건너뜀이 없습니다.</p>
       {% endif %}
     </article>
   </section>

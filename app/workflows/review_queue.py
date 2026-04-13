@@ -86,6 +86,7 @@ class ReviewDraftResult:
     action_type: ReviewActionType
     draft_state: DraftVariantState
     action_id: int
+    channel: str | None = None
     publish_job_id: int | None = None
     scheduled_for: datetime | None = None
 
@@ -315,6 +316,7 @@ def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> 
     )
     return ReviewDraftResult(
         draft_id=draft.id,
+        channel=draft.channel,
         reviewer=reviewer,
         action_type=ReviewActionType.APPROVE,
         draft_state=draft.state,
@@ -345,6 +347,7 @@ def _reject_draft(session, draft, reviewer: str, *, reason: str) -> ReviewDraftR
     )
     return ReviewDraftResult(
         draft_id=draft.id,
+        channel=draft.channel,
         reviewer=reviewer,
         action_type=ReviewActionType.REJECT,
         draft_state=draft.state,
@@ -369,6 +372,7 @@ def _edit_draft(session, draft, reviewer: str, *, body: str) -> ReviewDraftResul
     )
     return ReviewDraftResult(
         draft_id=draft.id,
+        channel=draft.channel,
         reviewer=reviewer,
         action_type=ReviewActionType.EDIT,
         draft_state=draft.state,
@@ -420,6 +424,7 @@ def _schedule_draft(
     )
     return ReviewDraftResult(
         draft_id=draft.id,
+        channel=draft.channel,
         reviewer=reviewer,
         action_type=ReviewActionType.SCHEDULE,
         draft_state=draft.state,
