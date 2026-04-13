@@ -31,9 +31,9 @@ When instantiating this template, use a filename that clearly shows the document
 - Config-driven draft generation already supports `x`, `linkedin`, and `threads`, including structured non-X output.
 - The repository already has review queue workflows, publish-job persistence, FastAPI operator APIs, and a browser console for review and publish visibility.
 - X live publishing already exists behind the config-backed publisher resolver, and approved non-X drafts already show manual upload guidance in the console.
+- Task `01` restored the healthcheck smoke baseline and stabilized `app.workflows` exports so same-named workflow entrypoints stay callable during full-suite imports.
 
 ### Current limitations relevant to the new goal
-- Two healthcheck-related tests are failing, so the repository does not currently have a clean baseline for the next initiative.
 - Several old `docs/*todo*.md` files still describe already-completed work as if it were the active next step.
 - Approved LinkedIn and Threads drafts stop at manual upload guidance only; there is no operator-safe workflow to create, complete, or fail a manual publish handoff.
 - The current publisher resolver only supports live X publishing, so non-X channels cannot move through a real publish lifecycle without direct DB manipulation or test-only helpers.

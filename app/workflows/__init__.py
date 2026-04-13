@@ -1,64 +1,97 @@
-"""Workflow package exports."""
+"""Workflow package exports.
+
+Explicit re-exports keep callable workflow entrypoints stable even when
+same-named submodules are imported elsewhere first.
+"""
 
 from __future__ import annotations
 
-from importlib import import_module
+from app.workflows.build_content_briefs import (
+    BuildContentBriefOutcome,
+    BuildContentBriefsResult,
+    build_content_briefs,
+)
+from app.workflows.discover_sources import DiscoverSourcesResult, discover_sources
+from app.workflows.enrich_articles import EnrichArticleOutcome, EnrichArticlesResult, enrich_articles
+from app.workflows.generate_drafts import GenerateDraftOutcome, GenerateDraftsResult, generate_drafts
+from app.workflows.history_queries import (
+    ArticleStatusResult,
+    ArticleStatusRow,
+    PipelineFailureHistoryResult,
+    PipelineRunHistoryResult,
+    PublishJobDetailResult,
+    PublishJobListResult,
+    PublishJobListRow,
+    PublishJobNotFoundError,
+    get_publish_job_detail,
+    list_article_statuses,
+    list_pipeline_failures,
+    list_pipeline_runs,
+    list_publish_jobs,
+)
+from app.workflows.ingest_sources import IngestSourcesResult, SourceIngestOutcome, ingest_sources
+from app.workflows.review_queue import (
+    DraftNotFoundError,
+    DraftReviewStateError,
+    DraftScheduleError,
+    DraftValidationFailedError,
+    PendingReviewDraft,
+    PendingReviewDraftsResult,
+    ReviewDraftResult,
+    ReviewQueueError,
+    ReviewerIdentityError,
+    approve_draft,
+    edit_draft,
+    list_pending_review_drafts,
+    reject_draft,
+    resolve_reviewer_identity,
+    schedule_draft,
+)
+from app.workflows.run_local_pipeline import RunLocalPipelineResult, run_local_pipeline
 
-_EXPORTS = {
-    "BuildContentBriefOutcome": "app.workflows.build_content_briefs",
-    "BuildContentBriefsResult": "app.workflows.build_content_briefs",
-    "build_content_briefs": "app.workflows.build_content_briefs",
-    "DiscoverSourcesResult": "app.workflows.discover_sources",
-    "discover_sources": "app.workflows.discover_sources",
-    "EnrichArticleOutcome": "app.workflows.enrich_articles",
-    "EnrichArticlesResult": "app.workflows.enrich_articles",
-    "enrich_articles": "app.workflows.enrich_articles",
-    "GenerateDraftOutcome": "app.workflows.generate_drafts",
-    "GenerateDraftsResult": "app.workflows.generate_drafts",
-    "generate_drafts": "app.workflows.generate_drafts",
-    "ArticleStatusResult": "app.workflows.history_queries",
-    "ArticleStatusRow": "app.workflows.history_queries",
-    "PipelineFailureHistoryResult": "app.workflows.history_queries",
-    "PublishJobDetailResult": "app.workflows.history_queries",
-    "PublishJobListResult": "app.workflows.history_queries",
-    "PublishJobListRow": "app.workflows.history_queries",
-    "PublishJobNotFoundError": "app.workflows.history_queries",
-    "PipelineRunHistoryResult": "app.workflows.history_queries",
-    "get_publish_job_detail": "app.workflows.history_queries",
-    "list_article_statuses": "app.workflows.history_queries",
-    "list_pipeline_failures": "app.workflows.history_queries",
-    "list_publish_jobs": "app.workflows.history_queries",
-    "list_pipeline_runs": "app.workflows.history_queries",
-    "IngestSourcesResult": "app.workflows.ingest_sources",
-    "SourceIngestOutcome": "app.workflows.ingest_sources",
-    "ingest_sources": "app.workflows.ingest_sources",
-    "RunLocalPipelineResult": "app.workflows.run_local_pipeline",
-    "run_local_pipeline": "app.workflows.run_local_pipeline",
-    "DraftNotFoundError": "app.workflows.review_queue",
-    "DraftReviewStateError": "app.workflows.review_queue",
-    "DraftScheduleError": "app.workflows.review_queue",
-    "DraftValidationFailedError": "app.workflows.review_queue",
-    "PendingReviewDraft": "app.workflows.review_queue",
-    "PendingReviewDraftsResult": "app.workflows.review_queue",
-    "ReviewDraftResult": "app.workflows.review_queue",
-    "ReviewQueueError": "app.workflows.review_queue",
-    "ReviewerIdentityError": "app.workflows.review_queue",
-    "approve_draft": "app.workflows.review_queue",
-    "edit_draft": "app.workflows.review_queue",
-    "list_pending_review_drafts": "app.workflows.review_queue",
-    "reject_draft": "app.workflows.review_queue",
-    "resolve_reviewer_identity": "app.workflows.review_queue",
-    "schedule_draft": "app.workflows.review_queue",
-}
-
-__all__ = list(_EXPORTS)
-
-
-def __getattr__(name: str):
-    module_name = _EXPORTS.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module = import_module(module_name)
-    value = getattr(module, name)
-    globals()[name] = value
-    return value
+__all__ = [
+    "ArticleStatusResult",
+    "ArticleStatusRow",
+    "BuildContentBriefOutcome",
+    "BuildContentBriefsResult",
+    "DiscoverSourcesResult",
+    "DraftNotFoundError",
+    "DraftReviewStateError",
+    "DraftScheduleError",
+    "DraftValidationFailedError",
+    "EnrichArticleOutcome",
+    "EnrichArticlesResult",
+    "GenerateDraftOutcome",
+    "GenerateDraftsResult",
+    "IngestSourcesResult",
+    "PendingReviewDraft",
+    "PendingReviewDraftsResult",
+    "PipelineFailureHistoryResult",
+    "PipelineRunHistoryResult",
+    "PublishJobDetailResult",
+    "PublishJobListResult",
+    "PublishJobListRow",
+    "PublishJobNotFoundError",
+    "ReviewDraftResult",
+    "ReviewQueueError",
+    "ReviewerIdentityError",
+    "RunLocalPipelineResult",
+    "SourceIngestOutcome",
+    "approve_draft",
+    "build_content_briefs",
+    "discover_sources",
+    "edit_draft",
+    "enrich_articles",
+    "generate_drafts",
+    "get_publish_job_detail",
+    "ingest_sources",
+    "list_article_statuses",
+    "list_pending_review_drafts",
+    "list_pipeline_failures",
+    "list_pipeline_runs",
+    "list_publish_jobs",
+    "reject_draft",
+    "resolve_reviewer_identity",
+    "run_local_pipeline",
+    "schedule_draft",
+]

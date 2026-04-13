@@ -130,7 +130,7 @@ def test_operations_smoke_cli_flow(tmp_path: Path) -> None:
     )
 
     assert healthcheck_result.returncode == 0
-    assert "event=healthcheck component=cli status=ok check_count=2 failed_check_count=0" in (
+    assert "event=healthcheck component=cli status=ok check_count=3 failed_check_count=0" in (
         healthcheck_result.stdout
     )
 
@@ -451,7 +451,7 @@ def _write_smoke_project_config(path: Path) -> Path:
         sources:
           ai_tools_rss:
             type: rss
-            url: https://example.com/feed.xml
+            url: https://gilgop.cloud/feed.xml
 
         source_sets:
           ai_tools_primary:
