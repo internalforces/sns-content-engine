@@ -11,13 +11,17 @@ When an autonomous agent works from [docs/api-operations-readiness-vibe-prompts.
 
 Keep updates short, factual, and current.
 
+## Status Note
+- This tracker is complete and kept as historical context.
+- Active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+
 ## Current Status
 - Current milestone: `phase_1_backend_ready_operator_api`
 - Current task: `06_source_specific_extraction_tuning_hooks`
 - Active status: `done`
 - Last updated: `2026-04-07 13:47 KST`
 - Active branch: `codex/task-06-source-extraction-hooks`
-- Latest task commit: `pending`
+- Latest task commit: `01398ea`
 
 ## Scope For Current Task
 - Goal: `Add a small source-specific extraction override path so hard publisher layouts can be tuned without redesigning enrichment`
@@ -130,6 +134,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
+- `This initiative is complete; current follow-on operator publish-lifecycle work continues in docs/multichannel-manual-publish-readiness-roadmap.md`
 - `Current tuning intentionally supports a limited selector form (tag, .class, #id, and simple combinations); broader selector syntax can be added later only if a real source needs it`
 
 ## Completion Summary

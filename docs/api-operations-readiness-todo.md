@@ -1,4 +1,9 @@
-# API And Operations Readiness TODO
+# API And Operations Readiness TODO (Historical)
+
+## Status
+- This roadmap is complete and kept as historical context.
+- Do not resume implementation from this file; active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+- See `docs/api-operations-readiness-progress-tracker.md` for the shipped task record and commit history.
 
 ## Goal
 Extend the current CLI-first review workflow into a backend-ready next stage that:
@@ -38,7 +43,7 @@ Extend the current CLI-first review workflow into a backend-ready next stage tha
 3. Make config readiness and sample-config replacement expectations more operator-visible.
 4. Add source-specific extraction escape hatches without redesigning the current enrichment workflow.
 
-## TODO roadmap
+## Historical roadmap
 
 ## Phase 1: Read-only API foundation
 
@@ -109,6 +114,9 @@ Extend the current CLI-first review workflow into a backend-ready next stage tha
 4. Migration baseline.
 5. Config readiness validation.
 6. Source-specific extraction tuning hooks.
+
+## Follow-on initiative
+This roadmap is complete. Current follow-on operator publish-lifecycle work continues in `docs/multichannel-manual-publish-readiness-roadmap.md`.
 
 ## Recommended first milestone
 Ship a small "backend-ready operator API" milestone with:

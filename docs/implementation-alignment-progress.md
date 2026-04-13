@@ -11,6 +11,10 @@ When an autonomous agent works from [docs/implementation-alignment-vibe-prompts.
 
 Keep updates short, factual, and current.
 
+## Status Note
+- This tracker is complete and kept as historical context.
+- Active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+
 ## Current Status
 - Current milestone: `phase_1_runtime_and_docs_parity`
 - Current task: `04_progress_metadata_cleanup`
@@ -81,7 +85,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `None currently`
+- `This initiative is complete; current follow-on operator publish-lifecycle work continues in docs/multichannel-manual-publish-readiness-roadmap.md`
 
 ## Completion Summary
 - `Task 04 complete: alignment progress docs now point at the merged Task 03 history and the true final Task 12 task-branch commit, with an explicit note about why the current task cannot embed its own SHA in the same commit`

@@ -1,4 +1,9 @@
-# All-Domain News Pipeline TODO
+# All-Domain News Pipeline TODO (Historical)
+
+## Status
+- This roadmap is complete and kept as historical context.
+- Do not resume implementation from this file; active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+- See `docs/all-domain-news-progress.md` for the shipped task record and commit history.
 
 ## Goal
 Extend the current finance-local MVP into a broader latest-news pipeline that:
@@ -54,7 +59,7 @@ Extend the current finance-local MVP into a broader latest-news pipeline that:
 5. Store drafts with provenance and policy metadata.
 6. Keep manual review as the default publish gate.
 
-## TODO roadmap
+## Historical roadmap
 
 ## Phase 1: Source strategy and policy foundation
 
@@ -222,6 +227,9 @@ Extend the current finance-local MVP into a broader latest-news pipeline that:
 6. All-domain prompt profiles and provenance improvements.
 7. Review/publish policy enforcement.
 8. Operator docs and UI-facing query expansion.
+
+## Follow-on initiative
+This roadmap is complete. Current follow-on operator publish-lifecycle work continues in `docs/multichannel-manual-publish-readiness-roadmap.md`.
 
 ## Recommended first milestone
 Ship a safe "all-domain review-only" milestone with:

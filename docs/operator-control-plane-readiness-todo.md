@@ -1,4 +1,9 @@
-# Operator Control Plane Readiness TODO
+# Operator Control Plane Readiness TODO (Historical)
+
+## Status
+- This roadmap is complete and kept as historical context.
+- Do not resume implementation from this file; active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+- See `docs/operator-control-plane-readiness-progress.md` for the shipped task record and commit history.
 
 ## Goal
 Extend the current backend-ready operator API into a control-plane-ready next stage that:
@@ -35,7 +40,7 @@ Extend the current backend-ready operator API into a control-plane-ready next st
 2. Publish-job detail with linked draft metadata and publish-log timeline.
 3. Scheduler-safe action endpoints for discover, backfill, and dry-run publish execution.
 
-## TODO roadmap
+## Historical roadmap
 
 ## Phase 1: Review detail surfaces
 
@@ -106,6 +111,9 @@ Extend the current backend-ready operator API into a control-plane-ready next st
 4. Publish-job detail and log timeline endpoints.
 5. Scheduler action endpoints with safe defaults.
 6. Contract docs and regression coverage.
+
+## Follow-on initiative
+This roadmap is complete. Current follow-on operator publish-lifecycle work continues in `docs/multichannel-manual-publish-readiness-roadmap.md`.
 
 ## Recommended first milestone
 Ship a small "operator control plane basics" milestone with:

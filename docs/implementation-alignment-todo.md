@@ -1,4 +1,9 @@
-# Implementation Alignment TODO
+# Implementation Alignment TODO (Historical)
+
+## Status
+- This roadmap is complete and kept as historical context.
+- Do not resume implementation from this file; active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+- See `docs/implementation-alignment-progress.md` for the shipped task record and commit history.
 
 ## Goal
 Align the repository's operator-facing documentation, prompt-pack expectations, and actual runtime behavior so the documented capabilities match what the CLI and workflows really do today.
@@ -34,7 +39,7 @@ This roadmap focuses on the gaps currently visible between:
 3. Operator docs and README should describe the post-alignment runtime truth without outdated caveats.
 4. Progress and status docs should reflect the latest known branch/commit state when marked complete.
 
-## TODO roadmap
+## Historical roadmap
 
 ## Phase 1: Runtime behavior parity
 
@@ -78,6 +83,9 @@ This roadmap focuses on the gaps currently visible between:
 2. Policy-aware history CLI parity.
 3. README and operator-guide refresh.
 4. Progress metadata cleanup.
+
+## Follow-on initiative
+This roadmap is complete. Current follow-on operator publish-lifecycle work continues in `docs/multichannel-manual-publish-readiness-roadmap.md`.
 
 ## Recommended first milestone
 Ship a small "operator-visible parity" milestone with:
