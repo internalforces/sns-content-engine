@@ -40,7 +40,12 @@ from app.storage import (
     create_session_factory,
     session_scope,
 )
-from app.workflows.review_queue import approve_draft, edit_draft, schedule_draft
+from app.workflows.review_queue import (
+    approve_draft,
+    complete_manual_publish_handoff,
+    edit_draft,
+    schedule_draft,
+)
 
 _DRAFT_SOURCE_COUNTER = count()
 _VALID_REVIEW_DRAFT_BODY = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
@@ -1291,6 +1296,67 @@ def test_review_approve_endpoint_returns_manual_handoff_publish_job_for_linkedin
     assert [entry["event_type"] for entry in detail_payload["publish_logs"]] == [
         "manual_handoff_created"
     ]
+
+
+def test_publish_job_detail_endpoint_returns_manual_publish_completion_timeline(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    complete_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-a",
+        external_post_id="linkedin-post-123",
+        session_factory=session_factory,
+    )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/publish-jobs/{approval.publish_job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["channel"] == "linkedin"
+    assert payload["state"] == "published"
+    assert payload["scheduled_for"] is None
+    assert payload["external_post_id"] == "linkedin-post-123"
+    assert payload["published_at"] is not None
+    assert [entry["event_type"] for entry in payload["publish_logs"]] == [
+        "manual_handoff_created",
+        "published",
+    ]
+    assert payload["publish_logs"][1]["payload"] == {
+        "status": "published",
+        "account_key": "ai_tools_daily",
+        "channel": "linkedin",
+        "draft_variant_id": draft.id,
+        "handoff_mode": "manual_upload",
+        "operator": "publisher-a",
+        "attempt_count": 1,
+        "external_post_id": "linkedin-post-123",
+        "last_error": None,
+        "reason": None,
+    }
 
 
 def test_review_schedule_endpoint_returns_conflict_for_duplicate_job(tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ from app.storage import (
     DraftVariantState,
     PublishJob,
     PublishJobRepository,
+    PublishJobState,
     PublishLogRepository,
     ReviewAction,
     ReviewActionRepository,
@@ -27,6 +28,7 @@ from app.storage import (
     session_scope,
 )
 from app.storage.repositories import DraftVariantRepository
+from app.workflows.history_queries import PublishJobNotFoundError
 
 
 class ReviewQueueError(ValueError):
@@ -51,6 +53,14 @@ class DraftScheduleError(ReviewQueueError):
 
 class DraftValidationFailedError(ReviewQueueError):
     """Raised when a draft fails the approval/publish validator."""
+
+
+class ManualPublishError(ReviewQueueError):
+    """Raised when a manual publish handoff update is invalid."""
+
+
+class ManualPublishStateError(ManualPublishError):
+    """Raised when a manual publish outcome is attempted from the wrong state."""
 
 
 _MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin", "threads"})
@@ -103,6 +113,20 @@ class ReviewDraftDetailResult:
     draft: DraftVariant
     review_actions: tuple[ReviewAction, ...]
     sibling_variants: tuple[DraftVariant, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ManualPublishOutcomeResult:
+    """Outcome of a manual publish handoff update."""
+
+    publish_job_id: int
+    channel: str
+    operator: str
+    previous_state: PublishJobState
+    publish_job_state: PublishJobState
+    external_post_id: str | None = None
+    last_error: str | None = None
+    published_at: datetime | None = None
 
 
 def get_review_draft_detail(
@@ -279,6 +303,84 @@ def schedule_draft(
             reviewer_name,
             config_dir=config_dir,
             scheduled_for=normalized_scheduled_for,
+        ),
+    )
+
+
+def complete_manual_publish_handoff(
+    publish_job_id: int,
+    *,
+    operator: str | None = None,
+    external_post_id: str | None = None,
+    database_url: str | None = None,
+    session_factory=None,
+) -> ManualPublishOutcomeResult:
+    """Record a successful manual publish outcome for a non-X handoff."""
+
+    normalized_external_post_id = external_post_id.strip() if external_post_id else None
+    return _run_manual_publish_action(
+        publish_job_id,
+        operator=operator,
+        database_url=database_url,
+        session_factory=session_factory,
+        handler=lambda session, job, operator_name: _complete_manual_publish_handoff(
+            session,
+            job,
+            operator_name,
+            external_post_id=normalized_external_post_id,
+        ),
+    )
+
+
+def fail_manual_publish_handoff(
+    publish_job_id: int,
+    *,
+    error_message: str,
+    operator: str | None = None,
+    database_url: str | None = None,
+    session_factory=None,
+) -> ManualPublishOutcomeResult:
+    """Record a failed manual publish outcome for a non-X handoff."""
+
+    normalized_error_message = error_message.strip()
+    if not normalized_error_message:
+        raise ManualPublishError("manual publish failure message must not be empty")
+
+    return _run_manual_publish_action(
+        publish_job_id,
+        operator=operator,
+        database_url=database_url,
+        session_factory=session_factory,
+        handler=lambda session, job, operator_name: _fail_manual_publish_handoff(
+            session,
+            job,
+            operator_name,
+            error_message=normalized_error_message,
+        ),
+    )
+
+
+def cancel_manual_publish_handoff(
+    publish_job_id: int,
+    *,
+    operator: str | None = None,
+    reason: str | None = None,
+    database_url: str | None = None,
+    session_factory=None,
+) -> ManualPublishOutcomeResult:
+    """Cancel an open manual publish handoff for a non-X channel."""
+
+    normalized_reason = reason.strip() if reason is not None and reason.strip() else None
+    return _run_manual_publish_action(
+        publish_job_id,
+        operator=operator,
+        database_url=database_url,
+        session_factory=session_factory,
+        handler=lambda session, job, operator_name: _cancel_manual_publish_handoff(
+            session,
+            job,
+            operator_name,
+            reason=normalized_reason,
         ),
     )
 
@@ -491,6 +593,141 @@ def _create_manual_publish_handoff(session, draft) -> PublishJob:
     return publish_job
 
 
+def _complete_manual_publish_handoff(
+    session,
+    publish_job: PublishJob,
+    operator: str,
+    *,
+    external_post_id: str | None,
+) -> ManualPublishOutcomeResult:
+    previous_state = publish_job.state
+    _require_manual_publish_handoff(
+        publish_job,
+        action="record manual publish completion",
+    )
+
+    publish_jobs = PublishJobRepository(session)
+    publish_jobs.transition_state(publish_job, PublishJobState.PUBLISHING)
+    publish_jobs.transition_state(
+        publish_job,
+        PublishJobState.PUBLISHED,
+        external_post_id=external_post_id,
+    )
+
+    content_brief = _require_publish_job_content_brief(publish_job)
+    PublishLogRepository(session).record(
+        publish_job=publish_job,
+        event_type="published",
+        message=(
+            f"manual publish recorded as published by {operator} for "
+            f"{content_brief.account_key}/{publish_job.channel} draft {publish_job.draft_variant_id}"
+        ),
+        payload=_build_manual_publish_log_payload(
+            publish_job,
+            operator=operator,
+            status="published",
+            external_post_id=publish_job.external_post_id,
+        ),
+    )
+    return ManualPublishOutcomeResult(
+        publish_job_id=publish_job.id,
+        channel=publish_job.channel,
+        operator=operator,
+        previous_state=previous_state,
+        publish_job_state=publish_job.state,
+        external_post_id=publish_job.external_post_id,
+        published_at=publish_job.published_at,
+    )
+
+
+def _fail_manual_publish_handoff(
+    session,
+    publish_job: PublishJob,
+    operator: str,
+    *,
+    error_message: str,
+) -> ManualPublishOutcomeResult:
+    previous_state = publish_job.state
+    _require_manual_publish_handoff(
+        publish_job,
+        action="record manual publish failure",
+    )
+
+    publish_jobs = PublishJobRepository(session)
+    publish_jobs.transition_state(publish_job, PublishJobState.PUBLISHING)
+    publish_jobs.transition_state(
+        publish_job,
+        PublishJobState.FAILED,
+        last_error=error_message,
+    )
+
+    content_brief = _require_publish_job_content_brief(publish_job)
+    PublishLogRepository(session).record(
+        publish_job=publish_job,
+        event_type="failed",
+        message=(
+            f"manual publish recorded as failed by {operator} for "
+            f"{content_brief.account_key}/{publish_job.channel} draft {publish_job.draft_variant_id}: "
+            f"{error_message}"
+        ),
+        payload=_build_manual_publish_log_payload(
+            publish_job,
+            operator=operator,
+            status="failed",
+            last_error=publish_job.last_error,
+        ),
+    )
+    return ManualPublishOutcomeResult(
+        publish_job_id=publish_job.id,
+        channel=publish_job.channel,
+        operator=operator,
+        previous_state=previous_state,
+        publish_job_state=publish_job.state,
+        last_error=publish_job.last_error,
+    )
+
+
+def _cancel_manual_publish_handoff(
+    session,
+    publish_job: PublishJob,
+    operator: str,
+    *,
+    reason: str | None,
+) -> ManualPublishOutcomeResult:
+    previous_state = publish_job.state
+    _require_manual_publish_handoff(
+        publish_job,
+        action="cancel manual publish handoff",
+    )
+
+    publish_jobs = PublishJobRepository(session)
+    publish_jobs.transition_state(publish_job, PublishJobState.CANCELLED)
+
+    content_brief = _require_publish_job_content_brief(publish_job)
+    PublishLogRepository(session).record(
+        publish_job=publish_job,
+        event_type="cancelled",
+        message=(
+            f"manual publish handoff cancelled by {operator} for "
+            f"{content_brief.account_key}/{publish_job.channel} draft {publish_job.draft_variant_id}"
+            f"{': ' + reason if reason else ''}"
+        ),
+        payload=_build_manual_publish_log_payload(
+            publish_job,
+            operator=operator,
+            status="cancelled",
+            reason=reason,
+        ),
+    )
+    return ManualPublishOutcomeResult(
+        publish_job_id=publish_job.id,
+        channel=publish_job.channel,
+        operator=operator,
+        previous_state=previous_state,
+        publish_job_state=publish_job.state,
+    )
+
+
 def _validate_draft_for_review(
     session,
     draft,
@@ -567,6 +804,29 @@ def _run_review_action(
         _dispose_engine(owned_engine)
 
 
+def _run_manual_publish_action(
+    publish_job_id: int,
+    *,
+    operator: str | None,
+    database_url: str | None,
+    session_factory,
+    handler,
+) -> ManualPublishOutcomeResult:
+    owned_engine, resolved_session_factory = _resolve_session_factory(
+        database_url=database_url,
+        session_factory=session_factory,
+    )
+    try:
+        operator_name = resolve_reviewer_identity(operator)
+        with session_scope(resolved_session_factory) as session:
+            publish_job = PublishJobRepository(session).get_detail(publish_job_id)
+            if publish_job is None:
+                raise PublishJobNotFoundError(f"publish job {publish_job_id} was not found")
+            return handler(session, publish_job, operator_name)
+    finally:
+        _dispose_engine(owned_engine)
+
+
 def _require_draft_state(
     draft_id: int,
     current_state: DraftVariantState,
@@ -587,6 +847,76 @@ def _require_draft_state(
         f"draft {draft_id} cannot be {action_label} from state {current_state.value!r}; "
         f"expected {expected_state.value!r}"
     )
+
+
+def _require_manual_publish_handoff(
+    publish_job: PublishJob,
+    *,
+    action: str,
+) -> None:
+    if publish_job.channel not in _MANUAL_PUBLISH_CHANNELS:
+        raise ManualPublishError(
+            f"publish job {publish_job.id} channel {publish_job.channel!r} "
+            "does not support manual publish outcome recording"
+        )
+    if publish_job.scheduled_for is not None:
+        raise ManualPublishError(f"publish job {publish_job.id} is not a manual publish handoff")
+    _require_publish_job_state(
+        publish_job.id,
+        publish_job.state,
+        PublishJobState.SCHEDULED,
+        action=action,
+    )
+
+
+def _require_publish_job_state(
+    publish_job_id: int,
+    current_state: PublishJobState,
+    expected_state: PublishJobState,
+    *,
+    action: str,
+) -> None:
+    if current_state is expected_state:
+        return
+    raise ManualPublishStateError(
+        f"publish job {publish_job_id} cannot {action} from state {current_state.value!r}; "
+        f"expected {expected_state.value!r}"
+    )
+
+
+def _require_publish_job_content_brief(publish_job: PublishJob):
+    draft = publish_job.draft_variant
+    if draft is None:
+        raise ReviewQueueError(f"publish job {publish_job.id} is missing its draft variant")
+
+    content_brief = draft.content_brief
+    if content_brief is None:
+        raise ReviewQueueError(f"publish job {publish_job.id} is missing its content brief")
+    return content_brief
+
+
+def _build_manual_publish_log_payload(
+    publish_job: PublishJob,
+    *,
+    operator: str,
+    status: str,
+    external_post_id: str | None = None,
+    last_error: str | None = None,
+    reason: str | None = None,
+) -> dict[str, object]:
+    content_brief = _require_publish_job_content_brief(publish_job)
+    return {
+        "status": status,
+        "account_key": content_brief.account_key,
+        "channel": publish_job.channel,
+        "draft_variant_id": publish_job.draft_variant_id,
+        "handoff_mode": "manual_upload",
+        "operator": operator,
+        "attempt_count": publish_job.attempt_count,
+        "external_post_id": external_post_id,
+        "last_error": last_error,
+        "reason": reason,
+    }
 
 
 def _parse_scheduled_for(value: str | datetime) -> datetime:
