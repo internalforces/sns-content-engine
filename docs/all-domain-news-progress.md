@@ -11,6 +11,10 @@ When an autonomous agent works from [docs/all-domain-news-vibe-prompts.md](/User
 
 Keep updates short, factual, and current.
 
+## Status Note
+- This tracker is complete and kept as historical context.
+- Active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+
 ## Current Status
 - Current milestone: `phase_1_foundation`
 - Current task: `12_history_query_expansion_and_operator_docs`
@@ -154,6 +158,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
+- `This initiative is complete; current follow-on operator publish-lifecycle work continues in docs/multichannel-manual-publish-readiness-roadmap.md`
 - `Future CLI or API surfaces can render the new policy-aware history fields directly without additional storage changes`
 - `Implementation-alignment Task 03 later refreshed README and operator wording on `master` in `f86bc9c` (merged as `3327cb6`) without changing the Task 12 runtime behavior`
 

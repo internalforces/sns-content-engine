@@ -25,23 +25,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M1_stability_baseline`
-- Current task: `01_restore_healthcheck_and_smoke_baseline`
+- Current task: `02_refresh_stale_roadmap_and_todo_docs`
 - Active status: `done`
-- Last updated: `2026-04-13 18:32 KST`
+- Last updated: `2026-04-13 18:42 KST`
 - Base branch: `master`
-- Active branch: `codex/task-01-healthcheck-baseline`
-- Latest task commit: `9b614a0`
+- Active branch: `codex/task-02-refresh-roadmap-docs`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 02 docs commit created after this tracker update`
 - Resume decision: `pick_next_task`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
-- Goal: `Restore a clean readiness baseline so the next multichannel publishing work starts from a green repository state`
-- In scope: `Healthcheck regression cleanup, sample-config expectation alignment, and focused readiness verification`
-- Out of scope: `New publish workflow behavior, non-X handoff features, and broad documentation rewrites`
-- Dependencies: `None beyond the current repository state and the existing healthcheck tests`
+- Goal: `Make completed roadmap and TODO docs read as historical context so this multichannel initiative is the clear active follow-on`
+- In scope: `Superseded-status notes in completed roadmap docs, follow-on initiative references in related progress files, and minimal tracker updates for this task`
+- Out of scope: `New publish workflow behavior, broad doc rewrites, filename changes, and speculative new roadmap work outside the current initiative`
+- Dependencies: `Task 01 baseline restoration and the current completed roadmap/progress docs already present on master`
 - Verification commands:
-  - `./.venv/bin/pytest tests/test_operations.py tests/test_scripts.py -q`
-  - `./.venv/bin/pytest tests/test_cli.py -k healthcheck -q`
+  - `git diff --check`
+  - `rg -n "historical|follow-on initiative|multichannel manual publish readiness" docs`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -52,7 +52,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Restore healthcheck and smoke baseline | done | 2026-04-13 18:20 KST | Restored smoke healthcheck expectation, stabilized workflow package exports, and confirmed full `pytest` passes |
-| M1 | 02 | Refresh stale roadmap and TODO docs | pending | 2026-04-13 18:00 KST | Several older TODO docs still describe already-completed work as active next steps |
+| M1 | 02 | Refresh stale roadmap and TODO docs | done | 2026-04-13 18:42 KST | Added historical-status notes to completed initiative roadmaps, pointed related progress docs at this follow-on plan, and fixed stale API readiness commit metadata |
 | M2 | 03 | Define non-X manual publish handoff model | pending | 2026-04-13 18:00 KST | Approved LinkedIn and Threads drafts still stop at manual guidance only |
 | M2 | 04 | Add manual publish outcome workflow and persistence | pending | 2026-04-13 18:00 KST | No operator-safe mutation path exists for non-X manual publish success or failure |
 | M3 | 05 | Expose manual handoff controls through API and console | pending | 2026-04-13 18:00 KST | Existing review and publish pages show context but not a full non-X handoff lifecycle |
@@ -65,12 +65,14 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/workflows/__init__.py`
-- `tests/test_scripts.py`
-- `tests/test_operations.py`
-- `docs/multichannel-manual-publish-readiness-vibe-coding-prompt.md`
-- `docs/multichannel-manual-publish-readiness-roadmap.md`
-- `docs/multichannel-manual-publish-readiness-execution-guide.md`
+- `docs/api-operations-readiness-todo.md`
+- `docs/api-operations-readiness-progress.md`
+- `docs/operator-control-plane-readiness-todo.md`
+- `docs/operator-control-plane-readiness-progress.md`
+- `docs/all-domain-news-todo.md`
+- `docs/all-domain-news-progress.md`
+- `docs/implementation-alignment-todo.md`
+- `docs/implementation-alignment-progress.md`
 - `docs/multichannel-manual-publish-readiness-progress-tracker.md`
 
 ## Progress Log
@@ -84,6 +86,9 @@ Status values:
 - `2026-04-13 18:19 KST` Replaced the lazy workflow package export shim with explicit re-exports in `app/workflows/__init__.py`, which restored stable callable imports across the full test suite.
 - `2026-04-13 18:30 KST` Fetched the latest `origin/master`, merged it into `codex/task-01-healthcheck-baseline`, and resolved the add/add multichannel doc conflicts by keeping the newer upstream document structure while preserving Task `01` completion state.
 - `2026-04-13 18:31 KST` Latest `origin/master` also reintroduced a stale bundled-sample healthcheck expectation in `tests/test_operations.py`; the example config now uses live URLs again, so the assertion was realigned with the current readiness behavior.
+- `2026-04-13 18:41 KST` Started Task `02` on `codex/task-02-refresh-roadmap-docs` after confirming the current task branch had no effective diff from `master`, so a clean follow-on docs branch could be created without carrying extra code changes.
+- `2026-04-13 18:41 KST` Initial audit found four completed `docs/*todo*.md` files still framed as active implementation roadmaps, and `docs/api-operations-readiness-progress.md` still carried stale commit metadata, so the smallest safe fix is to mark the old initiative docs as historical and point follow-on work at this multichannel roadmap.
+- `2026-04-13 18:42 KST` Added minimal historical-status and follow-on sections to the completed API, control-plane, all-domain, and implementation-alignment roadmap docs; matched their related progress docs to the same follow-on reference; and corrected the stale latest-commit metadata in `docs/api-operations-readiness-progress.md`.
 
 ## Test Log
 - `2026-04-13 18:00 KST` `./.venv/bin/pytest -q` -> `pre_existing_failure` `2 failed, 463 passed; current failures are test_run_healthcheck_flags_bundled_sample_config_directory and test_operations_smoke_cli_flow`
@@ -96,6 +101,9 @@ Status values:
 - `2026-04-13 18:20 KST` `./.venv/bin/pytest -q` -> `passed` `437 passed`
 - `2026-04-13 18:31 KST` `./.venv/bin/pytest -q` -> `failed` `1 failed, 464 passed; latest master reintroduced a stale bundled-sample expectation in tests/test_operations.py`
 - `2026-04-13 18:32 KST` `./.venv/bin/pytest -q` -> `passed` `465 passed`
+- `2026-04-13 18:42 KST` `git diff --check` -> `passed`
+- `2026-04-13 18:42 KST` `rg -n "Historical|Status Note|Follow-on initiative|multichannel-manual-publish-readiness-roadmap" docs/api-operations-readiness-todo.md docs/operator-control-plane-readiness-todo.md docs/all-domain-news-todo.md docs/implementation-alignment-todo.md docs/api-operations-readiness-progress.md docs/operator-control-plane-readiness-progress.md docs/all-domain-news-progress.md docs/implementation-alignment-progress.md docs/multichannel-manual-publish-readiness-progress-tracker.md` -> `passed`
+- `2026-04-13 18:42 KST` `runtime tests` -> `not_run` `docs-only task; verification stayed at planning-doc consistency and diff hygiene`
 
 ## Open Questions
 - `Should non-X manual handoff creation happen at explicit operator action time after approval, or should approval itself create the first tracked handoff record?`
@@ -109,3 +117,4 @@ Status values:
 ## Completion Summary
 - `Task 01 is complete. The smoke CLI fixture now uses a non-placeholder source URL, the healthcheck expectation reflects the current three-check output, and workflow package exports are stable across the full test suite.`
 - `Commit 9b614a0 recorded the baseline restoration before the latest master merge started.`
+- `Task 02 is complete. Completed roadmap docs now self-identify as historical, related progress docs point future work at the multichannel manual publish readiness roadmap, and the stale API readiness progress metadata no longer shows a pending latest commit.`

@@ -11,6 +11,10 @@ When an autonomous agent works from [docs/operator-control-plane-readiness-vibe-
 
 Keep updates short, factual, and current.
 
+## Status Note
+- This tracker is complete and kept as historical context.
+- Active follow-on publish workflow work now lives in `docs/multichannel-manual-publish-readiness-roadmap.md`.
+
 ## Current Status
 - Current milestone: `phase_1_operator_control_plane_basics`
 - Current task: `06_control_plane_api_docs_and_regression_coverage`
@@ -111,7 +115,7 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `None yet`
+- `This initiative is complete; current follow-on operator publish-lifecycle work continues in docs/multichannel-manual-publish-readiness-roadmap.md`
 
 ## Completion Summary
 - `Task 01 complete: single-draft review detail is now available through `GET /reviews/{draft_id}` with explicit draft, provenance, brief, source-item, and enrichment context`
