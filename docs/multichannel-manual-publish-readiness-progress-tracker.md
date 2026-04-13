@@ -24,24 +24,24 @@ When instantiating this template, keep the filename explicit so this file is eas
 If `Current task` is already marked `in_progress` or `blocked`, resume or resolve that task before picking a new one unless the roadmap was intentionally reprioritized.
 
 ## Current Status
-- Current milestone: `M1_stability_baseline`
-- Current task: `02_refresh_stale_roadmap_and_todo_docs`
+- Current milestone: `M2_manual_handoff_workflow`
+- Current task: `03_define_non_x_manual_publish_handoff_model`
 - Active status: `done`
-- Last updated: `2026-04-13 18:42 KST`
+- Last updated: `2026-04-13 18:56 KST`
 - Base branch: `master`
-- Active branch: `codex/task-02-refresh-roadmap-docs`
-- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 02 docs commit created after this tracker update`
+- Active branch: `codex/task-03-manual-publish-handoff`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 03 workflow commit created after this tracker update`
 - Resume decision: `pick_next_task`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
-- Goal: `Make completed roadmap and TODO docs read as historical context so this multichannel initiative is the clear active follow-on`
-- In scope: `Superseded-status notes in completed roadmap docs, follow-on initiative references in related progress files, and minimal tracker updates for this task`
-- Out of scope: `New publish workflow behavior, broad doc rewrites, filename changes, and speculative new roadmap work outside the current initiative`
-- Dependencies: `Task 01 baseline restoration and the current completed roadmap/progress docs already present on master`
+- Goal: `Turn approved LinkedIn and Threads drafts into explicit publish-job handoff records without changing X live-publish semantics`
+- In scope: `Non-X approval-path handoff creation, publish-log reuse, minimal workflow/shared-model updates, and focused regression coverage for the new record shape`
+- Out of scope: `Manual publish completion or failure mutations, new API or console controls, direct LinkedIn or Threads integrations, and broad scheduler redesign`
+- Dependencies: `Task 01 baseline restoration and Task 02 roadmap cleanup already completed on master`
 - Verification commands:
-  - `git diff --check`
-  - `rg -n "historical|follow-on initiative|multichannel manual publish readiness" docs`
+  - `./.venv/bin/pytest tests/test_review_queue_workflow.py tests/test_storage.py -q`
+  - `./.venv/bin/pytest tests/test_scheduler.py -q`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local SQLite fixtures)`
@@ -53,7 +53,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Restore healthcheck and smoke baseline | done | 2026-04-13 18:20 KST | Restored smoke healthcheck expectation, stabilized workflow package exports, and confirmed full `pytest` passes |
 | M1 | 02 | Refresh stale roadmap and TODO docs | done | 2026-04-13 18:42 KST | Added historical-status notes to completed initiative roadmaps, pointed related progress docs at this follow-on plan, and fixed stale API readiness commit metadata |
-| M2 | 03 | Define non-X manual publish handoff model | pending | 2026-04-13 18:00 KST | Approved LinkedIn and Threads drafts still stop at manual guidance only |
+| M2 | 03 | Define non-X manual publish handoff model | done | 2026-04-13 18:56 KST | Approved LinkedIn and Threads drafts now create explicit manual handoff jobs and logs through the shared review workflow, while X scheduling stays unchanged |
 | M2 | 04 | Add manual publish outcome workflow and persistence | pending | 2026-04-13 18:00 KST | No operator-safe mutation path exists for non-X manual publish success or failure |
 | M3 | 05 | Expose manual handoff controls through API and console | pending | 2026-04-13 18:00 KST | Existing review and publish pages show context but not a full non-X handoff lifecycle |
 | M3 | 06 | Document multichannel handoff flow and expand regressions | pending | 2026-04-13 18:00 KST | Operator docs and linked regressions need to reflect the shipped non-X handoff behavior |
@@ -65,15 +65,11 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `docs/api-operations-readiness-todo.md`
-- `docs/api-operations-readiness-progress.md`
-- `docs/operator-control-plane-readiness-todo.md`
-- `docs/operator-control-plane-readiness-progress.md`
-- `docs/all-domain-news-todo.md`
-- `docs/all-domain-news-progress.md`
-- `docs/implementation-alignment-todo.md`
-- `docs/implementation-alignment-progress.md`
+- `app/workflows/review_queue.py`
 - `docs/multichannel-manual-publish-readiness-progress-tracker.md`
+- `tests/test_api.py`
+- `tests/test_review_queue_workflow.py`
+- `tests/test_storage.py`
 
 ## Progress Log
 - `2026-04-13 18:00 KST` Created the Multichannel Manual Publish Readiness initiative after the previous readiness, control-plane, all-domain, and console initiatives were all found complete but the repository still lacked a clean baseline and a real non-X publish lifecycle.
@@ -89,6 +85,10 @@ Status values:
 - `2026-04-13 18:41 KST` Started Task `02` on `codex/task-02-refresh-roadmap-docs` after confirming the current task branch had no effective diff from `master`, so a clean follow-on docs branch could be created without carrying extra code changes.
 - `2026-04-13 18:41 KST` Initial audit found four completed `docs/*todo*.md` files still framed as active implementation roadmaps, and `docs/api-operations-readiness-progress.md` still carried stale commit metadata, so the smallest safe fix is to mark the old initiative docs as historical and point follow-on work at this multichannel roadmap.
 - `2026-04-13 18:42 KST` Added minimal historical-status and follow-on sections to the completed API, control-plane, all-domain, and implementation-alignment roadmap docs; matched their related progress docs to the same follow-on reference; and corrected the stale latest-commit metadata in `docs/api-operations-readiness-progress.md`.
+- `2026-04-13 18:51 KST` Started Task `03` on `codex/task-03-manual-publish-handoff` after confirming the Task `02` branch was clean enough to fork directly into the next implementation slice.
+- `2026-04-13 18:51 KST` Chose approval-time handoff creation as the smallest safe shape: approved `linkedin` and `threads` drafts will create explicit publish-job records with publish-log visibility, while X keeps the existing scheduled live-publish path unchanged.
+- `2026-04-13 18:55 KST` Implemented approval-time non-X handoff creation in `app/workflows/review_queue.py` by reusing `publish_jobs` and `publish_logs`, attaching the created `publish_job_id` to the approval audit entry, and blocking scheduled live-publish creation for manual-only channels.
+- `2026-04-13 18:56 KST` Added focused workflow, storage, and API regressions proving that unscheduled manual handoff jobs stay out of the due queue while remaining operator-visible through the existing publish-job detail flow.
 
 ## Test Log
 - `2026-04-13 18:00 KST` `./.venv/bin/pytest -q` -> `pre_existing_failure` `2 failed, 463 passed; current failures are test_run_healthcheck_flags_bundled_sample_config_directory and test_operations_smoke_cli_flow`
@@ -104,9 +104,12 @@ Status values:
 - `2026-04-13 18:42 KST` `git diff --check` -> `passed`
 - `2026-04-13 18:42 KST` `rg -n "Historical|Status Note|Follow-on initiative|multichannel-manual-publish-readiness-roadmap" docs/api-operations-readiness-todo.md docs/operator-control-plane-readiness-todo.md docs/all-domain-news-todo.md docs/implementation-alignment-todo.md docs/api-operations-readiness-progress.md docs/operator-control-plane-readiness-progress.md docs/all-domain-news-progress.md docs/implementation-alignment-progress.md docs/multichannel-manual-publish-readiness-progress-tracker.md` -> `passed`
 - `2026-04-13 18:42 KST` `runtime tests` -> `not_run` `docs-only task; verification stayed at planning-doc consistency and diff hygiene`
+- `2026-04-13 18:55 KST` `./.venv/bin/pytest tests/test_review_queue_workflow.py tests/test_storage.py tests/test_api.py tests/test_scheduler.py -q` -> `passed` `112 passed`
+- `2026-04-13 18:56 KST` `./.venv/bin/pytest tests/test_console.py -q` -> `passed` `34 passed`
+- `2026-04-13 18:56 KST` `git diff --check` -> `passed`
 
 ## Open Questions
-- `Should non-X manual handoff creation happen at explicit operator action time after approval, or should approval itself create the first tracked handoff record?`
+- `None at this task boundary; Task 03 resolved the handoff-creation decision in favor of approval-time record creation for manual-only channels`
 
 ## Blockers
 - `None currently`
@@ -118,3 +121,4 @@ Status values:
 - `Task 01 is complete. The smoke CLI fixture now uses a non-placeholder source URL, the healthcheck expectation reflects the current three-check output, and workflow package exports are stable across the full test suite.`
 - `Commit 9b614a0 recorded the baseline restoration before the latest master merge started.`
 - `Task 02 is complete. Completed roadmap docs now self-identify as historical, related progress docs point future work at the multichannel manual publish readiness roadmap, and the stale API readiness progress metadata no longer shows a pending latest commit.`
+- `Task 03 is complete. Approved LinkedIn and Threads drafts now create explicit manual handoff publish-job records and logs through the shared review workflow, the approval response surfaces the linked publish job ID, and manual-only handoff jobs stay out of the scheduled due queue while remaining visible in existing publish-job reads.`

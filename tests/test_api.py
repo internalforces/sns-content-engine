@@ -1250,6 +1250,49 @@ def test_review_approve_endpoint_returns_validation_error(tmp_path: Path) -> Non
     assert "topic_guard_failed" in payload["message"]
 
 
+def test_review_approve_endpoint_returns_manual_handoff_publish_job_for_linkedin(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/approve",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-a", "config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action_type"] == "approve"
+    assert payload["draft_state"] == "approved"
+    assert payload["publish_job_id"] is not None
+    assert payload["scheduled_for"] is None
+
+    detail_response = client.get(
+        f"/publish-jobs/{payload['publish_job_id']}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["channel"] == "linkedin"
+    assert detail_payload["scheduled_for"] is None
+    assert [entry["event_type"] for entry in detail_payload["publish_logs"]] == [
+        "manual_handoff_created"
+    ]
+
+
 def test_review_schedule_endpoint_returns_conflict_for_duplicate_job(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
@@ -1325,6 +1368,24 @@ def _write_minimal_project_config(
                   cron: "0 9 * * *"
                 render:
                   max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                render:
+                  max_chars: 3000
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                render:
+                  max_chars: 10000
                 validation:
                   max_links: 1
                   banned_phrases: []

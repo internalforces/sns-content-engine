@@ -1189,6 +1189,38 @@ def test_publish_job_repository_lists_due_scheduled_jobs(session_factory) -> Non
     assert future_job.id not in [job.id for job in due_jobs]
 
 
+def test_publish_job_repository_excludes_unscheduled_manual_handoffs_from_due_queue(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        due_job = _create_publish_job(session, draft_state=DraftVariantState.APPROVED)
+        manual_draft = _create_draft_variant(
+            session,
+            draft_state=DraftVariantState.APPROVED,
+            channel="linkedin",
+        )
+        manual_job = repository.add(
+            PublishJob(
+                draft_variant=manual_draft,
+                channel="linkedin",
+                idempotency_key="manual-handoff-job",
+            )
+        )
+        due_job_id = due_job.id
+        manual_job_id = manual_job.id
+        manual_draft_id = manual_draft.id
+
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        due_jobs = repository.list_due_scheduled(
+            as_of=datetime(2026, 3, 18, 9, 30, tzinfo=timezone.utc)
+        )
+        eligible_manual_drafts = repository.list_approved_without_active_job("ai_tools_daily", "linkedin")
+
+    assert [job.id for job in due_jobs] == [due_job_id]
+    assert manual_job_id not in [job.id for job in due_jobs]
+    assert manual_draft_id not in [draft.id for draft in eligible_manual_drafts]
+
+
 def test_publish_job_repository_lists_approved_drafts_without_active_jobs(session_factory) -> None:
     with session_scope(session_factory) as session:
         eligible = _create_draft_variant(
