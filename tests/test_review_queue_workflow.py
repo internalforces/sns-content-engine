@@ -17,6 +17,7 @@ from app.storage import (
     DraftVariantRepository,
     DraftVariantState,
     PublishJobRepository,
+    PublishLogRepository,
     ReviewActionRepository,
     ReviewActionType,
     SourceItem,
@@ -170,6 +171,48 @@ def test_approve_draft_updates_state_and_records_review_action(session_factory, 
     assert actions[0].draft_state_after is DraftVariantState.APPROVED
 
 
+def test_approve_draft_creates_manual_publish_handoff_for_linkedin(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="linkedin")
+        draft_id = draft.id
+
+    result = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+
+    assert result.action_type is ReviewActionType.APPROVE
+    assert result.publish_job_id is not None
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft_id)
+        jobs = PublishJobRepository(session).list()
+        logs = PublishLogRepository(session).list()
+        actions = ReviewActionRepository(session).list_for_draft(draft_id)
+
+    assert stored_draft is not None
+    assert stored_draft.state is DraftVariantState.APPROVED
+    assert len(jobs) == 1
+    assert jobs[0].id == result.publish_job_id
+    assert jobs[0].channel == "linkedin"
+    assert jobs[0].scheduled_for is None
+    assert len(logs) == 1
+    assert logs[0].publish_job_id == result.publish_job_id
+    assert logs[0].event_type == "manual_handoff_created"
+    assert logs[0].payload == {
+        "account_key": "ai_tools_daily",
+        "channel": "linkedin",
+        "draft_variant_id": draft_id,
+        "handoff_mode": "manual_upload",
+        "scheduled_for": None,
+    }
+    assert len(actions) == 1
+    assert actions[0].action_type is ReviewActionType.APPROVE
+    assert actions[0].publish_job_id == result.publish_job_id
+
+
 def test_reject_draft_updates_state_and_records_reason(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session)
@@ -278,6 +321,26 @@ def test_schedule_draft_rejects_missing_required_attribution(session_factory, co
         )
 
 
+def test_approve_draft_for_manual_channel_rejects_missing_required_attribution(
+    session_factory, config_dir
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            require_attribution=True,
+            body=_VALID_DRAFT_BODY,
+        )
+
+    with pytest.raises(DraftValidationFailedError, match="required_attribution_missing"):
+        approve_draft(
+            draft.id,
+            reviewer="editor-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
 def test_schedule_draft_rejects_restricted_source_full_text_reuse(session_factory, config_dir) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(
@@ -307,6 +370,24 @@ def test_schedule_draft_rejects_missing_review_provenance(session_factory, confi
         )
 
     with pytest.raises(DraftValidationFailedError, match="review_provenance_missing"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
+def test_schedule_draft_rejects_manual_publish_channels(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            draft_state=DraftVariantState.APPROVED,
+        )
+
+    with pytest.raises(DraftScheduleError, match="manual publish handoff"):
         schedule_draft(
             draft.id,
             scheduled_for="2026-03-18T09:00:00+09:00",
@@ -420,6 +501,7 @@ def _create_draft_variant(
     session,
     *,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
+    channel: str = "x",
     body: str = _VALID_DRAFT_BODY,
     policy_mode: SourcePolicyMode = SourcePolicyMode.REUSABLE,
     require_attribution: bool = False,
@@ -471,7 +553,7 @@ def _create_draft_variant(
     draft = repository.add(
         DraftVariant(
             content_brief=brief,
-            channel="x",
+            channel=channel,
             variant_index=0,
             body=body,
             source_name=source_name if include_provenance else None,
@@ -519,6 +601,24 @@ def _write_project_config(path: Path) -> None:
                   cron: "0 9 * * *"
                 render:
                   max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                render:
+                  max_chars: 3000
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                render:
+                  max_chars: 10000
                 validation:
                   max_links: 1
                   banned_phrases: []

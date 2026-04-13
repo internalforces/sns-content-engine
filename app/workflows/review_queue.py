@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from app.storage import (
     DraftVariantState,
     PublishJob,
     PublishJobRepository,
+    PublishLogRepository,
     ReviewAction,
     ReviewActionRepository,
     ReviewActionType,
@@ -49,6 +51,9 @@ class DraftScheduleError(ReviewQueueError):
 
 class DraftValidationFailedError(ReviewQueueError):
     """Raised when a draft fails the approval/publish validator."""
+
+
+_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin", "threads"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,12 +304,18 @@ def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> 
         draft,
         config_dir=config_dir,
         validation_label="approval",
+        enforce_policy_requirements=draft.channel in _MANUAL_PUBLISH_CHANNELS,
     )
 
     drafts = DraftVariantRepository(session)
     before_state = draft.state
     before_text = draft.body
     drafts.transition_state(draft, DraftVariantState.APPROVED)
+    publish_job = (
+        _create_manual_publish_handoff(session, draft)
+        if draft.channel in _MANUAL_PUBLISH_CHANNELS
+        else None
+    )
     action = ReviewActionRepository(session).record(
         draft=draft,
         action_type=ReviewActionType.APPROVE,
@@ -313,6 +324,7 @@ def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> 
         after_text=draft.body,
         draft_state_before=before_state,
         draft_state_after=draft.state,
+        publish_job=publish_job,
     )
     return ReviewDraftResult(
         draft_id=draft.id,
@@ -321,6 +333,7 @@ def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> 
         action_type=ReviewActionType.APPROVE,
         draft_state=draft.state,
         action_id=action.id,
+        publish_job_id=publish_job.id if publish_job is not None else None,
     )
 
 
@@ -389,6 +402,10 @@ def _schedule_draft(
     scheduled_for: datetime,
 ) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.APPROVED, action="schedule")
+    if draft.channel in _MANUAL_PUBLISH_CHANNELS:
+        raise DraftScheduleError(
+            f"draft {draft.id} channel {draft.channel!r} uses manual publish handoff instead of scheduled publishing"
+        )
     _validate_draft_for_review(
         session,
         draft,
@@ -432,6 +449,46 @@ def _schedule_draft(
         publish_job_id=job.id,
         scheduled_for=job.scheduled_for,
     )
+
+
+def _create_manual_publish_handoff(session, draft) -> PublishJob:
+    content_brief = draft.content_brief
+    if content_brief is None:
+        raise ReviewQueueError(f"draft {draft.id} is missing its content brief")
+
+    publish_jobs = PublishJobRepository(session)
+    if publish_jobs.has_active_job_for_draft(draft.id):
+        raise ReviewQueueError(f"draft {draft.id} already has an active publish job")
+
+    handoff_created_at = datetime.now(timezone.utc)
+    publish_job = publish_jobs.add(
+        PublishJob(
+            draft_variant=draft,
+            channel=draft.channel,
+            idempotency_key=_build_manual_publish_job_idempotency_key(
+                draft_variant_id=draft.id,
+                channel=draft.channel,
+                created_at=handoff_created_at,
+            ),
+            created_at=handoff_created_at,
+        )
+    )
+    PublishLogRepository(session).record(
+        publish_job=publish_job,
+        event_type="manual_handoff_created",
+        message=(
+            f"manual publish handoff created for {content_brief.account_key}/{draft.channel} "
+            f"draft {draft.id}"
+        ),
+        payload={
+            "account_key": content_brief.account_key,
+            "channel": draft.channel,
+            "draft_variant_id": draft.id,
+            "handoff_mode": "manual_upload",
+            "scheduled_for": None,
+        },
+    )
+    return publish_job
 
 
 def _validate_draft_for_review(
@@ -550,6 +607,16 @@ def _parse_scheduled_for(value: str | datetime) -> datetime:
         raise DraftScheduleError("scheduled_for must include a timezone offset")
 
     return scheduled_for.astimezone(timezone.utc)
+
+
+def _build_manual_publish_job_idempotency_key(
+    *,
+    draft_variant_id: int,
+    channel: str,
+    created_at: datetime,
+) -> str:
+    raw_key = f"{draft_variant_id}:{channel.strip()}:manual_handoff:{created_at.isoformat()}"
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
 
 def _resolve_session_factory(*, database_url: str | None, session_factory):
