@@ -25,22 +25,22 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M2_manual_handoff_workflow`
-- Current task: `03_define_non_x_manual_publish_handoff_model`
+- Current task: `04_add_manual_publish_outcome_workflow_and_persistence`
 - Active status: `done`
-- Last updated: `2026-04-13 18:56 KST`
+- Last updated: `2026-04-13 19:11 KST`
 - Base branch: `master`
-- Active branch: `codex/task-03-manual-publish-handoff`
-- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 03 workflow commit created after this tracker update`
+- Active branch: `codex/task-04-manual-publish-outcome`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 04 workflow commit created after this tracker update`
 - Resume decision: `pick_next_task`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
-- Goal: `Turn approved LinkedIn and Threads drafts into explicit publish-job handoff records without changing X live-publish semantics`
-- In scope: `Non-X approval-path handoff creation, publish-log reuse, minimal workflow/shared-model updates, and focused regression coverage for the new record shape`
-- Out of scope: `Manual publish completion or failure mutations, new API or console controls, direct LinkedIn or Threads integrations, and broad scheduler redesign`
-- Dependencies: `Task 01 baseline restoration and Task 02 roadmap cleanup already completed on master`
+- Goal: `Let operators record manual LinkedIn and Threads publish success, failure, or cancellation through supported workflow helpers without changing X scheduler behavior`
+- In scope: `Workflow-backed manual outcome helpers, publish-job transition validation, publish-log payloads for operator-visible auditability, and focused workflow/storage/API regression coverage`
+- Out of scope: `New API or console controls, direct LinkedIn or Threads integrations, schema redesign, and changes to X live-publish scheduling`
+- Dependencies: `Task 03 manual handoff creation is already complete on the parent branch`
 - Verification commands:
-  - `./.venv/bin/pytest tests/test_review_queue_workflow.py tests/test_storage.py -q`
+  - `./.venv/bin/pytest tests/test_review_queue_workflow.py tests/test_storage.py tests/test_api.py -q`
   - `./.venv/bin/pytest tests/test_scheduler.py -q`
 
 ## Environment Notes
@@ -54,7 +54,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 01 | Restore healthcheck and smoke baseline | done | 2026-04-13 18:20 KST | Restored smoke healthcheck expectation, stabilized workflow package exports, and confirmed full `pytest` passes |
 | M1 | 02 | Refresh stale roadmap and TODO docs | done | 2026-04-13 18:42 KST | Added historical-status notes to completed initiative roadmaps, pointed related progress docs at this follow-on plan, and fixed stale API readiness commit metadata |
 | M2 | 03 | Define non-X manual publish handoff model | done | 2026-04-13 18:56 KST | Approved LinkedIn and Threads drafts now create explicit manual handoff jobs and logs through the shared review workflow, while X scheduling stays unchanged |
-| M2 | 04 | Add manual publish outcome workflow and persistence | pending | 2026-04-13 18:00 KST | No operator-safe mutation path exists for non-X manual publish success or failure |
+| M2 | 04 | Add manual publish outcome workflow and persistence | done | 2026-04-13 19:11 KST | Added workflow-backed non-X handoff completion, failure, and cancellation helpers that reuse the publish-job state machine and publish-log audit trail |
 | M3 | 05 | Expose manual handoff controls through API and console | pending | 2026-04-13 18:00 KST | Existing review and publish pages show context but not a full non-X handoff lifecycle |
 | M3 | 06 | Document multichannel handoff flow and expand regressions | pending | 2026-04-13 18:00 KST | Operator docs and linked regressions need to reflect the shipped non-X handoff behavior |
 
@@ -65,6 +65,7 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
+- `app/workflows/__init__.py`
 - `app/workflows/review_queue.py`
 - `docs/multichannel-manual-publish-readiness-progress-tracker.md`
 - `tests/test_api.py`
@@ -89,6 +90,11 @@ Status values:
 - `2026-04-13 18:51 KST` Chose approval-time handoff creation as the smallest safe shape: approved `linkedin` and `threads` drafts will create explicit publish-job records with publish-log visibility, while X keeps the existing scheduled live-publish path unchanged.
 - `2026-04-13 18:55 KST` Implemented approval-time non-X handoff creation in `app/workflows/review_queue.py` by reusing `publish_jobs` and `publish_logs`, attaching the created `publish_job_id` to the approval audit entry, and blocking scheduled live-publish creation for manual-only channels.
 - `2026-04-13 18:56 KST` Added focused workflow, storage, and API regressions proving that unscheduled manual handoff jobs stay out of the due queue while remaining operator-visible through the existing publish-job detail flow.
+- `2026-04-13 19:04 KST` Started Task `04` on `codex/task-04-manual-publish-outcome`, branching from the completed Task `03` handoff work because manual outcome recording depends directly on the newly created non-X publish-job records.
+- `2026-04-13 19:04 KST` Chose publish-log-backed operator auditability as the smallest safe shape for manual outcomes, so success, failure, and cancellation will reuse the existing publish-job state machine instead of adding new review-action types or schema tables.
+- `2026-04-13 19:08 KST` Implemented `complete`, `fail`, and `cancel` manual handoff helpers in `app/workflows/review_queue.py`, reusing `PublishJobRepository.transition_state` and `PublishLogRepository.record` so manual channels can move to terminal states without altering X scheduler behavior.
+- `2026-04-13 19:09 KST` Re-exported the new workflow entrypoints from `app/workflows/__init__.py` and added focused workflow, storage, and API regressions for manual publish success, failure, cancellation, unsupported-channel rejection, and publish-job detail visibility.
+- `2026-04-13 19:11 KST` Verified the narrow Task `04` regression slices plus `tests/test_scheduler.py`, confirming the shared publish lifecycle remains green after the manual outcome helpers landed.
 
 ## Test Log
 - `2026-04-13 18:00 KST` `./.venv/bin/pytest -q` -> `pre_existing_failure` `2 failed, 463 passed; current failures are test_run_healthcheck_flags_bundled_sample_config_directory and test_operations_smoke_cli_flow`
@@ -107,9 +113,14 @@ Status values:
 - `2026-04-13 18:55 KST` `./.venv/bin/pytest tests/test_review_queue_workflow.py tests/test_storage.py tests/test_api.py tests/test_scheduler.py -q` -> `passed` `112 passed`
 - `2026-04-13 18:56 KST` `./.venv/bin/pytest tests/test_console.py -q` -> `passed` `34 passed`
 - `2026-04-13 18:56 KST` `git diff --check` -> `passed`
+- `2026-04-13 19:07 KST` `./.venv/bin/pytest tests/test_review_queue_workflow.py -q` -> `passed` `24 passed`
+- `2026-04-13 19:07 KST` `./.venv/bin/pytest tests/test_storage.py -q` -> `passed` `50 passed`
+- `2026-04-13 19:08 KST` `./.venv/bin/pytest tests/test_api.py -q` -> `passed` `30 passed`
+- `2026-04-13 19:08 KST` `./.venv/bin/pytest tests/test_scheduler.py -q` -> `passed` `15 passed`
+- `2026-04-13 19:11 KST` `git diff --check` -> `passed`
 
 ## Open Questions
-- `None at this task boundary; Task 03 resolved the handoff-creation decision in favor of approval-time record creation for manual-only channels`
+- `None currently; Task 04 is proceeding with publish logs as the audit surface for manual operator updates`
 
 ## Blockers
 - `None currently`
@@ -122,3 +133,4 @@ Status values:
 - `Commit 9b614a0 recorded the baseline restoration before the latest master merge started.`
 - `Task 02 is complete. Completed roadmap docs now self-identify as historical, related progress docs point future work at the multichannel manual publish readiness roadmap, and the stale API readiness progress metadata no longer shows a pending latest commit.`
 - `Task 03 is complete. Approved LinkedIn and Threads drafts now create explicit manual handoff publish-job records and logs through the shared review workflow, the approval response surfaces the linked publish job ID, and manual-only handoff jobs stay out of the scheduled due queue while remaining visible in existing publish-job reads.`
+- `Task 04 is complete. Manual LinkedIn and Threads handoff jobs can now be marked published, failed, or cancelled through workflow helpers that preserve the existing publish-job state machine, capture operator identity and outcome context in publish logs, and keep existing publish-job detail surfaces useful without adding new API or console mutation routes yet.`

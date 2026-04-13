@@ -991,6 +991,39 @@ def test_publish_job_state_transitions_are_enforced(session_factory) -> None:
             PublishJobRepository(session).transition_state(invalid_job, PublishJobState.PUBLISHED)
 
 
+def test_publish_job_state_transitions_support_manual_handoff_without_schedule(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            draft_state=DraftVariantState.APPROVED,
+        )
+        repository = PublishJobRepository(session)
+        job = repository.add(
+            PublishJob(
+                draft_variant=draft,
+                channel="linkedin",
+                idempotency_key="manual-linkedin-handoff",
+            )
+        )
+        repository.transition_state(job, PublishJobState.PUBLISHING)
+        repository.transition_state(
+            job,
+            PublishJobState.FAILED,
+            last_error="linkedin upload rejected the attachment",
+        )
+        job_id = job.id
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.FAILED
+    assert stored_job.scheduled_for is None
+    assert stored_job.attempt_count == 1
+    assert stored_job.last_error == "linkedin upload rejected the attachment"
+
+
 def test_publish_job_requires_manual_approval_before_creation(session_factory) -> None:
     with pytest.raises(ManualApprovalRequiredError):
         with session_scope(session_factory) as session:

@@ -17,6 +17,7 @@ from app.storage import (
     DraftVariantRepository,
     DraftVariantState,
     PublishJobRepository,
+    PublishJobState,
     PublishLogRepository,
     ReviewActionRepository,
     ReviewActionType,
@@ -32,8 +33,13 @@ from app.workflows import (
     DraftReviewStateError,
     DraftScheduleError,
     DraftValidationFailedError,
+    ManualPublishError,
+    ManualPublishStateError,
     approve_draft,
+    cancel_manual_publish_handoff,
+    complete_manual_publish_handoff,
     edit_draft,
+    fail_manual_publish_handoff,
     list_pending_review_drafts,
     reject_draft,
     schedule_draft,
@@ -211,6 +217,213 @@ def test_approve_draft_creates_manual_publish_handoff_for_linkedin(session_facto
     assert len(actions) == 1
     assert actions[0].action_type is ReviewActionType.APPROVE
     assert actions[0].publish_job_id == result.publish_job_id
+
+
+def test_complete_manual_publish_handoff_marks_job_published_and_records_log(
+    session_factory,
+    config_dir,
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="linkedin")
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    result = complete_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-a",
+        external_post_id="linkedin-post-123",
+        session_factory=session_factory,
+    )
+
+    assert result.publish_job_state is PublishJobState.PUBLISHED
+    assert result.external_post_id == "linkedin-post-123"
+    assert result.published_at is not None
+
+    with session_scope(session_factory) as session:
+        job = PublishJobRepository(session).get(approval.publish_job_id)
+        logs = PublishLogRepository(session).list_for_job(approval.publish_job_id)
+
+    assert job is not None
+    assert job.state is PublishJobState.PUBLISHED
+    assert job.attempt_count == 1
+    assert job.external_post_id == "linkedin-post-123"
+    assert job.published_at is not None
+    assert [log.event_type for log in logs] == ["manual_handoff_created", "published"]
+    assert logs[1].payload == {
+        "status": "published",
+        "account_key": "ai_tools_daily",
+        "channel": "linkedin",
+        "draft_variant_id": draft.id,
+        "handoff_mode": "manual_upload",
+        "operator": "publisher-a",
+        "attempt_count": 1,
+        "external_post_id": "linkedin-post-123",
+        "last_error": None,
+        "reason": None,
+    }
+
+
+def test_fail_manual_publish_handoff_marks_job_failed_and_records_log(
+    session_factory,
+    config_dir,
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="threads")
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    result = fail_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-b",
+        error_message="threads upload timed out",
+        session_factory=session_factory,
+    )
+
+    assert result.publish_job_state is PublishJobState.FAILED
+    assert result.last_error == "threads upload timed out"
+
+    with session_scope(session_factory) as session:
+        job = PublishJobRepository(session).get(approval.publish_job_id)
+        logs = PublishLogRepository(session).list_for_job(approval.publish_job_id)
+
+    assert job is not None
+    assert job.state is PublishJobState.FAILED
+    assert job.attempt_count == 1
+    assert job.last_error == "threads upload timed out"
+    assert [log.event_type for log in logs] == ["manual_handoff_created", "failed"]
+    assert logs[1].payload == {
+        "status": "failed",
+        "account_key": "ai_tools_daily",
+        "channel": "threads",
+        "draft_variant_id": draft.id,
+        "handoff_mode": "manual_upload",
+        "operator": "publisher-b",
+        "attempt_count": 1,
+        "external_post_id": None,
+        "last_error": "threads upload timed out",
+        "reason": None,
+    }
+
+
+def test_cancel_manual_publish_handoff_marks_job_cancelled_and_records_log(
+    session_factory,
+    config_dir,
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="linkedin")
+        draft_id = draft.id
+
+    approval = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    result = cancel_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-c",
+        reason="operator postponed posting",
+        session_factory=session_factory,
+    )
+
+    assert result.publish_job_state is PublishJobState.CANCELLED
+
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        job = repository.get(approval.publish_job_id)
+        logs = PublishLogRepository(session).list_for_job(approval.publish_job_id)
+        has_active_job = repository.has_active_job_for_draft(draft_id)
+
+    assert job is not None
+    assert job.state is PublishJobState.CANCELLED
+    assert has_active_job is False
+    assert [log.event_type for log in logs] == ["manual_handoff_created", "cancelled"]
+    assert logs[1].payload == {
+        "status": "cancelled",
+        "account_key": "ai_tools_daily",
+        "channel": "linkedin",
+        "draft_variant_id": draft_id,
+        "handoff_mode": "manual_upload",
+        "operator": "publisher-c",
+        "attempt_count": 0,
+        "external_post_id": None,
+        "last_error": None,
+        "reason": "operator postponed posting",
+    }
+
+
+def test_complete_manual_publish_handoff_rejects_non_manual_channel(
+    session_factory,
+    config_dir,
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="x",
+            draft_state=DraftVariantState.APPROVED,
+            body=_VALID_DRAFT_BODY,
+        )
+
+    scheduled = schedule_draft(
+        draft.id,
+        reviewer="scheduler-a",
+        config_dir=config_dir,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        session_factory=session_factory,
+    )
+    assert scheduled.publish_job_id is not None
+
+    with pytest.raises(
+        ManualPublishError,
+        match="does not support manual publish outcome recording",
+    ):
+        complete_manual_publish_handoff(
+            scheduled.publish_job_id,
+            operator="publisher-a",
+            session_factory=session_factory,
+        )
+
+
+def test_complete_manual_publish_handoff_rejects_terminal_state(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="linkedin")
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+    complete_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-a",
+        session_factory=session_factory,
+    )
+
+    with pytest.raises(
+        ManualPublishStateError,
+        match="expected 'scheduled'",
+    ):
+        complete_manual_publish_handoff(
+            approval.publish_job_id,
+            operator="publisher-a",
+            session_factory=session_factory,
+        )
 
 
 def test_reject_draft_updates_state_and_records_reason(session_factory, config_dir) -> None:
