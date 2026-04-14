@@ -104,6 +104,74 @@
   </section>
 
   {% if publish_job_detail %}
+    <section class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">수동 발행 기록</p>
+          <h2>{{ publish_job_action_forms.action_title }}</h2>
+        </div>
+      </div>
+      <p class="console-card-copy">{{ publish_job_action_forms.state_hint }}</p>
+      {% if publish_job_action_feedback %}
+        <div class="console-feedback console-feedback-{{ publish_job_action_feedback.kind }}">
+          <strong>{{ publish_job_action_feedback.title }}</strong>
+          <p>{{ publish_job_action_feedback.message }}</p>
+        </div>
+      {% endif %}
+
+      {% if publish_job_action_forms.show_manual_publish_actions %}
+        <p class="console-card-copy">상단에 표시된 초안 본문을 외부 플랫폼에 게시한 뒤, 아래에서 결과를 운영 기록으로 남기세요.</p>
+        <div class="console-action-grid">
+          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+            <input type="hidden" name="action" value="complete">
+            <p class="console-card-label">완료</p>
+            <h3>발행 완료 기록</h3>
+            <label class="console-field" for="manual-complete-operator">
+              <span>운영자</span>
+              <input class="console-input" id="manual-complete-operator" name="operator" type="text" value="{{ publish_job_action_forms.operator }}">
+            </label>
+            <label class="console-field" for="manual-complete-external-post-id">
+              <span>외부 게시물 ID</span>
+              <input class="console-input" id="manual-complete-external-post-id" name="external_post_id" type="text" value="{{ publish_job_action_forms.external_post_id }}">
+            </label>
+            <button class="console-button" type="submit">발행 완료로 기록</button>
+          </form>
+
+          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+            <input type="hidden" name="action" value="fail">
+            <p class="console-card-label">실패</p>
+            <h3>발행 실패 기록</h3>
+            <label class="console-field" for="manual-fail-operator">
+              <span>운영자</span>
+              <input class="console-input" id="manual-fail-operator" name="operator" type="text" value="{{ publish_job_action_forms.operator }}">
+            </label>
+            <label class="console-field" for="manual-fail-error-message">
+              <span>오류 메시지</span>
+              <input class="console-input" id="manual-fail-error-message" name="error_message" type="text" value="{{ publish_job_action_forms.error_message }}">
+            </label>
+            <button class="console-button console-button-muted" type="submit">실패로 기록</button>
+          </form>
+
+          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+            <input type="hidden" name="action" value="cancel">
+            <p class="console-card-label">취소</p>
+            <h3>전달 취소</h3>
+            <label class="console-field" for="manual-cancel-operator">
+              <span>운영자</span>
+              <input class="console-input" id="manual-cancel-operator" name="operator" type="text" value="{{ publish_job_action_forms.operator }}">
+            </label>
+            <label class="console-field" for="manual-cancel-reason">
+              <span>사유</span>
+              <input class="console-input" id="manual-cancel-reason" name="reason" type="text" value="{{ publish_job_action_forms.cancel_reason }}">
+            </label>
+            <button class="console-button console-button-muted" type="submit">전달 취소</button>
+          </form>
+        </div>
+      {% else %}
+        <p class="console-empty">{{ publish_job_action_forms.read_only_notice }}</p>
+      {% endif %}
+    </section>
+
     <section class="console-grid">
       <article class="console-card">
         <div class="console-card-header">

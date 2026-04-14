@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     )
     from app.workflows.review_queue import PendingReviewDraft, PendingReviewDraftsResult, ReviewDraftResult
     from app.workflows.review_queue import ReviewDraftDetailResult
+    from app.workflows.review_queue import ManualPublishOutcomeResult
 
 
 class _ApiModel(BaseModel):
@@ -381,6 +382,33 @@ class ReviewActionResponse(_ApiModel):
     scheduled_for: str | None = None
 
 
+class ManualPublishActionRequest(_ApiModel):
+    operator: str | None = None
+
+
+class CompleteManualPublishRequest(ManualPublishActionRequest):
+    external_post_id: str | None = None
+
+
+class FailManualPublishRequest(ManualPublishActionRequest):
+    error_message: str
+
+
+class CancelManualPublishRequest(ManualPublishActionRequest):
+    reason: str | None = None
+
+
+class ManualPublishOutcomeResponse(_ApiModel):
+    publish_job_id: int
+    channel: str
+    operator: str
+    previous_state: str
+    publish_job_state: str
+    external_post_id: str | None = None
+    last_error: str | None = None
+    published_at: str | None = None
+
+
 class ApiErrorResponse(_ApiModel):
     error_code: str
     message: str
@@ -406,6 +434,9 @@ def create_app(
     draft_rejector: Callable[..., ReviewDraftResult] | None = None,
     draft_editor: Callable[..., ReviewDraftResult] | None = None,
     draft_scheduler: Callable[..., ReviewDraftResult] | None = None,
+    manual_publish_completer: Callable[..., ManualPublishOutcomeResult] | None = None,
+    manual_publish_failer: Callable[..., ManualPublishOutcomeResult] | None = None,
+    manual_publish_canceller: Callable[..., ManualPublishOutcomeResult] | None = None,
 ) -> FastAPI:
     """Create the FastAPI application for operator routes."""
 
@@ -485,6 +516,24 @@ def create_app(
         from app.workflows.review_queue import schedule_draft as default_draft_scheduler
 
         draft_scheduler = default_draft_scheduler
+    if manual_publish_completer is None:
+        from app.workflows.review_queue import (
+            complete_manual_publish_handoff as default_manual_publish_completer,
+        )
+
+        manual_publish_completer = default_manual_publish_completer
+    if manual_publish_failer is None:
+        from app.workflows.review_queue import (
+            fail_manual_publish_handoff as default_manual_publish_failer,
+        )
+
+        manual_publish_failer = default_manual_publish_failer
+    if manual_publish_canceller is None:
+        from app.workflows.review_queue import (
+            cancel_manual_publish_handoff as default_manual_publish_canceller,
+        )
+
+        manual_publish_canceller = default_manual_publish_canceller
 
     application = FastAPI(
         title="sns-content-engine API",
@@ -498,6 +547,8 @@ def create_app(
         DraftReviewStateError,
         DraftScheduleError,
         DraftValidationFailedError,
+        ManualPublishError,
+        ManualPublishStateError,
         ReviewQueueError,
         ReviewerIdentityError,
     )
@@ -520,6 +571,9 @@ def create_app(
     application.state.console_draft_rejector = draft_rejector
     application.state.console_draft_editor = draft_editor
     application.state.console_draft_scheduler = draft_scheduler
+    application.state.console_manual_publish_completer = manual_publish_completer
+    application.state.console_manual_publish_failer = manual_publish_failer
+    application.state.console_manual_publish_canceller = manual_publish_canceller
     application.include_router(console_router)
 
     @application.exception_handler(DatabaseSchemaError)
@@ -602,6 +656,26 @@ def create_app(
         return _build_api_error_response(
             status_code=422,
             error_code="reviewer_identity_required",
+            message=str(exc),
+        )
+
+    @application.exception_handler(ManualPublishStateError)
+    async def handle_manual_publish_state_error(
+        _request: Request, exc: ManualPublishStateError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=409,
+            error_code="manual_publish_state_conflict",
+            message=str(exc),
+        )
+
+    @application.exception_handler(ManualPublishError)
+    async def handle_manual_publish_error(
+        _request: Request, exc: ManualPublishError
+    ) -> JSONResponse:
+        return _build_api_error_response(
+            status_code=422,
+            error_code="manual_publish_invalid",
             message=str(exc),
         )
 
@@ -690,6 +764,60 @@ def create_app(
             database_url=database_url,
         )
         return _build_publish_job_detail_response(detail)
+
+    @application.post(
+        "/publish-jobs/{publish_job_id}/manual/complete",
+        response_model=ManualPublishOutcomeResponse,
+        tags=["publish"],
+    )
+    def complete_manual_publish_job(
+        publish_job_id: int,
+        payload: CompleteManualPublishRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ManualPublishOutcomeResponse:
+        result = manual_publish_completer(
+            publish_job_id,
+            operator=payload.operator,
+            external_post_id=payload.external_post_id,
+            database_url=database_url,
+        )
+        return _build_manual_publish_outcome_response(result)
+
+    @application.post(
+        "/publish-jobs/{publish_job_id}/manual/fail",
+        response_model=ManualPublishOutcomeResponse,
+        tags=["publish"],
+    )
+    def fail_manual_publish_job(
+        publish_job_id: int,
+        payload: FailManualPublishRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ManualPublishOutcomeResponse:
+        result = manual_publish_failer(
+            publish_job_id,
+            operator=payload.operator,
+            error_message=payload.error_message,
+            database_url=database_url,
+        )
+        return _build_manual_publish_outcome_response(result)
+
+    @application.post(
+        "/publish-jobs/{publish_job_id}/manual/cancel",
+        response_model=ManualPublishOutcomeResponse,
+        tags=["publish"],
+    )
+    def cancel_manual_publish_job(
+        publish_job_id: int,
+        payload: CancelManualPublishRequest,
+        database_url: str | None = Query(default=None),
+    ) -> ManualPublishOutcomeResponse:
+        result = manual_publish_canceller(
+            publish_job_id,
+            operator=payload.operator,
+            reason=payload.reason,
+            database_url=database_url,
+        )
+        return _build_manual_publish_outcome_response(result)
 
     @application.post("/scheduler/discover", response_model=SchedulerDiscoverResponse, tags=["scheduler"])
     def run_scheduler_discover(
@@ -962,6 +1090,21 @@ def _build_publish_job_log_entry_response(log) -> PublishJobLogEntryResponse:
         message=log.message,
         payload=log.payload,
         created_at=log.created_at.isoformat(),
+    )
+
+
+def _build_manual_publish_outcome_response(
+    result: ManualPublishOutcomeResult,
+) -> ManualPublishOutcomeResponse:
+    return ManualPublishOutcomeResponse(
+        publish_job_id=result.publish_job_id,
+        channel=result.channel,
+        operator=result.operator,
+        previous_state=result.previous_state.value,
+        publish_job_state=result.publish_job_state.value,
+        external_post_id=result.external_post_id,
+        last_error=result.last_error,
+        published_at=result.published_at.isoformat() if result.published_at else None,
     )
 
 
