@@ -293,6 +293,45 @@ def test_publish_due_jobs_dry_run_leaves_jobs_unchanged(session_factory) -> None
     assert [log.event_type for log in logs] == []
 
 
+def test_publish_due_jobs_ignores_manual_handoff_jobs_without_schedule(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            draft_state=DraftVariantState.APPROVED,
+        )
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="linkedin",
+                idempotency_key="manual-handoff-job",
+                scheduled_for=None,
+            )
+        )
+        job_id = job.id
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.dry_run is False
+    assert result.processed_count == 0
+    assert result.published_count == 0
+    assert result.failed_count == 0
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        logs = PublishLogRepository(session).list_for_job(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.SCHEDULED
+    assert stored_job.scheduled_for is None
+    assert stored_job.attempt_count == 0
+    assert [log.event_type for log in logs] == []
+
+
 def test_publish_due_jobs_marks_jobs_published_with_stateful_executor(session_factory) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)

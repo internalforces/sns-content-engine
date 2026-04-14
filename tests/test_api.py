@@ -1443,6 +1443,56 @@ def test_manual_publish_fail_endpoint_records_manual_handoff_failure(tmp_path: P
     }
 
 
+def test_manual_publish_failed_handoff_appears_in_publish_jobs_list(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    fail_response = client.post(
+        f"/publish-jobs/{approval.publish_job_id}/manual/fail",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"operator": "publisher-b", "error_message": "upload window expired"},
+    )
+
+    assert fail_response.status_code == 200
+
+    list_response = client.get(
+        "/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}",
+            "state": "failed",
+            "channel": "threads",
+        },
+    )
+
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert [job["publish_job_id"] for job in payload["jobs"]] == [approval.publish_job_id]
+    assert payload["jobs"][0]["draft_id"] == draft.id
+    assert payload["jobs"][0]["channel"] == "threads"
+    assert payload["jobs"][0]["state"] == "failed"
+    assert payload["jobs"][0]["scheduled_for"] is None
+    assert payload["jobs"][0]["last_error"] == "upload window expired"
+    assert payload["jobs"][0]["draft_state"] == "approved"
+
+
 def test_manual_publish_cancel_endpoint_records_manual_handoff_cancellation(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
