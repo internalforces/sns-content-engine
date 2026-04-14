@@ -862,6 +862,130 @@ def test_publish_jobs_detail_page_renders_failed_context(tmp_path: Path) -> None
     assert "publish job failed: missing access token" in response.text
 
 
+def test_publish_jobs_detail_page_shows_manual_publish_action_forms_for_open_handoff(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/publish-jobs/{approval.publish_job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "LinkedIn 수동 발행 기록" in response.text
+    assert "발행 완료 기록" in response.text
+    assert "발행 실패 기록" in response.text
+    assert "전달 취소" in response.text
+    assert f'/console/publish-jobs/{approval.publish_job_id}' in response.text
+
+
+def test_publish_jobs_detail_action_complete_records_manual_publish_outcome(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = _post_console_publish_job_action(
+        client,
+        publish_job_id=approval.publish_job_id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="complete",
+        operator="publisher-a",
+        external_post_id="linkedin-post-456",
+    )
+
+    assert response.status_code == 200
+    assert "발행 완료 기록 완료" in response.text
+    assert "linkedin-post-456" in response.text
+    assert "이 작업은 이미 종료되어 추가 브라우저 액션을 숨깁니다." in response.text
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(approval.publish_job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.PUBLISHED
+    assert stored_job.external_post_id == "linkedin-post-456"
+
+
+def test_publish_jobs_detail_action_fail_validation_error_stays_browser_readable(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = _post_console_publish_job_action(
+        client,
+        publish_job_id=approval.publish_job_id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="fail",
+        operator="publisher-b",
+    )
+
+    assert response.status_code == 422
+    assert "발행 실패 기록 불가" in response.text
+    assert "manual publish failure message must not be empty" in response.text
+    assert 'value="publisher-b"' in response.text
+
+
 def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:
     _build_session_factory(tmp_path)
     client = TestClient(create_app())
@@ -1581,6 +1705,34 @@ def _post_console_review_action(
     )
 
 
+def _post_console_publish_job_action(
+    client: TestClient,
+    *,
+    publish_job_id: int,
+    database_url: str,
+    action: str,
+    operator: str | None = None,
+    external_post_id: str | None = None,
+    error_message: str | None = None,
+    reason: str | None = None,
+):
+    data = {"action": action}
+    if operator is not None:
+        data["operator"] = operator
+    if external_post_id is not None:
+        data["external_post_id"] = external_post_id
+    if error_message is not None:
+        data["error_message"] = error_message
+    if reason is not None:
+        data["reason"] = reason
+
+    return client.post(
+        f"/console/publish-jobs/{publish_job_id}",
+        params={"database_url": database_url},
+        data=data,
+    )
+
+
 def _post_console_scheduler_action(
     client: TestClient,
     *,
@@ -1833,6 +1985,32 @@ def _write_minimal_project_config(path: Path) -> None:
                   backlog_target: 1
                 render:
                   max_chars: 280
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 3000
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 10000
                 validation:
                   max_links: 1
                   banned_phrases: []

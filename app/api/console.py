@@ -21,6 +21,8 @@ from app.workflows.review_queue import (
     DraftReviewStateError,
     DraftScheduleError,
     DraftValidationFailedError,
+    ManualPublishError,
+    ManualPublishStateError,
     ReviewQueueError,
     ReviewerIdentityError,
 )
@@ -280,7 +282,7 @@ def get_console_publish_jobs(
     context = _build_console_context(
         request,
         page_title="발행 작업",
-        page_description="새로운 브라우저 변경 경로를 추가하지 않고, 공용 운영 이력 헬퍼로 읽기 전용 발행 대기열과 전달 상태를 확인합니다.",
+        page_description="공용 운영 이력 헬퍼를 바탕으로 발행 대기열과 수동 전달 상태를 확인하고, 필요한 경우 개별 작업에서 결과를 기록할 수 있습니다.",
         active_nav_key="publish_jobs",
         config_dir=config_dir,
         database_url=database_url,
@@ -326,7 +328,146 @@ def get_console_publish_job_detail(
     channel: str | None = Query(default=None),
     limit: int = Query(default=_DEFAULT_PUBLISH_JOB_LIMIT, ge=1, le=100),
 ) -> HTMLResponse:
-    """Render one publish job with linked draft context and publish logs."""
+    """Render one publish job with linked draft context, logs, and manual handoff actions."""
+
+    return _render_console_publish_job_detail_page(
+        request,
+        publish_job_id=publish_job_id,
+        config_dir=config_dir,
+        database_url=database_url,
+        state=state,
+        account_key=account_key,
+        channel=channel,
+        limit=limit,
+    )
+
+
+@console_router.post(
+    "/console/publish-jobs/{publish_job_id}",
+    response_class=HTMLResponse,
+    name="console_publish_job_detail_action",
+)
+async def post_console_publish_job_detail_action(
+    publish_job_id: int,
+    request: Request,
+    config_dir: str = Query(default="config"),
+    database_url: str | None = Query(default=None),
+    state: PublishJobState | None = Query(default=None),
+    account_key: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    limit: int = Query(default=_DEFAULT_PUBLISH_JOB_LIMIT, ge=1, le=100),
+) -> HTMLResponse:
+    """Handle manual publish outcome actions from the publish-job detail page."""
+
+    form_data = await _parse_console_form_body(request)
+    action = (form_data.get("action") or "").strip().lower()
+    submitted_values = _normalize_manual_publish_action_form_data(form_data)
+
+    if action not in {"complete", "fail", "cancel"}:
+        return _render_console_publish_job_detail_page(
+            request,
+            publish_job_id=publish_job_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            state=state,
+            account_key=account_key,
+            channel=channel,
+            limit=limit,
+            status_code=422,
+            feedback=_build_manual_publish_action_feedback(
+                kind="error",
+                action_label="수동 발행 기록",
+                message="폼을 제출하기 전에 지원되는 수동 발행 작업을 선택하세요.",
+            ),
+            form_values=submitted_values,
+        )
+
+    try:
+        result = _execute_console_manual_publish_action(
+            request,
+            publish_job_id=publish_job_id,
+            action=action,
+            submitted_values=submitted_values,
+            database_url=database_url,
+        )
+    except PublishJobNotFoundError:
+        return _render_console_publish_job_detail_page(
+            request,
+            publish_job_id=publish_job_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            state=state,
+            account_key=account_key,
+            channel=channel,
+            limit=limit,
+            status_code=404,
+            form_values=submitted_values,
+        )
+    except ManualPublishStateError as exc:
+        return _render_console_publish_job_detail_page(
+            request,
+            publish_job_id=publish_job_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            state=state,
+            account_key=account_key,
+            channel=channel,
+            limit=limit,
+            status_code=409,
+            feedback=_build_manual_publish_action_feedback(
+                kind="error",
+                action_label=_manual_publish_action_label(action),
+                message=str(exc),
+            ),
+            form_values=submitted_values,
+        )
+    except (ManualPublishError, ReviewerIdentityError) as exc:
+        return _render_console_publish_job_detail_page(
+            request,
+            publish_job_id=publish_job_id,
+            config_dir=config_dir,
+            database_url=database_url,
+            state=state,
+            account_key=account_key,
+            channel=channel,
+            limit=limit,
+            status_code=422,
+            feedback=_build_manual_publish_action_feedback(
+                kind="error",
+                action_label=_manual_publish_action_label(action),
+                message=str(exc),
+            ),
+            form_values=submitted_values,
+        )
+
+    return _render_console_publish_job_detail_page(
+        request,
+        publish_job_id=publish_job_id,
+        config_dir=config_dir,
+        database_url=database_url,
+        state=state,
+        account_key=account_key,
+        channel=channel,
+        limit=limit,
+        feedback=_build_manual_publish_success_feedback(action, result),
+    )
+
+
+def _render_console_publish_job_detail_page(
+    request: Request,
+    *,
+    publish_job_id: int,
+    config_dir: str,
+    database_url: str | None,
+    state: PublishJobState | None,
+    account_key: str | None,
+    channel: str | None,
+    limit: int,
+    status_code: int = 200,
+    feedback: dict[str, str] | None = None,
+    form_values: dict[str, str] | None = None,
+) -> HTMLResponse:
+    """Render the shared publish-job detail page for both GET and POST flows."""
 
     publish_job_query_params = _build_publish_job_query_params(
         request,
@@ -362,6 +503,8 @@ def get_console_publish_job_detail(
                     "message": str(exc),
                     "publish_job_id": publish_job_id,
                 },
+                "publish_job_action_feedback": feedback,
+                "publish_job_action_forms": None,
             }
         )
         return _TEMPLATES.TemplateResponse(
@@ -374,7 +517,7 @@ def get_console_publish_job_detail(
     context = _build_console_context(
         request,
         page_title=f"발행 작업 {publish_job_id}",
-        page_description="API와 같은 운영 이력 헬퍼를 사용해 발행 타임라인, 연결된 초안 콘텍스트, 저장된 로그 이벤트를 보여줍니다.",
+        page_description="API와 같은 운영 이력 헬퍼를 사용해 발행 타임라인, 연결된 초안 콘텍스트, 수동 전달 결과 기록 작업을 함께 보여줍니다.",
         active_nav_key="publish_jobs",
         config_dir=config_dir,
         database_url=database_url,
@@ -387,12 +530,20 @@ def get_console_publish_job_detail(
                 detail,
             ),
             "publish_job_detail_missing": None,
+            "publish_job_action_feedback": feedback,
+            "publish_job_action_forms": _build_manual_publish_action_form_state(
+                request,
+                publish_job_query_params,
+                detail,
+                form_values=form_values,
+            ),
         }
     )
     return _TEMPLATES.TemplateResponse(
         request=request,
         name="console/publish_job_detail.html",
         context=context,
+        status_code=status_code,
     )
 
 
@@ -815,6 +966,36 @@ def _execute_console_review_action(
     )
 
 
+def _execute_console_manual_publish_action(
+    request: Request,
+    *,
+    publish_job_id: int,
+    action: str,
+    submitted_values: dict[str, str],
+    database_url: str | None,
+):
+    if action == "complete":
+        return request.app.state.console_manual_publish_completer(
+            publish_job_id,
+            operator=submitted_values["operator"],
+            external_post_id=submitted_values["external_post_id"],
+            database_url=database_url,
+        )
+    if action == "fail":
+        return request.app.state.console_manual_publish_failer(
+            publish_job_id,
+            operator=submitted_values["operator"],
+            error_message=submitted_values["error_message"],
+            database_url=database_url,
+        )
+    return request.app.state.console_manual_publish_canceller(
+        publish_job_id,
+        operator=submitted_values["operator"],
+        reason=submitted_values["cancel_reason"],
+        database_url=database_url,
+    )
+
+
 async def _parse_console_form_body(request: Request) -> dict[str, str]:
     raw_body = await request.body()
     parsed = parse_qs(raw_body.decode("utf-8"), keep_blank_values=True)
@@ -830,6 +1011,15 @@ def _normalize_review_action_form_data(form_data: dict[str, str]) -> dict[str, s
         "reject_reason": form_data.get("reason") or "",
         "edit_body": form_data.get("body") or "",
         "scheduled_for": (form_data.get("scheduled_for") or "").strip(),
+    }
+
+
+def _normalize_manual_publish_action_form_data(form_data: dict[str, str]) -> dict[str, str]:
+    return {
+        "operator": (form_data.get("operator") or "").strip(),
+        "external_post_id": (form_data.get("external_post_id") or "").strip(),
+        "error_message": form_data.get("error_message") or "",
+        "cancel_reason": form_data.get("reason") or "",
     }
 
 
@@ -867,6 +1057,55 @@ def _build_review_action_feedback(
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }
+
+
+def _build_manual_publish_success_feedback(action: str, result) -> dict[str, str]:
+    if action == "complete":
+        external_post_detail = (
+            f" 외부 게시물 ID {result.external_post_id}도 함께 저장되었습니다."
+            if result.external_post_id
+            else ""
+        )
+        message = (
+            "수동 업로드 결과가 발행 완료로 기록되었습니다. "
+            f"발행 작업 {result.publish_job_id}의 상태와 타임라인이 갱신되었습니다."
+            f"{external_post_detail}"
+        )
+    elif action == "fail":
+        message = (
+            "수동 업로드 실패가 기록되었습니다. 마지막 오류와 발행 로그가 이 작업에 함께 남았습니다."
+        )
+    else:
+        message = (
+            "수동 업로드 handoff가 취소되었습니다. 필요하면 검토 흐름에서 새 초안을 다시 승인해 새 작업을 만들 수 있습니다."
+        )
+    return _build_manual_publish_action_feedback(
+        kind="success",
+        action_label=_manual_publish_action_label(action),
+        message=message,
+    )
+
+
+def _build_manual_publish_action_feedback(
+    *,
+    kind: str,
+    action_label: str,
+    message: str,
+) -> dict[str, str]:
+    return {
+        "kind": kind,
+        "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
+        "message": message,
+    }
+
+
+def _manual_publish_action_label(action: str) -> str:
+    labels = {
+        "complete": "발행 완료 기록",
+        "fail": "발행 실패 기록",
+        "cancel": "발행 전달 취소",
+    }
+    return labels.get(action, "수동 발행 기록")
 
 
 def _render_console_scheduler_page(
@@ -1295,7 +1534,7 @@ def _build_console_nav_items(
         ),
         ConsoleNavItem(
             label="발행 작업",
-            description="읽기 전용 발행 대기열, 전달 상태, 개별 작업 타임라인을 보여줍니다.",
+            description="발행 대기열, 전달 상태, 수동 업로드 결과 기록이 가능한 개별 작업 화면을 제공합니다.",
             status="준비됨",
             href=_append_query_params(str(request.url_for("console_publish_jobs")), query_params),
             active=active_nav_key == "publish_jobs",
@@ -1662,6 +1901,59 @@ def _build_publish_job_detail(
             for log in detail.publish_logs
         ],
     }
+
+
+def _build_manual_publish_action_form_state(
+    request: Request,
+    query_params: dict[str, str],
+    detail,
+    *,
+    form_values: dict[str, str] | None,
+) -> dict[str, str | bool]:
+    job = detail.job
+    values = form_values or {}
+    is_manual_handoff = _is_manual_publish_handoff(job)
+    show_actions = is_manual_handoff and job.state is PublishJobState.SCHEDULED
+
+    if show_actions:
+        state_hint = (
+            "이 작업은 외부 플랫폼에 직접 올린 뒤 결과를 기록하는 수동 업로드 handoff입니다. "
+            "업로드가 끝나면 완료, 실패, 취소 중 하나를 선택해 상태와 로그를 함께 남기세요."
+        )
+        read_only_notice = ""
+    elif is_manual_handoff:
+        state_hint = (
+            "이 수동 업로드 handoff는 이미 종료 상태입니다. 아래 타임라인에서 최종 결과와 남겨진 메모를 확인할 수 있습니다."
+        )
+        read_only_notice = (
+            "이 작업은 이미 종료되어 추가 브라우저 액션을 숨깁니다. 다시 게시가 필요하면 검토 흐름에서 새 handoff를 시작하세요."
+        )
+    else:
+        state_hint = (
+            "이 작업은 수동 업로드 handoff가 아니라 현재 화면에서는 결과 기록 폼을 제공하지 않습니다."
+        )
+        read_only_notice = (
+            "현재 발행 작업은 수동 전달 기록 대상이 아닙니다. 스케줄러나 기존 발행 타임라인을 통해 상태를 확인하세요."
+        )
+
+    return {
+        "action_href": _append_query_params(
+            str(request.url_for("console_publish_job_detail_action", publish_job_id=job.id)),
+            query_params,
+        ),
+        "operator": values.get("operator", ""),
+        "external_post_id": values.get("external_post_id", ""),
+        "error_message": values.get("error_message", ""),
+        "cancel_reason": values.get("cancel_reason", ""),
+        "show_manual_publish_actions": show_actions,
+        "state_hint": state_hint,
+        "read_only_notice": read_only_notice,
+        "action_title": f"{_humanize_label(job.channel)} 수동 발행 기록",
+    }
+
+
+def _is_manual_publish_handoff(job) -> bool:
+    return job.channel in _MANUAL_UPLOAD_CHANNELS and job.scheduled_for is None
 
 
 def _build_publish_job_log_row(log) -> dict[str, str]:

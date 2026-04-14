@@ -1359,6 +1359,172 @@ def test_publish_job_detail_endpoint_returns_manual_publish_completion_timeline(
     }
 
 
+def test_manual_publish_complete_endpoint_records_manual_handoff_outcome(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/publish-jobs/{approval.publish_job_id}/manual/complete",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"operator": "publisher-a", "external_post_id": "linkedin-post-456"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "publish_job_id": approval.publish_job_id,
+        "channel": "linkedin",
+        "operator": "publisher-a",
+        "previous_state": "scheduled",
+        "publish_job_state": "published",
+        "external_post_id": "linkedin-post-456",
+        "last_error": None,
+        "published_at": payload["published_at"],
+    }
+    assert payload["published_at"] is not None
+
+
+def test_manual_publish_fail_endpoint_records_manual_handoff_failure(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/publish-jobs/{approval.publish_job_id}/manual/fail",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"operator": "publisher-b", "error_message": "upload window expired"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "publish_job_id": approval.publish_job_id,
+        "channel": "threads",
+        "operator": "publisher-b",
+        "previous_state": "scheduled",
+        "publish_job_state": "failed",
+        "external_post_id": None,
+        "last_error": "upload window expired",
+        "published_at": None,
+    }
+
+
+def test_manual_publish_cancel_endpoint_records_manual_handoff_cancellation(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/publish-jobs/{approval.publish_job_id}/manual/cancel",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"operator": "publisher-c", "reason": "campaign paused"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "publish_job_id": approval.publish_job_id,
+        "channel": "linkedin",
+        "operator": "publisher-c",
+        "previous_state": "scheduled",
+        "publish_job_state": "cancelled",
+        "external_post_id": None,
+        "last_error": None,
+        "published_at": None,
+    }
+
+
+def test_manual_publish_complete_endpoint_returns_conflict_for_closed_handoff(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    complete_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-a",
+        external_post_id="linkedin-post-789",
+        session_factory=session_factory,
+    )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/publish-jobs/{approval.publish_job_id}/manual/complete",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"operator": "publisher-a", "external_post_id": "linkedin-post-789"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "manual_publish_state_conflict"
+
+
 def test_review_schedule_endpoint_returns_conflict_for_duplicate_job(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
