@@ -5,22 +5,7 @@ accounts:
       - ai_tools_primary
     prompt_profile: ai_tools_default
     landing:
-      fallback_url: https://odtoolbase.com/guides
-      rules:
-        - when_tags_any:
-            - research
-            - workflow
-            - workflows
-            - content
-          url: https://odtoolbase.com/guides/ai-research-stack-content-pipelines
-        - when_tags_any:
-            - agents
-            - automation
-          url: https://odtoolbase.com/guides/ai-agent-workflows-small-teams
-      validation:
-        require_live_url: true
-        allowed_url_prefixes:
-          - https://odtoolbase.com/guides
+      strategy: source
     matching:
       include_keywords:
         - ai
@@ -52,6 +37,22 @@ accounts:
           max_chars: 280
         publisher:
           credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+      linkedin:
+        schedule:
+          cron: "0 10 * * *"
+        render:
+          max_chars: 3000
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 7
+      threads:
+        schedule:
+          cron: "0 11 * * *"
+        render:
+          max_chars: 10000
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 7
 
   seo_tools_daily:
     topic: "SEO tools and search optimization"
@@ -59,12 +60,7 @@ accounts:
       - seo_tools_primary
     prompt_profile: seo_tools_default
     landing:
-      fallback_url: https://odtoolbase.com/tools
-      rules: []
-      validation:
-        require_live_url: true
-        allowed_url_prefixes:
-          - https://odtoolbase.com/tools
+      strategy: source
     matching:
       include_keywords:
         - seo
@@ -90,3 +86,19 @@ accounts:
           max_chars: 280
         publisher:
           credential_ref: X_SEO_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+      linkedin:
+        schedule:
+          cron: "0 12 * * *"
+        render:
+          max_chars: 3000
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 7
+      threads:
+        schedule:
+          cron: "0 13 * * *"
+        render:
+          max_chars: 10000
+        validation:
+          max_links: 1
+          recent_duplicate_window_days: 7

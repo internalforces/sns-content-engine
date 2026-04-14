@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import Annotated, Literal, Mapping
 
 from apscheduler.triggers.cron import CronTrigger
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 from app.domain.extraction_selectors import normalize_extraction_selector
 from app.domain.source_deduplication import normalize_title_text
@@ -116,9 +116,18 @@ class LandingRuleConfig(FrozenConfigModel):
 class LandingConfig(FrozenConfigModel):
     """Landing resolution settings for an account."""
 
-    fallback_url: HttpUrl
+    strategy: Literal["static", "source"] = "static"
+    fallback_url: HttpUrl | None = None
     rules: tuple[LandingRuleConfig, ...] = Field(default_factory=tuple)
     validation: "LandingValidationConfig" = Field(default_factory=lambda: LandingValidationConfig())
+
+    @model_validator(mode="after")
+    def validate_strategy_settings(self) -> "LandingConfig":
+        if self.strategy == "static" and self.fallback_url is None:
+            raise ValueError("fallback_url is required when landing.strategy is 'static'")
+        if self.strategy == "source" and self.rules:
+            raise ValueError("landing rules are not supported when landing.strategy is 'source'")
+        return self
 
 
 class LandingValidationConfig(FrozenConfigModel):

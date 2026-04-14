@@ -27,22 +27,20 @@ def test_registry_loads_sample_config_directory() -> None:
 
     ai_account = registry.get_account("ai_tools_daily")
     ai_channel = ai_account.channels["x"]
+    ai_linkedin_channel = ai_account.channels["linkedin"]
+    ai_threads_channel = ai_account.channels["threads"]
     seo_account = registry.get_account("seo_tools_daily")
+    seo_linkedin_channel = seo_account.channels["linkedin"]
+    seo_threads_channel = seo_account.channels["threads"]
 
     assert ai_account.topic == "AI workflows and guides"
     assert ai_account.prompt_profile == "ai_tools_default"
     assert list(registry.accounts) == ["ai_tools_daily", "seo_tools_daily"]
-    assert str(ai_account.landing.fallback_url) == "https://odtoolbase.com/guides"
-    assert str(ai_account.landing.rules[0].url) == (
-        "https://odtoolbase.com/guides/ai-research-stack-content-pipelines"
-    )
-    assert str(ai_account.landing.rules[1].url) == (
-        "https://odtoolbase.com/guides/ai-agent-workflows-small-teams"
-    )
-    assert ai_account.landing.validation.require_live_url is True
-    assert tuple(str(prefix) for prefix in ai_account.landing.validation.allowed_url_prefixes) == (
-        "https://odtoolbase.com/guides",
-    )
+    assert ai_account.landing.strategy == "source"
+    assert ai_account.landing.fallback_url is None
+    assert ai_account.landing.rules == ()
+    assert ai_account.landing.validation.require_live_url is False
+    assert ai_account.landing.validation.allowed_url_prefixes == ()
     assert ai_account.matching.include_keywords == ("ai", "agent", "workflow", "automation", "guide")
     assert ai_account.matching.exclude_keywords == (
         "seo",
@@ -61,11 +59,23 @@ def test_registry_loads_sample_config_directory() -> None:
     assert ai_channel.validation.recent_duplicate_window_days == 7
     assert ai_channel.publisher is not None
     assert ai_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
+    assert ai_linkedin_channel.render.max_chars == 3000
+    assert ai_linkedin_channel.validation.recent_duplicate_window_days == 7
+    assert ai_linkedin_channel.publisher is None
+    assert ai_threads_channel.render.max_chars == 10000
+    assert ai_threads_channel.validation.recent_duplicate_window_days == 7
+    assert ai_threads_channel.publisher is None
 
     assert seo_account.topic == "SEO tools and search optimization"
     assert seo_account.prompt_profile == "seo_tools_default"
-    assert str(seo_account.landing.fallback_url) == "https://odtoolbase.com/tools"
-    assert seo_account.landing.validation.require_live_url is True
+    assert seo_account.landing.strategy == "source"
+    assert seo_account.landing.fallback_url is None
+    assert seo_account.landing.rules == ()
+    assert seo_account.landing.validation.require_live_url is False
+    assert seo_linkedin_channel.render.max_chars == 3000
+    assert seo_linkedin_channel.publisher is None
+    assert seo_threads_channel.render.max_chars == 10000
+    assert seo_threads_channel.publisher is None
 
     assert registry.get_prompt_profile("ai_tools_default").system_template.startswith(
         "You are the growth editor"
@@ -90,6 +100,70 @@ def test_registry_loads_sample_config_directory() -> None:
         "seo_tools_rss",
         "seo_tools_manual",
     )
+
+
+def test_source_landing_strategy_allows_missing_fallback_url() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
+
+    account = registry.get_account("ai_tools_daily")
+
+    assert account.landing.strategy == "source"
+    assert account.landing.fallback_url is None
+
+
+def test_source_landing_strategy_rejects_static_rules(tmp_path: Path) -> None:
+    accounts_yaml = dedent(
+        """
+        accounts:
+          source_linked_account:
+            topic: "AI summaries"
+            source_sets:
+              - primary
+            prompt_profile: ai_tools_default
+            landing:
+              strategy: source
+              rules:
+                - when_tags_any:
+                    - ai
+                  url: https://example.com/should-not-be-used
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """
+    )
+    prompts_yaml = dedent(
+        """
+        profiles:
+          ai_tools_default:
+            system_template: |
+              Hello
+            user_template: |
+              World {{ landing_url }}
+        """
+    )
+    sources_yaml = dedent(
+        """
+        sources:
+          source:
+            type: rss
+            url: https://example.com/feed.xml
+        source_sets:
+          primary:
+            sources:
+              - source
+        """
+    )
+    (tmp_path / "accounts.yaml").write_text(accounts_yaml, encoding="utf-8")
+    (tmp_path / "prompts.yaml").write_text(prompts_yaml, encoding="utf-8")
+    (tmp_path / "sources.yaml").write_text(sources_yaml, encoding="utf-8")
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigRegistry.from_directory(tmp_path)
+
+    assert "landing rules are not supported when landing.strategy is 'source'" in str(exc_info.value)
 
 
 def test_registry_loads_all_domain_example_config_directory() -> None:

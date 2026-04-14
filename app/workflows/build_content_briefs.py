@@ -9,6 +9,7 @@ from pathlib import Path
 from app.config import AccountConfig, ConfigRegistry
 from app.domain import (
     ContentBriefData,
+    LandingDecision,
     SourceItemCandidate,
     extract_source_tags,
     select_top_account_candidates,
@@ -133,7 +134,11 @@ def build_content_briefs(
                 for match_candidate in top_matches:
                     account_key = match_candidate.account_key
                     account = account_pool[account_key]
-                    landing_decision = LandingResolver(account.landing).resolve(source_tags)
+                    landing_decision = _resolve_landing_decision(
+                        source_item,
+                        account=account,
+                        source_tags=source_tags,
+                    )
                     brief_data = builder.build(
                         source_item=source_item,
                         account_id=account_key,
@@ -212,3 +217,24 @@ def _content_brief_data_to_model(brief: ContentBriefData) -> ContentBrief:
 
 def _resolve_bound_engine(session_factory):
     return getattr(session_factory, "kw", {}).get("bind")
+
+
+def _resolve_landing_decision(
+    source_item: SourceItem,
+    *,
+    account: AccountConfig,
+    source_tags: tuple[str, ...],
+) -> LandingDecision:
+    if account.landing.strategy == "source":
+        enrichment = source_item.article_enrichment
+        source_link = (
+            enrichment.article_url
+            if enrichment is not None and enrichment.article_url
+            else source_item.source_url
+        )
+        return LandingDecision(
+            landing_url=source_link,
+            used_fallback=False,
+        )
+
+    return LandingResolver(account.landing).resolve(source_tags)

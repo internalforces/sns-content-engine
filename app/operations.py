@@ -431,11 +431,12 @@ def _collect_placeholder_url_fields(registry: ConfigRegistry) -> tuple[str, ...]
     placeholder_fields: list[str] = []
 
     for account_key, account in registry.accounts.items():
-        _append_placeholder_url_field(
-            placeholder_fields,
-            field_path=f"accounts.{account_key}.landing.fallback_url",
-            url_value=str(account.landing.fallback_url),
-        )
+        if account.landing.fallback_url is not None:
+            _append_placeholder_url_field(
+                placeholder_fields,
+                field_path=f"accounts.{account_key}.landing.fallback_url",
+                url_value=str(account.landing.fallback_url),
+            )
         for index, rule in enumerate(account.landing.rules):
             _append_placeholder_url_field(
                 placeholder_fields,
