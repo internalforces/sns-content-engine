@@ -468,6 +468,73 @@ def test_build_content_briefs_filters_accounts_by_source_set_membership(tmp_path
     assert [brief.account_key for brief in stored_briefs] == ["connected_daily"]
 
 
+def test_build_content_briefs_uses_source_article_link_when_account_landing_strategy_is_source(
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              strategy: source
+            matching:
+              include_keywords:
+                - automation
+              source_tags:
+                - automation
+              strict_topic_guard: true
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+        """,
+    )
+    with session_scope(session_factory) as session:
+        source_item = SourceItemRepository(session).add(
+            SourceItem(
+                source_key="ai_tools_rss",
+                external_id="entry-source-link",
+                source_url="https://example.com/posts/original",
+                title="Automation guide for niche content teams",
+                summary="A practical tutorial for repeatable review.",
+                raw_payload={"tags": ["automation", "ai"]},
+                state=SourceItemState.INGESTED,
+            )
+        )
+        ArticleEnrichmentRepository(session).add(
+            ArticleEnrichment(
+                source_item_id=source_item.id,
+                source_name="Example Feed",
+                article_url="https://example.com/posts/canonical",
+                published_at=None,
+                discovered_at=source_item.created_at,
+                regenerated_summary="Canonical article summary.",
+                regenerated_key_points=["Point one", "Point two"],
+                html_fetch_status=StageExecutionStatus.SUCCEEDED,
+                article_extract_status=StageExecutionStatus.SUCCEEDED,
+                summary_regenerate_status=StageExecutionStatus.SUCCEEDED,
+                last_stage=PipelineStage.SUMMARY_REGENERATE,
+            )
+        )
+
+    result = build_content_briefs(tmp_path, session_factory=session_factory)
+
+    assert result.created_count == 1
+
+    with session_scope(session_factory) as session:
+        stored_brief = ContentBriefRepository(session).list()[0]
+
+    assert stored_brief.landing_url == "https://example.com/posts/canonical"
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'briefs.db'}")
     create_all_tables(engine)

@@ -61,7 +61,7 @@ For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`,
 
 ## Example Config Sets
 
-- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`.
+- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` and source-linked sharing as the default link strategy instead of routing to a house destination site.
 - `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 

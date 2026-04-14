@@ -29,6 +29,8 @@ class LandingResolver:
     def __init__(self, landing_config: LandingConfig | None) -> None:
         if landing_config is None:
             raise LandingResolutionError("landing configuration is required")
+        if landing_config.fallback_url is None:
+            raise LandingResolutionError("landing fallback_url is required for static resolution")
         self._fallback_url = str(landing_config.fallback_url)
         self._rules = tuple(_compile_rule(rule) for rule in landing_config.rules)
 
