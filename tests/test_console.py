@@ -571,6 +571,76 @@ def test_review_detail_shows_manual_upload_guidance_for_approved_linkedin_draft(
     assert "8. URL" in response.text
 
 
+def test_console_manual_handoff_flow_links_review_and_publish_job_surfaces(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="linkedin",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    params = {"config_dir": str(tmp_path), "database_url": database_url}
+    client = TestClient(create_app())
+
+    approve_response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=database_url,
+        config_dir=tmp_path,
+        action="approve",
+        reviewer="editor-a",
+    )
+
+    assert approve_response.status_code == 200
+    assert "승인 완료" in approve_response.text
+    assert "LinkedIn 수동 업로드" in approve_response.text
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    publish_job_id = jobs[0].id
+    assert f"발행 작업 {publish_job_id}" in approve_response.text
+    assert f"/console/publish-jobs/{publish_job_id}" in approve_response.text
+
+    publish_job_detail_response = client.get(
+        f"/console/publish-jobs/{publish_job_id}",
+        params=params,
+    )
+
+    assert publish_job_detail_response.status_code == 200
+    assert "LinkedIn 수동 발행 기록" in publish_job_detail_response.text
+    assert "발행 완료 기록" in publish_job_detail_response.text
+    assert f"/console/reviews/{draft.id}" in publish_job_detail_response.text
+
+    complete_response = _post_console_publish_job_action(
+        client,
+        publish_job_id=publish_job_id,
+        database_url=database_url,
+        action="complete",
+        operator="publisher-a",
+        external_post_id="linkedin-post-999",
+    )
+
+    assert complete_response.status_code == 200
+    assert "발행 완료 기록 완료" in complete_response.text
+    assert "linkedin-post-999" in complete_response.text
+
+    publish_jobs_response = client.get("/console/publish-jobs", params=params)
+    assert publish_jobs_response.status_code == 200
+    assert f"/console/publish-jobs/{publish_job_id}" in publish_jobs_response.text
+    assert f"/console/reviews/{draft.id}" in publish_jobs_response.text
+    assert "발행 완료" in publish_jobs_response.text
+    assert "외부 게시물 linkedin-post-999" in publish_jobs_response.text
+
+
 def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     with session_scope(session_factory) as session:

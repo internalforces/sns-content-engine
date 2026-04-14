@@ -8,12 +8,12 @@ This repository bootstraps the MVP foundation for a shared content engine that c
 
 The initial MVP is intentionally limited to:
 
-- X (Twitter) publishing only
+- X live publishing plus operator-recorded manual LinkedIn/Threads handoff tracking
 - English-language operation
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, source ingestion, brief generation, draft generation, a CLI-first manual review queue, scheduled publish jobs, an X publisher adapter, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
+The current milestone includes configuration loading, source ingestion, brief generation, multichannel draft generation, a CLI-first manual review queue, scheduled publish jobs for X, manual publish handoff tracking for LinkedIn and Threads, a live X publisher adapter, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
 
 ## Repository Structure
 
@@ -74,9 +74,9 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 - [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
-- [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, publish-job visibility, and scheduler-safe HTTP actions.
+- [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, manual publish handoff actions, publish-job visibility, and scheduler-safe HTTP actions.
 
-The console follows the same safety model as the CLI and API: drafts still require manual review, and browser `publish-due` stays dry-run unless you explicitly opt into one live run.
+The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, and LinkedIn or Threads publishing remains an operator-driven manual upload flow with explicit outcome recording.
 
 ## CLI Usage
 
@@ -130,9 +130,9 @@ The `ingest` command runs discovery, applies canonical URL / title / fingerprint
 
 The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores X-ready draft variants for manual review. When `<config-dir>/providers.yaml` is present, it uses the configured `draft_generate` route chain and model overrides at runtime. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
+The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for the configured `x`, `linkedin`, and `threads` accounts. When `<config-dir>/providers.yaml` is present, it uses the configured `draft_generate` route chain and model overrides at runtime. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
 
-The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history.
+The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving LinkedIn or Threads drafts creates an explicit manual publish handoff job automatically; X keeps the existing schedule-driven publish flow.
 
 The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, uses the same draft-provider resolution path as `generate-drafts`, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
 
@@ -140,7 +140,7 @@ The `history runs` and `history failures` commands expose operator-readable summ
 
 The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
 
-The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable.
+The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable. Only scheduled jobs enter the due queue, so manual LinkedIn and Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
 
 Example channel config:
 
@@ -205,6 +205,8 @@ Operational notes:
 - If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
 - Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
+- Approving a LinkedIn or Threads draft creates a `scheduled_for = null` publish job that represents a manual upload handoff. Complete, fail, or cancel that handoff from the publish-job detail page in the console or through the `/publish-jobs/{id}/manual/*` API routes.
+- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for manual-only channels so the scheduler queue stays limited to due X jobs.
 
 Suggested dry-run and smoke checks:
 
