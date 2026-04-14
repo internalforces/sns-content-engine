@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
+import hashlib
+import hmac
 import json
+import secrets
+import time
 from typing import Any, Protocol
 from urllib import error, request
+from urllib.parse import quote
 
 from app.connectors.publishers.base import PublishRequest, PublishResult
 
@@ -23,8 +29,17 @@ class XHttpResponse:
 class XHttpClient(Protocol):
     """HTTP boundary for X API requests."""
 
-    def create_post(self, *, access_token: str, text: str) -> XHttpResponse:
+    def create_post(self, *, authorization_header: str, text: str) -> XHttpResponse:
         """Create a text-only X post for the authenticated user."""
+
+
+@dataclass(frozen=True, slots=True)
+class XOAuth1Credentials:
+    """Credential set for X OAuth 1.0a user-context signing."""
+
+    consumer_key: str
+    consumer_secret: str
+    access_token_secret: str
 
 
 class XPublisher:
@@ -36,6 +51,9 @@ class XPublisher:
         self,
         *,
         access_token: str,
+        consumer_key: str | None = None,
+        consumer_secret: str | None = None,
+        access_token_secret: str | None = None,
         credential_ref: str | None = None,
         http_client: XHttpClient | None = None,
     ) -> None:
@@ -43,14 +61,23 @@ class XPublisher:
         if not normalized_access_token:
             raise ValueError("access_token must not be empty")
 
+        oauth1_credentials = _build_oauth1_credentials(
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            access_token_secret=access_token_secret,
+        )
         self.credential_ref = credential_ref
         self._access_token = normalized_access_token
+        self._oauth1_credentials = oauth1_credentials
         self._http_client = http_client or _UrlLibXHttpClient()
 
     def publish(self, request: PublishRequest) -> PublishResult:
         try:
             response = self._http_client.create_post(
-                access_token=self._access_token,
+                authorization_header=_build_authorization_header(
+                    access_token=self._access_token,
+                    oauth1_credentials=self._oauth1_credentials,
+                ),
                 text=request.body,
             )
         except Exception as exc:
@@ -122,14 +149,14 @@ class _UrlLibXHttpClient:
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
         self._timeout_seconds = timeout_seconds
 
-    def create_post(self, *, access_token: str, text: str) -> XHttpResponse:
+    def create_post(self, *, authorization_header: str, text: str) -> XHttpResponse:
         payload = json.dumps({"text": text}).encode("utf-8")
         http_request = request.Request(
             _CREATE_POST_URL,
             data=payload,
             method="POST",
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": authorization_header,
                 "Content-Type": "application/json",
                 "User-Agent": "sns-content-engine/0.1.0",
             },
@@ -148,6 +175,110 @@ class _UrlLibXHttpClient:
             )
         except error.URLError as exc:
             raise RuntimeError(f"network error: {exc.reason}") from exc
+
+
+def _build_oauth1_credentials(
+    *,
+    consumer_key: str | None,
+    consumer_secret: str | None,
+    access_token_secret: str | None,
+) -> XOAuth1Credentials | None:
+    provided_values = (
+        consumer_key,
+        consumer_secret,
+        access_token_secret,
+    )
+    if not any(value is not None and value.strip() for value in provided_values):
+        return None
+    if not all(isinstance(value, str) and value.strip() for value in provided_values):
+        raise ValueError(
+            "consumer_key, consumer_secret, and access_token_secret are all required for OAuth 1.0a"
+        )
+    return XOAuth1Credentials(
+        consumer_key=consumer_key.strip(),
+        consumer_secret=consumer_secret.strip(),
+        access_token_secret=access_token_secret.strip(),
+    )
+
+
+def _build_authorization_header(
+    *,
+    access_token: str,
+    oauth1_credentials: XOAuth1Credentials | None,
+) -> str:
+    if oauth1_credentials is None:
+        return f"Bearer {access_token}"
+    return _build_oauth1_authorization_header(
+        access_token=access_token,
+        credentials=oauth1_credentials,
+    )
+
+
+def _build_oauth1_authorization_header(
+    *,
+    access_token: str,
+    credentials: XOAuth1Credentials,
+    nonce: str | None = None,
+    timestamp: int | None = None,
+) -> str:
+    oauth_params: dict[str, str] = {
+        "oauth_consumer_key": credentials.consumer_key,
+        "oauth_nonce": nonce or secrets.token_hex(16),
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp": str(timestamp if timestamp is not None else int(time.time())),
+        "oauth_token": access_token,
+        "oauth_version": "1.0",
+    }
+    signature = _build_oauth1_signature(
+        method="POST",
+        url=_CREATE_POST_URL,
+        oauth_params=oauth_params,
+        consumer_secret=credentials.consumer_secret,
+        access_token_secret=credentials.access_token_secret,
+    )
+    oauth_params["oauth_signature"] = signature
+    rendered_params = ", ".join(
+        f'{_percent_encode(key)}="{_percent_encode(value)}"'
+        for key, value in sorted(oauth_params.items())
+    )
+    return f"OAuth {rendered_params}"
+
+
+def _build_oauth1_signature(
+    *,
+    method: str,
+    url: str,
+    oauth_params: dict[str, str],
+    consumer_secret: str,
+    access_token_secret: str,
+) -> str:
+    parameter_string = "&".join(
+        f"{_percent_encode(key)}={_percent_encode(value)}"
+        for key, value in sorted(oauth_params.items())
+    )
+    base_string = "&".join(
+        (
+            _percent_encode(method.upper()),
+            _percent_encode(url),
+            _percent_encode(parameter_string),
+        )
+    )
+    signing_key = "&".join(
+        (
+            _percent_encode(consumer_secret),
+            _percent_encode(access_token_secret),
+        )
+    )
+    digest = hmac.new(
+        signing_key.encode("utf-8"),
+        base_string.encode("utf-8"),
+        hashlib.sha1,
+    ).digest()
+    return base64.b64encode(digest).decode("ascii")
+
+
+def _percent_encode(value: str) -> str:
+    return quote(value, safe="-._~")
 
 
 def _load_json_payload(raw_body: bytes) -> Any:
@@ -194,4 +325,3 @@ def _extract_error_message(payload: Any, *, default: str) -> str:
             return message.strip()
 
     return default
-

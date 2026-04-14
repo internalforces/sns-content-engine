@@ -15,8 +15,8 @@ class StubXHttpClient:
         self._response = response
         self.calls: list[tuple[str, str]] = []
 
-    def create_post(self, *, access_token: str, text: str) -> XHttpResponse:
-        self.calls.append((access_token, text))
+    def create_post(self, *, authorization_header: str, text: str) -> XHttpResponse:
+        self.calls.append((authorization_header, text))
         return self._response
 
 
@@ -40,7 +40,7 @@ def test_x_publisher_normalizes_successful_response() -> None:
     assert result.provider == "x"
     assert result.credential_ref == "X_TEST_CREDENTIALS"
     assert result.dry_run is False
-    assert client.calls == [("secret-token", "Useful AI workflows https://gilgop.cloud/ai-tools")]
+    assert client.calls == [("Bearer secret-token", "Useful AI workflows https://gilgop.cloud/ai-tools")]
 
 
 def test_x_publisher_normalizes_non_2xx_response() -> None:
@@ -106,6 +106,52 @@ def test_config_publisher_resolver_builds_x_publisher_from_env_json(tmp_path: Pa
     assert result.external_post_id == "tweet-456"
     assert result.provider == "x"
     assert result.credential_ref == "X_TEST_CREDENTIALS"
+
+
+def test_x_publisher_uses_oauth1_user_context_when_full_bundle_is_present() -> None:
+    client = StubXHttpClient(
+        XHttpResponse(
+            status_code=201,
+            payload={"data": {"id": "tweet-oauth1"}},
+        )
+    )
+    publisher = XPublisher(
+        access_token="user-access-token",
+        consumer_key="consumer-key",
+        consumer_secret="consumer-secret",
+        access_token_secret="access-token-secret",
+        credential_ref="X_TEST_CREDENTIALS",
+        http_client=client,
+    )
+
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "published"
+    assert client.calls[0][0].startswith("OAuth ")
+    assert 'oauth_consumer_key="consumer-key"' in client.calls[0][0]
+    assert 'oauth_token="user-access-token"' in client.calls[0][0]
+    assert "oauth_signature=" in client.calls[0][0]
+
+
+def test_config_publisher_resolver_reports_partial_oauth1_bundle(tmp_path: Path) -> None:
+    config_dir = _write_project_config(tmp_path)
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment={
+            "X_TEST_CREDENTIALS": (
+                '{"access_token":"user-token","consumer_key":"consumer-key"}'
+            ),
+        },
+    )
+
+    publisher = resolver.resolve(_sample_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "failed"
+    assert (
+        result.error_message
+        == "consumer_key, consumer_secret, and access_token_secret are all required for OAuth 1.0a"
+    )
 
 
 def test_config_publisher_resolver_reports_missing_env_var(tmp_path: Path) -> None:

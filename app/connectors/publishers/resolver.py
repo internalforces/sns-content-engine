@@ -117,11 +117,24 @@ class ConfigPublisherResolver:
                 ),
             )
 
-        publisher = XPublisher(
-            access_token=access_token.strip(),
-            credential_ref=credential_ref,
-            http_client=self._x_http_client,
-        )
+        consumer_key = _optional_string(bundle.get("consumer_key"))
+        consumer_secret = _optional_string(bundle.get("consumer_secret"))
+        access_token_secret = _optional_string(bundle.get("access_token_secret"))
+        try:
+            publisher = XPublisher(
+                access_token=access_token.strip(),
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                access_token_secret=access_token_secret,
+                credential_ref=credential_ref,
+                http_client=self._x_http_client,
+            )
+        except ValueError as exc:
+            return _FailurePublisher(
+                provider_name="x",
+                credential_ref=credential_ref,
+                error_message=str(exc),
+            )
         self._cache[cache_key] = publisher
         return publisher
 
@@ -153,3 +166,10 @@ def _provider_name_for_channel(channel: object) -> str:
     if isinstance(channel, str) and channel.strip():
         return channel.strip()
     return "unknown"
+
+
+def _optional_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
