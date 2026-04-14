@@ -10,6 +10,7 @@ from pathlib import Path
 from app.connectors.llm import FakeLLMProvider
 from app.domain import SourceConnectorResult, SourceItemCandidate
 from app.storage import (
+    ContentBriefRepository,
     DraftVariantRepository,
     PipelineRunRepository,
     PipelineRunStageRepository,
@@ -160,6 +161,113 @@ def test_run_local_pipeline_records_run_history_and_generates_pending_review_dra
     assert pipeline_runs[0].workflow_name == "run_local_finance"
     assert len(stage_rows) >= 5
     assert len(source_items) == 1
+
+
+def test_run_local_pipeline_uses_operator_curated_summary_and_original_url_without_fetch(
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "ai_tools_manual.csv").write_text(
+        (
+            "external_id,url,title,summary,published_at,tags\n"
+            "ai-curated-1,https://example.com/original/ai-agent-workflows,"
+            "OpenAI agent workflows for small teams,"
+            "\"Operator-prepared LLM summary for the original article.\","
+            "2026-03-18T09:00:00+00:00,"
+            "\"ai,automation,workflow\"\n"
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "accounts.yaml").write_text(
+        """
+accounts:
+  ai_tools_daily:
+    topic: "AI workflows and guides"
+    source_sets:
+      - ai_tools_primary
+    prompt_profile: ai_tools_default
+    landing:
+      strategy: source
+    matching:
+      include_keywords:
+        - ai
+        - agent
+        - workflow
+      source_tags:
+        - ai
+        - automation
+        - workflow
+      strict_topic_guard: true
+    channels:
+      x:
+        schedule:
+          cron: "0 9 * * *"
+        render:
+          max_chars: 280
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "prompts.yaml").write_text(
+        """
+profiles:
+  ai_tools_default:
+    system_template: |
+      You are the editor for {{ account_key }}.
+    user_template: |
+      Write about {{ title }} using {{ article_summary or summary }} and include {{ landing_url }}.
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sources.yaml").write_text(
+        """
+sources:
+  ai_tools_manual:
+    type: manual_csv
+    path: data/ai_tools_manual.csv
+    policy_mode: reusable
+    allow_full_text_fetch: false
+    allow_llm_rewrite: false
+    require_attribution: true
+
+source_sets:
+  ai_tools_primary:
+    sources:
+      - ai_tools_manual
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = run_local_pipeline(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+        now=datetime(2026, 3, 18, 10, 0, tzinfo=timezone.utc),
+    )
+
+    assert result.status is PipelineRunStatus.SUCCEEDED
+    assert result.ingest_discovered_count == 1
+    assert result.ingest_saved_count == 1
+    assert result.enrichment_enriched_count == 0
+    assert result.brief_created_count == 1
+    assert result.draft_created_variant_count == 3
+
+    with session_scope(session_factory) as session:
+        source_items = SourceItemRepository(session).list()
+        briefs = ContentBriefRepository(session).list()
+        drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(briefs[0].id, "x")
+
+    assert len(source_items) == 1
+    assert source_items[0].source_url == "https://example.com/original/ai-agent-workflows"
+    assert len(briefs) == 1
+    assert briefs[0].summary == "Operator-prepared LLM summary for the original article."
+    assert briefs[0].landing_url == "https://example.com/original/ai-agent-workflows"
+    assert len(drafts) == 3
+    assert all("https://example.com/original/ai-agent-workflows" in draft.body for draft in drafts)
+    assert all("odtoolbase.com" not in draft.body for draft in drafts)
 
 
 def test_run_local_pipeline_honors_providers_yaml_for_draft_generation(

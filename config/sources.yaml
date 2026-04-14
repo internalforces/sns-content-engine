@@ -1,33 +1,29 @@
 sources:
-  ai_tools_rss:
-    type: sitemap
-    url: https://odtoolbase.com/sitemap.xml
-    include_url_prefixes:
-      - https://odtoolbase.com/guides
-    duplicate_window_days: 14
-
   ai_tools_manual:
     type: manual_csv
     path: ../data/ai_tools_manual.csv
-
-  seo_tools_rss:
-    type: sitemap
-    url: https://odtoolbase.com/sitemap.xml
-    include_url_prefixes:
-      - https://odtoolbase.com/seo
+    policy_mode: reusable
+    allow_full_text_fetch: false
+    allow_llm_rewrite: false
+    require_attribution: true
     duplicate_window_days: 14
+    notes: "Operator-curated AI summaries paired with original source URLs."
 
   seo_tools_manual:
     type: manual_csv
     path: ../data/seo_tools_manual.csv
+    policy_mode: reusable
+    allow_full_text_fetch: false
+    allow_llm_rewrite: false
+    require_attribution: true
+    duplicate_window_days: 14
+    notes: "Operator-curated SEO summaries paired with original source URLs."
 
 source_sets:
   ai_tools_primary:
     sources:
-      - ai_tools_rss
       - ai_tools_manual
 
   seo_tools_primary:
     sources:
-      - seo_tools_rss
       - seo_tools_manual
