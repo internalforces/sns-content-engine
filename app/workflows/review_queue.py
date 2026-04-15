@@ -11,6 +11,7 @@ from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 
 from app.config import ConfigRegistry
+from app.connectors.publishers import ConfigPublisherResolver
 from app.services import DraftValidator
 from app.storage import (
     DraftVariant,
@@ -64,6 +65,8 @@ class ManualPublishStateError(ManualPublishError):
 
 
 _MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin", "threads"})
+_ALWAYS_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin"})
+_CONFIG_GATED_LIVE_PUBLISH_CHANNELS = frozenset({"threads"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,12 +404,16 @@ def resolve_reviewer_identity(reviewer: str | None = None) -> str:
 
 def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.PENDING_REVIEW, action="approve")
+    use_manual_publish_handoff = _draft_uses_manual_publish_handoff(
+        draft,
+        config_dir=config_dir,
+    )
     _validate_draft_for_review(
         session,
         draft,
         config_dir=config_dir,
         validation_label="approval",
-        enforce_policy_requirements=draft.channel in _MANUAL_PUBLISH_CHANNELS,
+        enforce_policy_requirements=use_manual_publish_handoff,
     )
 
     drafts = DraftVariantRepository(session)
@@ -415,7 +422,7 @@ def _approve_draft(session, draft, reviewer: str, *, config_dir: Path | str) -> 
     drafts.transition_state(draft, DraftVariantState.APPROVED)
     publish_job = (
         _create_manual_publish_handoff(session, draft)
-        if draft.channel in _MANUAL_PUBLISH_CHANNELS
+        if use_manual_publish_handoff
         else None
     )
     action = ReviewActionRepository(session).record(
@@ -504,7 +511,7 @@ def _schedule_draft(
     scheduled_for: datetime,
 ) -> ReviewDraftResult:
     _require_draft_state(draft.id, draft.state, DraftVariantState.APPROVED, action="schedule")
-    if draft.channel in _MANUAL_PUBLISH_CHANNELS:
+    if _draft_uses_manual_publish_handoff(draft, config_dir=config_dir):
         raise DraftScheduleError(
             f"draft {draft.id} channel {draft.channel!r} uses manual publish handoff instead of scheduled publishing"
         )
@@ -591,6 +598,23 @@ def _create_manual_publish_handoff(session, draft) -> PublishJob:
         },
     )
     return publish_job
+
+
+def _draft_uses_manual_publish_handoff(draft, *, config_dir: Path | str) -> bool:
+    if draft.channel in _ALWAYS_MANUAL_PUBLISH_CHANNELS:
+        return True
+    if draft.channel not in _CONFIG_GATED_LIVE_PUBLISH_CHANNELS:
+        return False
+
+    content_brief = draft.content_brief
+    if content_brief is None:
+        raise ReviewQueueError(f"draft {draft.id} is missing its content brief")
+
+    resolver = ConfigPublisherResolver(config_dir=config_dir)
+    return not resolver.has_live_publisher(
+        account_key=content_brief.account_key,
+        channel=draft.channel,
+    )
 
 
 def _complete_manual_publish_handoff(

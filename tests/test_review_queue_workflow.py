@@ -65,6 +65,12 @@ def config_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture
+def threads_live_config_dir(tmp_path: Path) -> Path:
+    _write_project_config(tmp_path, include_threads_publisher=True)
+    return tmp_path
+
+
 def test_list_pending_review_drafts_returns_only_pending(session_factory) -> None:
     with session_scope(session_factory) as session:
         pending_draft = _create_draft_variant(session)
@@ -217,6 +223,73 @@ def test_approve_draft_creates_manual_publish_handoff_for_linkedin(session_facto
     assert len(actions) == 1
     assert actions[0].action_type is ReviewActionType.APPROVE
     assert actions[0].publish_job_id == result.publish_job_id
+
+
+def test_approve_draft_for_threads_falls_back_to_manual_handoff_when_live_publisher_is_unavailable(
+    session_factory,
+    threads_live_config_dir,
+) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="threads")
+        draft_id = draft.id
+
+    result = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=threads_live_config_dir,
+        session_factory=session_factory,
+    )
+
+    assert result.action_type is ReviewActionType.APPROVE
+    assert result.publish_job_id is not None
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+        logs = PublishLogRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].id == result.publish_job_id
+    assert jobs[0].channel == "threads"
+    assert jobs[0].scheduled_for is None
+    assert [log.event_type for log in logs] == ["manual_handoff_created"]
+
+
+def test_approve_draft_for_threads_skips_manual_handoff_when_live_publisher_is_configured(
+    session_factory,
+    threads_live_config_dir,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="threads")
+        draft_id = draft.id
+
+    result = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=threads_live_config_dir,
+        session_factory=session_factory,
+    )
+
+    assert result.action_type is ReviewActionType.APPROVE
+    assert result.publish_job_id is None
+
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft_id)
+        jobs = PublishJobRepository(session).list()
+        actions = ReviewActionRepository(session).list_for_draft(draft_id)
+        logs = PublishLogRepository(session).list()
+
+    assert stored_draft is not None
+    assert stored_draft.state is DraftVariantState.APPROVED
+    assert jobs == []
+    assert logs == []
+    assert len(actions) == 1
+    assert actions[0].action_type is ReviewActionType.APPROVE
+    assert actions[0].publish_job_id is None
 
 
 def test_complete_manual_publish_handoff_marks_job_published_and_records_log(
@@ -592,7 +665,28 @@ def test_schedule_draft_rejects_missing_review_provenance(session_factory, confi
         )
 
 
-def test_schedule_draft_rejects_manual_publish_channels(session_factory, config_dir) -> None:
+def test_schedule_draft_rejects_linkedin_manual_publish_channel(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="linkedin",
+            draft_state=DraftVariantState.APPROVED,
+        )
+
+    with pytest.raises(DraftScheduleError, match="manual publish handoff"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
+def test_schedule_draft_rejects_threads_when_live_publisher_is_unavailable(
+    session_factory,
+    threads_live_config_dir,
+) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(
             session,
@@ -605,9 +699,51 @@ def test_schedule_draft_rejects_manual_publish_channels(session_factory, config_
             draft.id,
             scheduled_for="2026-03-18T09:00:00+09:00",
             reviewer="scheduler-a",
-            config_dir=config_dir,
+            config_dir=threads_live_config_dir,
             session_factory=session_factory,
         )
+
+
+def test_schedule_draft_accepts_threads_when_live_publisher_is_configured(
+    session_factory,
+    threads_live_config_dir,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            draft_state=DraftVariantState.APPROVED,
+        )
+        draft_id = draft.id
+
+    result = schedule_draft(
+        draft_id,
+        scheduled_for="2026-03-18T09:00:00+09:00",
+        reviewer="scheduler-a",
+        config_dir=threads_live_config_dir,
+        session_factory=session_factory,
+    )
+
+    assert result.action_type is ReviewActionType.SCHEDULE
+    assert result.publish_job_id is not None
+    assert result.scheduled_for == datetime(2026, 3, 18, 0, 0, tzinfo=timezone.utc)
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+        actions = ReviewActionRepository(session).list_for_draft(draft_id)
+
+    assert len(jobs) == 1
+    assert jobs[0].draft_variant_id == draft_id
+    assert jobs[0].channel == "threads"
+    assert jobs[0].scheduled_for == datetime(2026, 3, 18, 0, 0, tzinfo=timezone.utc)
+    assert len(actions) == 1
+    assert actions[0].publish_job_id == jobs[0].id
+    assert actions[0].scheduled_for == datetime(2026, 3, 18, 0, 0, tzinfo=timezone.utc)
 
 
 def test_approve_draft_rejects_invalid_body_against_config_rules(session_factory, config_dir) -> None:
@@ -787,10 +923,17 @@ def _create_draft_variant(
     return draft
 
 
-def _write_project_config(path: Path) -> None:
+def _write_project_config(path: Path, *, include_threads_publisher: bool = False) -> None:
+    threads_publisher_block = ""
+    if include_threads_publisher:
+        threads_publisher_block = """
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+        """
+
     _write_file(
         path / "accounts.yaml",
-        """
+        f"""
         accounts:
           ai_tools_daily:
             topic: "AI tools and workflows"
@@ -836,7 +979,7 @@ def _write_project_config(path: Path) -> None:
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
-        """,
+{threads_publisher_block}        """,
     )
     _write_file(
         path / "prompts.yaml",
