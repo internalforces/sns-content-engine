@@ -11,7 +11,12 @@ import pytest
 
 import app.scheduler.runtime as runtime_module
 from app.config import ScheduleConfig
-from app.connectors.publishers import FakePublisher, PublishResult
+from app.connectors.publishers import (
+    FakePublisher,
+    PublishResult,
+    ThreadsHttpResponse,
+    ThreadsPublisher,
+)
 import app.scheduler.jobs as scheduler_jobs_module
 from app.scheduler import (
     PublishExecutionResult,
@@ -588,6 +593,102 @@ def test_publish_due_jobs_records_normalized_failed_publish_results(session_fact
         "provider": "x",
         "credential_ref": "X_TEST_CREDENTIALS",
         "retry_policy": "manual_reschedule",
+    }
+
+
+def test_publish_due_jobs_records_threads_provider_payload_from_publisher_resolver(session_factory) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            draft_state=DraftVariantState.APPROVED,
+        )
+        job = PublishJobRepository(session).add(
+            PublishJob(
+                draft_variant=draft,
+                channel="threads",
+                idempotency_key="threads-resolver-job",
+                scheduled_for=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+            )
+        )
+        job_id = job.id
+
+    class StubThreadsHttpClient:
+        def create_container(
+            self,
+            *,
+            access_token: str,
+            threads_user_id: str,
+            text: str,
+        ) -> ThreadsHttpResponse:
+            assert access_token == "threads-user-token"
+            assert threads_user_id == "threads-user-1"
+            assert text == "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+            return ThreadsHttpResponse(
+                status_code=200,
+                payload={"id": "container-123"},
+            )
+
+        def publish_container(
+            self,
+            *,
+            access_token: str,
+            threads_user_id: str,
+            creation_id: str,
+        ) -> ThreadsHttpResponse:
+            assert access_token == "threads-user-token"
+            assert threads_user_id == "threads-user-1"
+            assert creation_id == "container-123"
+            return ThreadsHttpResponse(
+                status_code=200,
+                payload={"id": "thread-456"},
+            )
+
+    publisher = ThreadsPublisher(
+        access_token="threads-user-token",
+        threads_user_id="threads-user-1",
+        credential_ref="THREADS_TEST_CREDENTIALS",
+        http_client=StubThreadsHttpClient(),
+    )
+    resolver = _StaticPublisherResolver(publisher)
+
+    result = publish_due_jobs(
+        session_factory=session_factory,
+        publisher_resolver=resolver,
+        now=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        dry_run=False,
+    )
+
+    assert result.processed_count == 1
+    assert result.published_count == 1
+    assert resolver.resolved_job_ids == [job_id]
+
+    with session_scope(session_factory) as session:
+        stored_job = PublishJobRepository(session).get(job_id)
+        logs = PublishLogRepository(session).list_for_job(job_id)
+
+    assert stored_job is not None
+    assert stored_job.state is PublishJobState.PUBLISHED
+    assert stored_job.external_post_id == "thread-456"
+    assert logs[1].payload == {
+        "status": "published",
+        "external_post_id": "thread-456",
+        "attempt_count": 1,
+        "account_key": "ai_tools_daily",
+        "channel": "threads",
+        "provider": "threads",
+        "retry_policy": "manual_reschedule",
+        "provider_payload": {
+            "create_container": {
+                "http_status": 200,
+                "response": {"id": "container-123"},
+            },
+            "container_id": "container-123",
+            "publish_container": {
+                "http_status": 200,
+                "response": {"id": "thread-456"},
+            },
+        },
     }
 
 
