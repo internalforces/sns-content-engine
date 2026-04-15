@@ -167,6 +167,35 @@ class ConfigPublisherResolver:
         raise ValueError(f"channel {channel!r} does not support live publishing in the MVP")
 
 
+_ALWAYS_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin"})
+_CONFIG_GATED_LIVE_PUBLISH_CHANNELS = frozenset({"threads"})
+
+
+def channel_requires_manual_publish_handoff(
+    *,
+    config_dir: Path | str,
+    account_key: str,
+    channel: str,
+    environment: Mapping[str, str] | None = None,
+) -> bool:
+    """Return whether the current account/channel must stay on manual publish handoff."""
+
+    normalized_channel = channel.strip()
+    if normalized_channel in _ALWAYS_MANUAL_PUBLISH_CHANNELS:
+        return True
+    if normalized_channel not in _CONFIG_GATED_LIVE_PUBLISH_CHANNELS:
+        return False
+
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment=environment,
+    )
+    return not resolver.has_live_publisher(
+        account_key=account_key,
+        channel=normalized_channel,
+    )
+
+
 class _FailurePublisher:
     """Publisher that converts resolver issues into normalized failed results."""
 

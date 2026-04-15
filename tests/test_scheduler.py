@@ -264,6 +264,77 @@ def test_backfill_does_not_reschedule_failed_jobs(session_factory, config_dir) -
     assert jobs[0].state is PublishJobState.FAILED
 
 
+def test_backfill_skips_threads_when_live_publisher_is_unavailable(
+    session_factory,
+    tmp_path: Path,
+) -> None:
+    _write_project_config(
+        tmp_path,
+        include_threads_channel=True,
+        include_threads_publisher=True,
+    )
+    with session_scope(session_factory) as session:
+        _create_draft_variant(
+            session,
+            channel="threads",
+            draft_state=DraftVariantState.APPROVED,
+            reviewed_at=datetime(2026, 3, 18, 7, 0, tzinfo=timezone.utc),
+        )
+
+    result = backfill_publish_jobs(
+        config_dir=tmp_path,
+        session_factory=session_factory,
+        now=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+    )
+
+    assert all(outcome.channel != "threads" for outcome in result.outcomes)
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert all(job.channel != "threads" for job in jobs)
+
+
+def test_backfill_creates_threads_jobs_when_live_publisher_is_configured(
+    session_factory,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_project_config(
+        tmp_path,
+        include_threads_channel=True,
+        include_threads_publisher=True,
+    )
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    with session_scope(session_factory) as session:
+        approved_threads = _create_draft_variant(
+            session,
+            channel="threads",
+            draft_state=DraftVariantState.APPROVED,
+            reviewed_at=datetime(2026, 3, 18, 7, 0, tzinfo=timezone.utc),
+        )
+
+    result = backfill_publish_jobs(
+        config_dir=tmp_path,
+        session_factory=session_factory,
+        now=datetime(2026, 3, 18, 8, 0, tzinfo=timezone.utc),
+    )
+
+    threads_outcome = next(outcome for outcome in result.outcomes if outcome.channel == "threads")
+    assert threads_outcome.created_count == 1
+    assert threads_outcome.eligible_draft_count == 1
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    created_job = next(job for job in jobs if job.channel == "threads")
+    assert created_job.draft_variant_id == approved_threads.id
+    assert created_job.scheduled_for is not None
+
+
 def test_publish_due_jobs_dry_run_leaves_jobs_unchanged(session_factory) -> None:
     with session_scope(session_factory) as session:
         draft = _create_draft_variant(session, draft_state=DraftVariantState.APPROVED)
@@ -841,10 +912,39 @@ def _create_draft_variant(
     return draft
 
 
-def _write_project_config(path: Path) -> None:
+def _write_project_config(
+    path: Path,
+    *,
+    include_threads_channel: bool = False,
+    include_threads_publisher: bool = False,
+) -> None:
+    threads_channel_block = ""
+    if include_threads_channel:
+        threads_publisher_block = ""
+        if include_threads_publisher:
+            threads_publisher_block = """
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+            """
+        threads_channel_block = f"""
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 10000
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+{threads_publisher_block}"""
+
     _write_file(
         path / "accounts.yaml",
-        """
+        f"""
         accounts:
           ai_tools_daily:
             topic: "AI tools and workflows"
@@ -873,6 +973,7 @@ def _write_project_config(path: Path) -> None:
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
+{threads_channel_block}
           finance_news_daily:
             topic: "Finance headlines"
             source_sets:

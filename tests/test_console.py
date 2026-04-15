@@ -571,6 +571,75 @@ def test_review_detail_shows_manual_upload_guidance_for_approved_linkedin_draft(
     assert "8. URL" in response.text
 
 
+def test_review_detail_shows_manual_upload_guidance_for_threads_without_live_publisher(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="threads",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={
+            "config_dir": str(tmp_path),
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Threads 수동 업로드" in response.text
+    assert "발행 작업 만들기" not in response.text
+    assert "현재 이 채널은 프로젝트 내 live publisher가 연결되어 있지 않아 예약 발행 버튼을 숨깁니다." in response.text
+
+
+def test_review_detail_shows_schedule_action_for_live_threads_draft(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_minimal_project_config(tmp_path, include_threads_publisher=True)
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    session_factory = _build_session_factory(tmp_path)
+    body = "Useful AI automation workflows for operators https://gilgop.cloud/ai-tools"
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="threads",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=body,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={
+            "config_dir": str(tmp_path),
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "발행 작업 만들기" in response.text
+    assert "초안 예약" in response.text
+    assert "Threads 수동 업로드" not in response.text
+
+
 def test_console_manual_handoff_flow_links_review_and_publish_job_surfaces(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
@@ -639,6 +708,49 @@ def test_console_manual_handoff_flow_links_review_and_publish_job_surfaces(tmp_p
     assert f"/console/reviews/{draft.id}" in publish_jobs_response.text
     assert "발행 완료" in publish_jobs_response.text
     assert "외부 게시물 linkedin-post-999" in publish_jobs_response.text
+
+
+def test_console_review_approve_for_live_threads_prompts_scheduling_instead_of_manual_upload(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_minimal_project_config(tmp_path, include_threads_publisher=True)
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body="Useful AI automation workflows for operators https://gilgop.cloud/ai-tools",
+            include_provenance=True,
+        )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    client = TestClient(create_app())
+    response = _post_console_review_action(
+        client,
+        draft_id=draft.id,
+        database_url=database_url,
+        config_dir=tmp_path,
+        action="approve",
+        reviewer="editor-a",
+    )
+
+    assert response.status_code == 200
+    assert "승인 완료" in response.text
+    assert "이제 이 작업공간에서 예약을 진행할 수 있습니다." in response.text
+    assert "Threads 수동 업로드" not in response.text
+    assert "발행 작업 만들기" in response.text
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert jobs == []
 
 
 def test_review_actions_edit_success_renders_updated_body(tmp_path: Path) -> None:
@@ -2024,10 +2136,17 @@ def _create_publish_job(
     return job
 
 
-def _write_minimal_project_config(path: Path) -> None:
+def _write_minimal_project_config(path: Path, *, include_threads_publisher: bool = False) -> None:
+    threads_publisher_block = ""
+    if include_threads_publisher:
+        threads_publisher_block = """
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+        """
+
     _write_file(
         path / "accounts.yaml",
-        """
+        f"""
         accounts:
           ai_tools_daily:
             topic: "AI tools and workflows"
@@ -2085,7 +2204,7 @@ def _write_minimal_project_config(path: Path) -> None:
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
-        """,
+{threads_publisher_block}        """,
     )
     _write_file(
         path / "prompts.yaml",
