@@ -1,10 +1,18 @@
-"""Tests for the Threads publisher adapter."""
+"""Tests for the Threads publisher adapter and resolver."""
 
 from __future__ import annotations
 
+from pathlib import Path
+from textwrap import dedent
+
 import pytest
 
-from app.connectors.publishers import PublishRequest, ThreadsHttpResponse, ThreadsPublisher
+from app.connectors.publishers import (
+    ConfigPublisherResolver,
+    PublishRequest,
+    ThreadsHttpResponse,
+    ThreadsPublisher,
+)
 
 
 class StubThreadsHttpClient:
@@ -248,6 +256,124 @@ def test_threads_publisher_rejects_empty_required_credentials() -> None:
         )
 
 
+def test_config_publisher_resolver_builds_threads_publisher_from_env_json(tmp_path: Path) -> None:
+    config_dir = _write_threads_accounts_only_config(tmp_path)
+    client = StubThreadsHttpClient(
+        create_response=ThreadsHttpResponse(
+            status_code=200,
+            payload={"id": "container-456"},
+        ),
+        publish_response=ThreadsHttpResponse(
+            status_code=200,
+            payload={"id": "thread-789"},
+        ),
+    )
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment={
+            "THREADS_TEST_CREDENTIALS": (
+                '{"access_token":"threads-user-token","threads_user_id":"threads-user-1","ignored":"extra"}'
+            ),
+        },
+        threads_http_client=client,
+    )
+
+    publisher = resolver.resolve(_sample_threads_publish_job())
+    cached_publisher = resolver.resolve(_sample_threads_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert publisher is cached_publisher
+    assert result.status == "published"
+    assert result.external_post_id == "thread-789"
+    assert result.provider == "threads"
+    assert result.credential_ref == "THREADS_TEST_CREDENTIALS"
+    assert client.calls == [
+        (
+            "create",
+            "threads-user-token",
+            "threads-user-1",
+            "Useful AI workflows https://gilgop.cloud/ai-tools",
+        ),
+        (
+            "publish",
+            "threads-user-token",
+            "threads-user-1",
+            "container-456",
+        ),
+    ]
+
+
+def test_config_publisher_resolver_reports_missing_threads_env_var(tmp_path: Path) -> None:
+    config_dir = _write_threads_accounts_only_config(tmp_path)
+    resolver = ConfigPublisherResolver(config_dir=config_dir, environment={})
+
+    publisher = resolver.resolve(_sample_threads_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "failed"
+    assert result.error_message == "publisher credential env var 'THREADS_TEST_CREDENTIALS' is not set"
+    assert result.provider == "threads"
+    assert result.credential_ref == "THREADS_TEST_CREDENTIALS"
+
+
+def test_config_publisher_resolver_reports_invalid_threads_json_credentials(
+    tmp_path: Path,
+) -> None:
+    config_dir = _write_threads_accounts_only_config(tmp_path)
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment={"THREADS_TEST_CREDENTIALS": "not-json"},
+    )
+
+    publisher = resolver.resolve(_sample_threads_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "failed"
+    assert (
+        result.error_message
+        == "publisher credential env var 'THREADS_TEST_CREDENTIALS' does not contain valid JSON"
+    )
+    assert result.provider == "threads"
+
+
+def test_config_publisher_resolver_reports_missing_threads_access_token(tmp_path: Path) -> None:
+    config_dir = _write_threads_accounts_only_config(tmp_path)
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment={"THREADS_TEST_CREDENTIALS": '{"threads_user_id":"threads-user-1"}'},
+    )
+
+    publisher = resolver.resolve(_sample_threads_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "failed"
+    assert (
+        result.error_message
+        == "publisher credential env var 'THREADS_TEST_CREDENTIALS' is missing access_token"
+    )
+    assert result.provider == "threads"
+    assert result.credential_ref == "THREADS_TEST_CREDENTIALS"
+
+
+def test_config_publisher_resolver_reports_missing_threads_user_id(tmp_path: Path) -> None:
+    config_dir = _write_threads_accounts_only_config(tmp_path)
+    resolver = ConfigPublisherResolver(
+        config_dir=config_dir,
+        environment={"THREADS_TEST_CREDENTIALS": '{"access_token":"threads-user-token"}'},
+    )
+
+    publisher = resolver.resolve(_sample_threads_publish_job())
+    result = publisher.publish(_sample_publish_request())
+
+    assert result.status == "failed"
+    assert (
+        result.error_message
+        == "publisher credential env var 'THREADS_TEST_CREDENTIALS' is missing threads_user_id"
+    )
+    assert result.provider == "threads"
+    assert result.credential_ref == "THREADS_TEST_CREDENTIALS"
+
+
 def _sample_publish_request() -> PublishRequest:
     return PublishRequest(
         publish_job_id=42,
@@ -257,3 +383,39 @@ def _sample_publish_request() -> PublishRequest:
         body="Useful AI workflows https://gilgop.cloud/ai-tools",
         idempotency_key="job-42-threads",
     )
+
+
+def _sample_threads_publish_job():
+    brief = type("Brief", (), {"account_key": "ai_tools_daily"})()
+    draft = type("Draft", (), {"content_brief": brief})()
+    return type("PublishJobStub", (), {"channel": "threads", "draft_variant": draft})()
+
+
+def _write_threads_accounts_only_config(tmp_path: Path) -> Path:
+    _write_file(
+        tmp_path / "accounts.yaml",
+        """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - any_source_set_name
+            prompt_profile: any_prompt_name
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              threads:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 500
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+        """,
+    )
+    return tmp_path
+
+
+def _write_file(path: Path, content: str) -> None:
+    path.write_text(dedent(content).strip() + "\n", encoding="utf-8")

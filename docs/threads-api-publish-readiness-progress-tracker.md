@@ -25,23 +25,23 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M1_threads_publisher_foundation`
-- Current task: `01_define_threads_credential_bundle_and_publisher_adapter`
+- Current task: `02_expand_config_backed_publisher_resolution_for_threads`
 - Active status: `done`
-- Last updated: `2026-04-15 16:53 KST`
+- Last updated: `2026-04-15 17:02 KST`
 - Base branch: `master`
-- Active branch: `codex/task-01-threads-publisher-adapter`
-- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 01 commit created after this tracker update`
-- Resume decision: `task_01_complete`
+- Active branch: `codex/task-02-threads-publisher-resolution`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 02 commit created after this tracker update`
+- Resume decision: `task_02_complete`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
-- Goal: `Add the smallest Threads publisher adapter and credential contract that can plug into the existing publish pipeline`
-- In scope: `Threads adapter boundary, normalized publish results, and the initial credential-shape decision needed for resolver work`
-- Out of scope: `Review-flow branching changes, LinkedIn direct publishing, auth, and any console redesign`
-- Dependencies: `none beyond the current publisher boundary and X adapter patterns already in the repository`
+- Goal: `Make publisher.credential_ref sufficient to resolve Threads live publishers through the same config and env path already used for X`
+- In scope: `ConfigPublisherResolver channel expansion, Threads credential-bundle parsing and validation, failure normalization, and focused resolver regression coverage`
+- Out of scope: `Review-flow branching changes, LinkedIn direct publishing, auth, and any console or API behavior changes`
+- Dependencies: `Task 01 Threads publisher adapter plus the existing config loading and X resolver patterns`
 - Verification commands:
   - `./.venv/bin/pytest tests/test_x_publisher.py tests/test_threads_publisher.py -q`
-  - `./.venv/bin/pytest tests/test_scheduler.py -k "publish_due_jobs_marks_jobs_published_with_publisher_resolver" -q`
+  - `./.venv/bin/pytest tests/test_scheduler.py -k "publish_due_jobs_live_defaults_to_config_publisher_resolver" -q`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local tests and SQLite fixtures)`
@@ -52,7 +52,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Define Threads credential bundle and publisher adapter | done | 2026-04-15 16:53 KST | Added a text-only Threads publisher adapter, package exports, focused adapter tests, and scheduler coverage for normalized Threads provider payload logging |
-| M1 | 02 | Expand config-backed publisher resolution for Threads | pending | 2026-04-15 16:34 KST | Resolver should keep `publisher.credential_ref` as the operator-facing setup path |
+| M1 | 02 | Expand config-backed publisher resolution for Threads | done | 2026-04-15 17:02 KST | `ConfigPublisherResolver` now resolves `threads` alongside `x`, validates one env-referenced Threads JSON bundle, preserves channel-level caching, and is covered by focused resolver regressions |
 | M2 | 03 | Make Threads review and scheduling flow publisher-aware | pending | 2026-04-15 16:34 KST | Threads should become live-capable only when channel config and credentials support it |
 | M2 | 04 | Carry Threads live jobs through scheduler, API, and console surfaces | pending | 2026-04-15 16:34 KST | Existing operator surfaces should reflect the new live/manual branching without duplicate business logic |
 | M3 | 05 | Document token-ready Threads setup and expand regressions | pending | 2026-04-15 16:34 KST | Final slice should align README and operator docs with shipped behavior and regression coverage |
@@ -64,10 +64,8 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/connectors/publishers/threads.py`
-- `app/connectors/publishers/__init__.py`
+- `app/connectors/publishers/resolver.py`
 - `tests/test_threads_publisher.py`
-- `tests/test_scheduler.py`
 - `docs/threads-api-publish-readiness-progress-tracker.md`
 
 ## Progress Log
@@ -79,6 +77,10 @@ Status values:
 - `2026-04-15 16:50 KST` Implemented `ThreadsPublisher` with an isolated urllib HTTP client that creates a text-only Threads container, publishes it through the second API call, and normalizes provider success, provider failure, request exceptions, and malformed responses into `PublishResult`.
 - `2026-04-15 16:51 KST` Re-exported the new Threads publisher types from `app.connectors.publishers` and added focused adapter tests plus scheduler coverage that proves Threads provider payload details survive through publish-job logging.
 - `2026-04-15 16:53 KST` Completed Task `01` after the targeted adapter suite, focused scheduler slice, full scheduler regression file, and `git diff --check` all passed on the task branch.
+- `2026-04-15 16:57 KST` Switched to branch `codex/task-02-threads-publisher-resolution`, marked Task `02` in progress, and narrowed the next slice to resolver-only changes that keep `publisher.credential_ref` as the single operator-facing setup path for both X and Threads.
+- `2026-04-15 17:00 KST` Reworked `ConfigPublisherResolver` into a channel-aware resolver that preserves the existing X path, adds a Threads builder plus injected HTTP client support, and normalizes shared credential-bundle parsing before channel-specific validation.
+- `2026-04-15 17:00 KST` Added focused Threads resolver regressions that cover success, cache reuse, missing env, invalid JSON, missing `access_token`, and missing `threads_user_id` without widening scope into review or scheduler branching.
+- `2026-04-15 17:02 KST` Completed Task `02` after targeted publisher tests, focused scheduler verification, full scheduler regression coverage, and `git diff --check` all passed on the task branch.
 
 ## Test Log
 - `2026-04-15 16:34 KST` `runtime tests` -> `not_run` `initiative documentation only; no product code changes were requested in this turn`
@@ -87,16 +89,20 @@ Status values:
 - `2026-04-15 16:52 KST` `./.venv/bin/pytest tests/test_scheduler.py -k "publish_due_jobs_marks_jobs_published_with_publisher_resolver or publish_due_jobs_records_threads_provider_payload_from_publisher_resolver" -q` -> `passed` `2 passed, 15 deselected`
 - `2026-04-15 16:53 KST` `./.venv/bin/pytest tests/test_scheduler.py -q` -> `passed` `17 passed`
 - `2026-04-15 16:53 KST` `git diff --check` -> `passed`
+- `2026-04-15 17:00 KST` `./.venv/bin/pytest tests/test_x_publisher.py tests/test_threads_publisher.py -q` -> `passed` `22 passed`
+- `2026-04-15 17:01 KST` `./.venv/bin/pytest tests/test_scheduler.py -k "publish_due_jobs_live_defaults_to_config_publisher_resolver" -q` -> `passed` `1 passed, 16 deselected`
+- `2026-04-15 17:01 KST` `./.venv/bin/pytest tests/test_scheduler.py -q` -> `passed` `17 passed`
+- `2026-04-15 17:02 KST` `git diff --check` -> `passed`
 
 ## Open Questions
-- `Resolved for Task 01: the smallest current credential bundle is an app-scoped Threads user access token plus the immutable Threads user ID; keep both inside one env-referenced JSON bundle for resolver work in Task 02`
+- `Resolved for Task 02: Threads live publishing now uses the same `publisher.credential_ref` lookup pattern as X, with one env-referenced JSON bundle containing `access_token` plus `threads_user_id``
 
 ## Blockers
 - `None currently`
 
 ## Follow-up
-- `Task 02 should wire the confirmed Threads credential bundle (`access_token` plus `threads_user_id`) into `publisher.credential_ref` resolution without changing the operator-facing config shape`
+- `Task 03 should make review approval and scheduling branch on resolver-backed Threads live capability instead of treating Threads as permanently manual-only`
 - `Container readiness polling remains intentionally deferred; the Task 01 adapter performs the required two-step publish immediately for text-only posts and returns normalized provider errors when Threads rejects the publish call`
 
 ## Completion Summary
-- `Task 01 complete: the repository now has a text-only `ThreadsPublisher` with a dedicated HTTP client boundary, normalized Threads publish results and provider payloads, focused adapter coverage, and scheduler regression coverage showing Threads publish details flow through existing publish-job logging without changing the current review or scheduler safety model.`
+- `Task 02 complete: the repository now resolves Threads live publishers through the same `accounts.yaml` plus `publisher.credential_ref` env-bundle path used for X, validates the confirmed Threads credential shape (`access_token` and `threads_user_id`), preserves resolver caching by account and channel, and adds focused regression coverage without changing the current review or scheduler safety model.`
