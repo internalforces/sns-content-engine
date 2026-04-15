@@ -11,3 +11,8 @@ dist/
 *.egg-info/
 data/*.db
 .DS_Store
+
+# Local initiative planning docs not meant for version control
+docs/threads-api-publish-readiness-execution-guide.md
+docs/threads-api-publish-readiness-roadmap.md
+docs/threads-api-publish-readiness-vibe-coding-prompt.md

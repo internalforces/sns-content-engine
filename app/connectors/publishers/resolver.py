@@ -31,6 +31,12 @@ class ConfigPublisherResolver:
         self._threads_http_client = threads_http_client
         self._cache: dict[tuple[str, str], Publisher] = {}
 
+    def has_live_publisher(self, *, account_key: str, channel: str) -> bool:
+        """Return whether the account/channel resolves to a live publisher."""
+
+        publisher = self._resolve_account_channel_publisher(account_key=account_key, channel=channel)
+        return not isinstance(publisher, _FailurePublisher)
+
     def resolve(self, publish_job) -> Publisher:
         draft = getattr(publish_job, "draft_variant", None)
         brief = getattr(draft, "content_brief", None)
@@ -49,6 +55,14 @@ class ConfigPublisherResolver:
                 error_message="publish job is missing its channel",
             )
 
+        return self._resolve_account_channel_publisher(account_key=account_key, channel=channel)
+
+    def _resolve_account_channel_publisher(
+        self,
+        *,
+        account_key: str,
+        channel: str,
+    ) -> Publisher:
         cache_key = (account_key, channel)
         cached = self._cache.get(cache_key)
         if cached is not None:
