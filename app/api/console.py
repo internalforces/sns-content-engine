@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.connectors.llm import DraftGenerationProviderError
+from app.connectors.publishers.resolver import channel_requires_manual_publish_handoff
 from app.config import ConfigError
 from app.storage import DatabaseSchemaError, PublishJobState
 from app.workflows.history_queries import PublishJobNotFoundError
@@ -913,6 +914,7 @@ def _render_console_review_detail_page(
                 request,
                 query_params,
                 detail,
+                config_dir=config_dir,
                 form_values=form_values,
             ),
         }
@@ -1025,9 +1027,13 @@ def _normalize_manual_publish_action_form_data(form_data: dict[str, str]) -> dic
 
 def _build_review_action_success_feedback(result) -> dict[str, str]:
     action_label = _humanize_label(result.action_type.value)
+    created_manual_handoff = (
+        getattr(result, "publish_job_id", None) is not None
+        and getattr(result, "scheduled_for", None) is None
+    )
     approved_message = (
         "초안이 승인되었습니다. 이제 이 작업공간에서 예약을 진행할 수 있습니다."
-        if getattr(result, "channel", None) not in _MANUAL_UPLOAD_CHANNELS
+        if not created_manual_handoff
         else "초안이 승인되었습니다. 이제 이 작업공간에서 수동 업로드용 본문을 복사해 게시할 수 있습니다."
     )
     messages = {
@@ -2151,12 +2157,16 @@ def _build_review_action_form_state(
     query_params: dict[str, str],
     detail,
     *,
+    config_dir: str,
     form_values: dict[str, str] | None,
 ) -> dict[str, str | bool]:
     draft = detail.draft
     state_value = draft.state.value
     values = form_values or {}
-    manual_upload = state_value == "approved" and draft.channel in _MANUAL_UPLOAD_CHANNELS
+    manual_upload = state_value == "approved" and _review_detail_requires_manual_upload_guidance(
+        detail,
+        config_dir=config_dir,
+    )
 
     if state_value == "pending_review":
         state_hint = (
@@ -2215,6 +2225,31 @@ def _build_review_action_form_state(
         "manual_upload_helper": manual_upload_helper,
         "manual_upload_body": draft.body,
     }
+
+
+def _review_detail_requires_manual_upload_guidance(
+    detail,
+    *,
+    config_dir: str,
+) -> bool:
+    draft = detail.draft
+    if draft.channel not in _MANUAL_UPLOAD_CHANNELS:
+        return False
+    if draft.channel == "linkedin":
+        return True
+
+    content_brief = draft.content_brief
+    if content_brief is None:
+        return True
+
+    try:
+        return channel_requires_manual_publish_handoff(
+            config_dir=config_dir,
+            account_key=content_brief.account_key,
+            channel=draft.channel,
+        )
+    except (ConfigError, FileNotFoundError):
+        return True
 
 
 def _build_sibling_variant_row(

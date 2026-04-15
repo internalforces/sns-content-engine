@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 
 from app.config import ConfigRegistry
-from app.connectors.publishers import ConfigPublisherResolver
+from app.connectors.publishers.resolver import channel_requires_manual_publish_handoff
 from app.services import DraftValidator
 from app.storage import (
     DraftVariant,
@@ -65,8 +65,6 @@ class ManualPublishStateError(ManualPublishError):
 
 
 _MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin", "threads"})
-_ALWAYS_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin"})
-_CONFIG_GATED_LIVE_PUBLISH_CHANNELS = frozenset({"threads"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -601,17 +599,12 @@ def _create_manual_publish_handoff(session, draft) -> PublishJob:
 
 
 def _draft_uses_manual_publish_handoff(draft, *, config_dir: Path | str) -> bool:
-    if draft.channel in _ALWAYS_MANUAL_PUBLISH_CHANNELS:
-        return True
-    if draft.channel not in _CONFIG_GATED_LIVE_PUBLISH_CHANNELS:
-        return False
-
     content_brief = draft.content_brief
     if content_brief is None:
         raise ReviewQueueError(f"draft {draft.id} is missing its content brief")
 
-    resolver = ConfigPublisherResolver(config_dir=config_dir)
-    return not resolver.has_live_publisher(
+    return channel_requires_manual_publish_handoff(
+        config_dir=config_dir,
         account_key=content_brief.account_key,
         channel=draft.channel,
     )

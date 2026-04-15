@@ -757,6 +757,46 @@ def test_scheduler_backfill_endpoint_creates_jobs_from_existing_workflow(tmp_pat
     assert [log.event_type for log in logs] == ["scheduled"]
 
 
+def test_scheduler_backfill_endpoint_includes_live_threads_when_configured(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_scheduler_project_config(tmp_path, include_threads_publisher=True)
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        _create_draft_variant(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            draft_state=DraftVariantState.APPROVED,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        "/scheduler/backfill",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    threads_outcome = next(outcome for outcome in payload["outcomes"] if outcome["channel"] == "threads")
+    assert threads_outcome["created_count"] == 1
+    assert threads_outcome["eligible_draft_count"] == 1
+    assert threads_outcome["created_job_ids"] == [1]
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].channel == "threads"
+
+
 def test_scheduler_publish_due_endpoint_defaults_to_dry_run(tmp_path: Path) -> None:
     _write_scheduler_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
@@ -1298,6 +1338,46 @@ def test_review_approve_endpoint_returns_manual_handoff_publish_job_for_linkedin
     ]
 
 
+def test_review_approve_endpoint_returns_no_manual_handoff_for_live_threads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_minimal_project_config(tmp_path, include_threads_publisher=True)
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/approve",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={"reviewer": "editor-a", "config_dir": str(tmp_path)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action_type"] == "approve"
+    assert payload["draft_state"] == "approved"
+    assert payload["publish_job_id"] is None
+    assert payload["scheduled_for"] is None
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+
+    assert jobs == []
+
+
 def test_publish_job_detail_endpoint_returns_manual_publish_completion_timeline(
     tmp_path: Path,
 ) -> None:
@@ -1613,6 +1693,52 @@ def test_review_schedule_endpoint_returns_conflict_for_duplicate_job(tmp_path: P
     assert second_response.json()["error_code"] == "draft_schedule_conflict"
 
 
+def test_review_schedule_endpoint_accepts_live_threads_when_configured(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_minimal_project_config(tmp_path, include_threads_publisher=True)
+    monkeypatch.setenv(
+        "THREADS_TEST_CREDENTIALS",
+        '{"access_token":"threads-user-token","threads_user_id":"threads-user-1"}',
+    )
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="threads",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body=_VALID_REVIEW_DRAFT_BODY,
+            include_provenance=True,
+        )
+
+    client = TestClient(create_app())
+    response = client.post(
+        f"/reviews/{draft.id}/schedule",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+        json={
+            "reviewer": "scheduler-a",
+            "config_dir": str(tmp_path),
+            "scheduled_for": "2026-03-18T09:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["action_type"] == "schedule"
+    assert payload["publish_job_id"] is not None
+    assert payload["scheduled_for"] == "2026-03-18T00:00:00+00:00"
+
+    with session_scope(session_factory) as session:
+        job = PublishJobRepository(session).get(payload["publish_job_id"])
+
+    assert job is not None
+    assert job.channel == "threads"
+    assert job.scheduled_for == datetime(2026, 3, 18, 0, 0, tzinfo=timezone.utc)
+
+
 def _build_session_factory(tmp_path: Path):
     engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'api.db'}")
     create_all_tables(engine)
@@ -1623,10 +1749,18 @@ def _write_minimal_project_config(
     path: Path,
     *,
     source_url: str = "https://gilgop.cloud/feed.xml",
+    include_threads_publisher: bool = False,
 ) -> None:
+    threads_publisher_block = ""
+    if include_threads_publisher:
+        threads_publisher_block = """
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+        """
+
     _write_file(
         path / "accounts.yaml",
-        """
+        f"""
         accounts:
           ai_tools_daily:
             topic: "AI tools and workflows"
@@ -1672,7 +1806,7 @@ def _write_minimal_project_config(
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
-        """,
+{threads_publisher_block}        """,
     )
     _write_file(
         path / "prompts.yaml",
@@ -1699,10 +1833,31 @@ def _write_minimal_project_config(
     )
 
 
-def _write_scheduler_project_config(path: Path) -> None:
+def _write_scheduler_project_config(path: Path, *, include_threads_publisher: bool = False) -> None:
+    threads_channel_block = """
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 1
+                render:
+                  max_chars: 10000
+                validation:
+                  max_links: 1
+                  banned_phrases: []
+                  recent_duplicate_window_days: 7
+    """
+    if include_threads_publisher:
+        threads_channel_block += """
+                publisher:
+                  credential_ref: THREADS_TEST_CREDENTIALS
+    """
+
     _write_file(
         path / "accounts.yaml",
-        """
+        f"""
         accounts:
           ai_tools_daily:
             topic: "AI tools and workflows"
@@ -1734,7 +1889,7 @@ def _write_scheduler_project_config(path: Path) -> None:
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
-        """,
+{threads_channel_block}        """,
     )
     _write_file(
         path / "prompts.yaml",

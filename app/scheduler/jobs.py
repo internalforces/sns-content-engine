@@ -14,6 +14,7 @@ from app.connectors.publishers import (
     PublishResult,
     PublisherResolver,
 )
+from app.connectors.publishers.resolver import channel_requires_manual_publish_handoff
 from app.operations import RetryPolicy, log_event
 from app.scheduler.planner import SlotPlanner, SlotPlanningRequest
 from app.storage import (
@@ -188,6 +189,12 @@ def backfill_publish_jobs(
         for account_key in sorted(registry.accounts):
             account = registry.get_account(account_key)
             for channel in sorted(account.channels):
+                if channel_requires_manual_publish_handoff(
+                    config_dir=config_dir,
+                    account_key=account_key,
+                    channel=channel,
+                ):
+                    continue
                 channel_config = account.channels[channel]
                 backlog_target = channel_config.schedule.backlog_target
                 if backlog_target <= 0:
