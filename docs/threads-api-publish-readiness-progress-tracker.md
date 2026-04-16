@@ -24,24 +24,24 @@ When instantiating this template, keep the filename explicit so this file is eas
 If `Current task` is already marked `in_progress` or `blocked`, resume or resolve that task before picking a new one unless the roadmap was intentionally reprioritized.
 
 ## Current Status
-- Current milestone: `M2_threads_workflow_integration`
-- Current task: `04_carry_threads_live_jobs_through_scheduler_api_and_console_surfaces`
+- Current milestone: `M3_operator_docs_and_hardening`
+- Current task: `05_document_token_ready_threads_setup_and_expand_regressions`
 - Active status: `done`
-- Last updated: `2026-04-15 18:01 KST`
+- Last updated: `2026-04-16 13:50 KST`
 - Base branch: `master`
-- Active branch: `codex/task-04-threads-live-operator-surfaces`
-- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 04 commit created after this tracker update`
-- Resume decision: `task_04_complete`
+- Active branch: `codex/task-05-threads-live-docs`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 05 commit created after this tracker update`
+- Resume decision: `task_05_complete`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
-- Goal: `Make scheduler, API, and console surfaces reflect and execute the new Threads live path without duplicating publish logic`
-- In scope: `Threads live-aware scheduler backfill, API response coverage for live versus manual review flows, console review hints or forms, and focused shared-surface regressions`
-- Out of scope: `LinkedIn direct publishing, auth, frontend redesign, and broader scheduler architecture changes`
-- Dependencies: `Task 03 review and scheduling capability branching plus the existing publish-job and console helper paths`
+- Goal: `Document how to enable and operate the shipped Threads live/manual split with one env-referenced credential bundle and matching operator guidance`
+- In scope: `README, operator console guide, control-plane API guide, safe env examples, and focused regression plus diff hygiene checks`
+- Out of scope: `LinkedIn direct publishing, runtime behavior changes beyond doc-alignment fixes, auth, and media or reply-chain features`
+- Dependencies: `Task 04 operator-surface behavior plus the existing Threads publisher and resolver implementation`
 - Verification commands:
-  - `./.venv/bin/pytest tests/test_api.py tests/test_console.py -q`
-  - `./.venv/bin/pytest tests/test_scheduler.py tests/test_review_queue_workflow.py -q`
+  - `./.venv/bin/pytest tests/test_api.py tests/test_console.py tests/test_review_queue_workflow.py tests/test_scheduler.py -q`
+  - `git diff --check`
 
 ## Environment Notes
 - Required services status: `running (none required beyond local tests and SQLite fixtures)`
@@ -55,7 +55,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Expand config-backed publisher resolution for Threads | done | 2026-04-15 17:02 KST | `ConfigPublisherResolver` now resolves `threads` alongside `x`, validates one env-referenced Threads JSON bundle, preserves channel-level caching, and is covered by focused resolver regressions |
 | M2 | 03 | Make Threads review and scheduling flow publisher-aware | done | 2026-04-15 17:12 KST | Review approval and scheduling now branch on resolver-backed Threads live capability so configured accounts stay in the normal schedule path while missing credentials still fall back to manual handoff |
 | M2 | 04 | Carry Threads live jobs through scheduler, API, and console surfaces | done | 2026-04-15 18:01 KST | Scheduler backfill, API review responses, and console review hints now all share the same resolver-backed Threads live/manual capability split, with focused regressions proving both fallback and live-configured behavior |
-| M3 | 05 | Document token-ready Threads setup and expand regressions | pending | 2026-04-15 16:34 KST | Final slice should align README and operator docs with shipped behavior and regression coverage |
+| M3 | 05 | Document token-ready Threads setup and expand regressions | done | 2026-04-16 13:50 KST | README, console guide, API guide, and env examples now describe the shipped Threads live/manual split, the single env-referenced credential bundle, and the exact scheduler plus review behavior for live-configured versus fallback Threads |
 
 Status values:
 - `pending`
@@ -64,13 +64,10 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `app/connectors/publishers/resolver.py`
-- `app/workflows/review_queue.py`
-- `app/scheduler/jobs.py`
-- `app/api/console.py`
-- `tests/test_scheduler.py`
-- `tests/test_api.py`
-- `tests/test_console.py`
+- `README.md`
+- `docs/operator-console-guide.md`
+- `docs/operator-control-plane-api.md`
+- `.env.example`
 - `docs/threads-api-publish-readiness-progress-tracker.md`
 
 ## Progress Log
@@ -94,6 +91,10 @@ Status values:
 - `2026-04-15 17:55 KST` Promoted the Threads live/manual decision into a shared resolver helper, reused it from the review workflow and scheduler backfill path, and kept LinkedIn manual-only semantics unchanged while preventing backfill from creating Threads jobs when live credentials are unavailable.
 - `2026-04-15 17:58 KST` Updated the console review-detail action state and approval success messaging so Threads only shows manual upload guidance when the configured account still requires manual handoff; live-configured Threads now keeps the schedule form visible after approval.
 - `2026-04-15 18:01 KST` Completed Task `04` after adding focused API, console, and scheduler regressions for Threads live approval, Threads live scheduling, Threads live backfill, and manual fallback behavior, then rerunning the required shared regression slices successfully.
+- `2026-04-16 13:42 KST` Switched to branch `codex/task-05-threads-live-docs`, marked Task `05` in progress, and narrowed the final slice to README plus operator-guide updates that still describe Threads as always manual even though the shipped workflow is now config-gated live when credentials are present.
+- `2026-04-16 13:46 KST` Updated README, the console guide, and the control-plane API guide so operator-facing docs now distinguish LinkedIn manual-only behavior from Threads live-configured versus manual-fallback behavior, including backfill eligibility and review-page scheduling semantics.
+- `2026-04-16 13:47 KST` Added safe Threads credential-bundle examples to `.env.example` and the docs, keeping secrets out of YAML while showing the exact `access_token` plus `threads_user_id` contract required by `publisher.credential_ref`.
+- `2026-04-16 13:50 KST` Completed Task `05` after the focused shared regression slice and `git diff --check` both passed on the task branch.
 
 ## Test Log
 - `2026-04-15 16:34 KST` `runtime tests` -> `not_run` `initiative documentation only; no product code changes were requested in this turn`
@@ -115,6 +116,8 @@ Status values:
 - `2026-04-15 18:00 KST` `./.venv/bin/pytest tests/test_api.py tests/test_console.py -q` -> `passed` `79 passed`
 - `2026-04-15 18:00 KST` `./.venv/bin/pytest tests/test_scheduler.py tests/test_review_queue_workflow.py -q` -> `passed` `47 passed`
 - `2026-04-15 18:01 KST` `git diff --check` -> `passed`
+- `2026-04-16 13:49 KST` `./.venv/bin/pytest tests/test_api.py tests/test_console.py tests/test_review_queue_workflow.py tests/test_scheduler.py -q` -> `passed` `126 passed`
+- `2026-04-16 13:49 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Resolved for Task 02: Threads live publishing now uses the same `publisher.credential_ref` lookup pattern as X, with one env-referenced JSON bundle containing `access_token` plus `threads_user_id``
@@ -123,8 +126,8 @@ Status values:
 - `None currently`
 
 ## Follow-up
-- `Task 05 should document the shipped Threads live/manual split for operators, including the single env-referenced `publisher.credential_ref` bundle, scheduler backfill eligibility, and console behavior when live credentials are absent`
+- `Threads API Publish Readiness roadmap is complete for the current scope; any follow-up should be a new initiative or a post-ship hardening slice such as richer Threads provider observability, media upload, or container readiness polling`
 - `Container readiness polling remains intentionally deferred; the Task 01 adapter performs the required two-step publish immediately for text-only posts and returns normalized provider errors when Threads rejects the publish call`
 
 ## Completion Summary
-- `Task 04 complete: scheduler backfill no longer creates Threads jobs unless the configured account can resolve a live Threads publisher, API review endpoints now have focused regression coverage for live Threads approval and scheduling, and the console review workspace only shows manual upload guidance for Threads when live credentials are missing or invalid. Live-configured Threads now looks and behaves like a schedulable channel across the shared operator surfaces while LinkedIn remains manual-only.`
+- `Task 05 complete: operator-facing docs now match the shipped behavior. README, the browser-console guide, and the control-plane API guide all describe Threads as a config-gated live channel that falls back to manual handoff when the referenced env bundle is missing or invalid, while LinkedIn remains manual-only. Safe example config and env snippets now show the exact `publisher.credential_ref` plus `access_token` and `threads_user_id` setup, and the focused shared regression slice still passes.`
