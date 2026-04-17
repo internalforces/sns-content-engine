@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: secret-scan
+        name: secret-scan
+        entry: scripts/scan_secrets.sh check
+        language: system
+        pass_filenames: true

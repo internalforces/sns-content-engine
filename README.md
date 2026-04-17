@@ -59,6 +59,17 @@ export OPENAI_TIMEOUT_SECONDS="30"
 
 For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
 
+4. Optional: install the local secret-scanning hook and keep your real `.env` file private.
+
+```bash
+chmod 600 .env
+scripts/scan_secrets.sh refresh-baseline
+./.venv/bin/pre-commit install
+scripts/scan_secrets.sh check
+```
+
+Keep real credentials in the ignored local `.env` file only. `.env.example` is the checked-in template, and common key or certificate file extensions are ignored by default to reduce accidental commits.
+
 ## Example Config Sets
 
 - `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` by default and source-linked sharing as the default link strategy instead of routing to a house destination site. Threads can be promoted to live publishing by adding `publisher.credential_ref` under the `threads` channel and exporting the referenced env bundle.
@@ -224,6 +235,7 @@ Suggested dry-run and smoke checks:
 ```bash
 sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
+scripts/scan_secrets.sh check
 ./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
 ```
 
