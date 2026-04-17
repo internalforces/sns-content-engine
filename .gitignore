@@ -5,12 +5,26 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.envrc
 *.py[cod]
 build/
 dist/
 *.egg-info/
 data/*.db
 .DS_Store
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*.kdbx
+*.ovpn
+secrets.*
+credentials.*
 
 # Local initiative planning docs not meant for version control
 docs/threads-api-publish-readiness-execution-guide.md
