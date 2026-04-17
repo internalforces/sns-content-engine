@@ -56,6 +56,7 @@ case "$MODE" in
       exit 1
     fi
 
+    CHECK_FILES=()
     if [[ "$#" -gt 0 ]]; then
       FILTERED_FILES=()
       filter_input_files "$@"
@@ -64,12 +65,46 @@ case "$MODE" in
         exit 0
       fi
 
-      "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline" "${FILTERED_FILES[@]}"
+      CHECK_FILES=("${FILTERED_FILES[@]}")
     else
       TRACKED_FILES=()
       collect_tracked_files
-      "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline" "${TRACKED_FILES[@]}"
+      CHECK_FILES=("${TRACKED_FILES[@]}")
     fi
+
+    tmp_baseline="$(mktemp "${TMPDIR:-/tmp}/sns-content-engine-baseline-check.XXXXXX")"
+    trap 'rm -f "$tmp_baseline"' EXIT
+    cp "$ROOT_DIR/.secrets.baseline" "$tmp_baseline"
+
+    set +e
+    hook_output="$("$HOOK_BIN" --no-verify --baseline "$tmp_baseline" "${CHECK_FILES[@]}" 2>&1)"
+    hook_status=$?
+    set -e
+
+    trap - EXIT
+    rm -f "$tmp_baseline"
+
+    case "$hook_status" in
+      0)
+        ;;
+      1)
+        printf '%s\n' "$hook_output" >&2
+        exit 1
+        ;;
+      3)
+        cat >&2 <<'EOF'
+Secret baseline is out of date for the current tree.
+Run 'scripts/scan_secrets.sh refresh-baseline' and commit '.secrets.baseline'.
+EOF
+        exit 1
+        ;;
+      *)
+        if [[ -n "$hook_output" ]]; then
+          printf '%s\n' "$hook_output" >&2
+        fi
+        exit "$hook_status"
+        ;;
+    esac
     ;;
   refresh-baseline)
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/sns-content-engine-secrets.XXXXXX")"
