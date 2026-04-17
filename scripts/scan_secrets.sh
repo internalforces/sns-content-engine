@@ -24,7 +24,30 @@ if [[ "$MODE" == "check" || "$MODE" == "refresh-baseline" ]]; then
   shift || true
 fi
 
-tracked_files_cmd=(git ls-files -z)
+is_excluded_file() {
+  local normalized="${1#./}"
+  [[ "$normalized" == ".secrets.baseline" ]]
+}
+
+collect_tracked_files() {
+  local file
+
+  while IFS= read -r -d '' file; do
+    if ! is_excluded_file "$file"; then
+      TRACKED_FILES+=("$file")
+    fi
+  done < <(git ls-files -z)
+}
+
+filter_input_files() {
+  local file
+
+  for file in "$@"; do
+    if ! is_excluded_file "$file"; then
+      FILTERED_FILES+=("$file")
+    fi
+  done
+}
 
 case "$MODE" in
   check)
@@ -34,15 +57,26 @@ case "$MODE" in
     fi
 
     if [[ "$#" -gt 0 ]]; then
-      "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline" "$@"
+      FILTERED_FILES=()
+      filter_input_files "$@"
+
+      if [[ "${#FILTERED_FILES[@]}" -eq 0 ]]; then
+        exit 0
+      fi
+
+      "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline" "${FILTERED_FILES[@]}"
     else
-      "${tracked_files_cmd[@]}" | xargs -0 "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline"
+      TRACKED_FILES=()
+      collect_tracked_files
+      "$HOOK_BIN" --no-verify --baseline "$ROOT_DIR/.secrets.baseline" "${TRACKED_FILES[@]}"
     fi
     ;;
   refresh-baseline)
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/sns-content-engine-secrets.XXXXXX")"
     trap 'rm -f "$tmp_file"' EXIT
-    "${tracked_files_cmd[@]}" | xargs -0 "$SCAN_BIN" scan --no-verify > "$tmp_file"
+    TRACKED_FILES=()
+    collect_tracked_files
+    "$SCAN_BIN" scan --no-verify "${TRACKED_FILES[@]}" > "$tmp_file"
     mv "$tmp_file" "$ROOT_DIR/.secrets.baseline"
     trap - EXIT
     ;;
