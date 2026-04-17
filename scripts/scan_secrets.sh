@@ -26,7 +26,7 @@ fi
 
 is_excluded_file() {
   local normalized="${1#./}"
-  [[ "$normalized" == ".secrets.baseline" ]]
+  [[ "$normalized" == ".secrets.baseline" || "$normalized" == *.egg-info/* ]]
 }
 
 collect_tracked_files() {
