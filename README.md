@@ -8,12 +8,12 @@ This repository bootstraps the MVP foundation for a shared content engine that c
 
 The initial MVP is intentionally limited to:
 
-- X live publishing plus operator-recorded manual LinkedIn/Threads handoff tracking
+- X live publishing, config-gated Threads live publishing, and operator-recorded manual handoff tracking for LinkedIn plus Threads fallback cases
 - English-language operation
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, source ingestion, brief generation, multichannel draft generation, a CLI-first manual review queue, scheduled publish jobs for X, manual publish handoff tracking for LinkedIn and Threads, a live X publisher adapter, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
+The current milestone includes configuration loading, source ingestion, brief generation, multichannel draft generation, a CLI-first manual review queue, scheduled publish jobs for X and live-configured Threads, manual publish handoff tracking for LinkedIn plus Threads fallback cases, live X and Threads publisher adapters, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
 
 ## Repository Structure
 
@@ -59,9 +59,20 @@ export OPENAI_TIMEOUT_SECONDS="30"
 
 For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
 
+4. Optional: install the local secret-scanning hook and keep your real `.env` file private.
+
+```bash
+chmod 600 .env
+scripts/scan_secrets.sh refresh-baseline
+./.venv/bin/pre-commit install
+scripts/scan_secrets.sh check
+```
+
+Keep real credentials in the ignored local `.env` file only. `.env.example` is the checked-in template, and common key or certificate file extensions are ignored by default to reduce accidental commits.
+
 ## Example Config Sets
 
-- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` and source-linked sharing as the default link strategy instead of routing to a house destination site.
+- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` by default and source-linked sharing as the default link strategy instead of routing to a house destination site. Threads can be promoted to live publishing by adding `publisher.credential_ref` under the `threads` channel and exporting the referenced env bundle.
 - `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 
@@ -77,7 +88,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
 - [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, manual publish handoff actions, publish-job visibility, and scheduler-safe HTTP actions.
 
-The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, and LinkedIn or Threads publishing remains an operator-driven manual upload flow with explicit outcome recording.
+The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, LinkedIn remains an operator-driven manual upload flow with explicit outcome recording, and Threads stays manual only until its live publisher is configured successfully.
 
 ## CLI Usage
 
@@ -133,7 +144,7 @@ The `build-briefs` command reads ingested source items, matches them to eligible
 
 The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for the configured `x`, `linkedin`, and `threads` accounts. When `<config-dir>/providers.yaml` is present, it uses the configured `draft_generate` route chain and model overrides at runtime. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
 
-The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving LinkedIn or Threads drafts creates an explicit manual publish handoff job automatically; X keeps the existing schedule-driven publish flow.
+The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving LinkedIn drafts always creates an explicit manual publish handoff job. Threads drafts create that same handoff only when live publishing is not configured cleanly; otherwise Threads stays on the scheduled publish path alongside X.
 
 The `run-local` command is the new finance-local MVP entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, uses the same draft-provider resolution path as `generate-drafts`, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
 
@@ -141,7 +152,7 @@ The `history runs` and `history failures` commands expose operator-readable summ
 
 The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
 
-The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable. Only scheduled jobs enter the due queue, so manual LinkedIn and Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
+The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable. Only scheduled jobs enter the due queue, so manual LinkedIn handoffs and manual-fallback Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
 
 Example channel config:
 
@@ -154,14 +165,24 @@ channels:
       max_chars: 280
     publisher:
       credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+  threads:
+    schedule:
+      cron: "0 11 * * *"
+    render:
+      max_chars: 10000
+    publisher:
+      credential_ref: THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
 ```
 
 Example credential bundle:
 
 ```bash
 export X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-user-access-token"}'
+export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-threads-user-access-token","threads_user_id":"replace-with-threads-user-id"}'
 sns-engine scheduler publish-due --live
 ```
+
+Threads credential bundles use the same `publisher.credential_ref` lookup pattern as X, but the JSON object must include both `access_token` and `threads_user_id`. Keep that bundle in the environment only; do not store the raw token or user ID in YAML.
 
 If you already have an older SQLite file from a previous milestone, run `sns-engine db upgrade --database-url ...` before `ingest` or `run-local`. Fresh databases should still start with `sns-engine db init`.
 
@@ -206,14 +227,16 @@ Operational notes:
 - If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
 - Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
-- Approving a LinkedIn or Threads draft creates a `scheduled_for = null` publish job that represents a manual upload handoff. Complete, fail, or cancel that handoff from the publish-job detail page in the console or through the `/publish-jobs/{id}/manual/*` API routes.
-- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for manual-only channels so the scheduler queue stays limited to due X jobs.
+- Approving a LinkedIn draft always creates a `scheduled_for = null` publish job that represents a manual upload handoff. Threads does the same only when the configured account cannot resolve a live Threads publisher from `publisher.credential_ref`.
+- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for LinkedIn and for Threads accounts that still fall back to manual handoff because the credential bundle is missing or invalid.
+- `sns-engine scheduler backfill` also respects that same capability split. It can create future Threads jobs only when the configured account resolves a live Threads publisher; otherwise it skips Threads and leaves manual fallback drafts out of the scheduled queue.
 
 Suggested dry-run and smoke checks:
 
 ```bash
 sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
+scripts/scan_secrets.sh check
 ./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
 ```
 

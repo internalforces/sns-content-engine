@@ -58,8 +58,8 @@ Notes:
 - `Runs & Failures`: recent pipeline runs, technical failures, and policy skips.
 - `Articles`: stored article and enrichment status rows.
 - `Pending Review`: drafts waiting for manual review.
-- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Approved LinkedIn and Threads drafts show copy-ready manual upload guidance instead of a schedule form.
-- `Publish Jobs`: queued, published, failed, and cancelled jobs plus linked draft context. Non-X manual handoffs stay here until an operator records the final outcome.
+- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Approved LinkedIn drafts always show copy-ready manual upload guidance. Approved Threads drafts show the schedule form when a live publisher resolves successfully and fall back to manual upload guidance when it does not.
+- `Publish Jobs`: queued, published, failed, and cancelled jobs plus linked draft context. LinkedIn handoffs and manual-fallback Threads handoffs stay here until an operator records the final outcome.
 - `Scheduler`: discover, backfill, and publish-due actions with dry-run-first messaging.
 
 ## Recommended local flow
@@ -68,17 +68,43 @@ Notes:
 2. Open `Pending Review` and inspect one draft workspace.
 3. Approve, reject, or edit the draft.
 4. If the approved draft is `x`, use the schedule form and then follow its queued or published state through `Publish Jobs`.
-5. If the approved draft is `linkedin` or `threads`, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
-6. Use `Scheduler` only for discovery, backfill, and due scheduled jobs after confirming the current X queue.
+5. If the approved draft is `threads` and the review page still shows the schedule form, treat it like a live-publish channel: schedule it directly or let `Scheduler -> Backfill` create a future slot.
+6. If the approved draft is `linkedin`, or `threads` still shows manual upload guidance, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
+7. Use `Scheduler` only for discovery, backfill, and due scheduled jobs after confirming the current live-publish queue.
 
-## Manual handoff flow for LinkedIn and Threads
+## Manual handoff flow for LinkedIn and manual-fallback Threads
 
-1. Approval creates an explicit publish-job record automatically. It is visible in review audit history and the `Publish Jobs` list.
+1. Approval creates an explicit publish-job record automatically for LinkedIn, and for Threads only when that account does not currently resolve a live publisher from `publisher.credential_ref`.
 2. The review detail page keeps the approved body available as operator copy for the external platform.
 3. The publish-job detail page shows manual action forms only while the handoff is still open.
 4. `발행 완료 기록` stores the final state as `published` and can include an external post ID or link.
 5. `발행 실패 기록` stores the handoff as `failed` with the readable error message you provide.
 6. `전달 취소` closes the handoff as `cancelled` without sending it to the scheduler queue.
+
+## Enabling Threads live publishing
+
+1. Add `publisher.credential_ref` under the target `threads` channel in your chosen `accounts.yaml`.
+2. Export the referenced environment variable as a JSON bundle with `access_token` and `threads_user_id`.
+3. Reopen the console with the same `config_dir` and `database_url` so review and scheduler actions read the updated operator context.
+4. Confirm the change by opening an approved Threads draft. When live publishing is configured correctly, the review page shows the schedule form instead of manual upload guidance.
+
+Example config fragment:
+
+```yaml
+threads:
+  schedule:
+    cron: "0 11 * * *"
+  render:
+    max_chars: 10000
+  publisher:
+    credential_ref: THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+```
+
+Example env bundle:
+
+```bash
+export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-threads-user-access-token","threads_user_id":"replace-with-threads-user-id"}'
+```
 
 ## Safety reminders
 
@@ -86,7 +112,8 @@ Notes:
 - Browser scheduling still uses the same validation, attribution, and provenance checks as the CLI and API.
 - `publish-due` stays dry-run by default in the browser. Live publish only runs when you explicitly select the one-run live option.
 - Live publish still depends on configured channel credentials from environment variables, not YAML secrets.
-- LinkedIn and Threads handoffs are never auto-published by the browser. The console only records the outcome after the operator finishes the upload outside the app.
+- LinkedIn handoffs are never auto-published by the browser. Threads handoffs are also manual-only whenever live credentials are missing, invalid, or not configured for that account.
+- Scheduler backfill and review-page scheduling only treat Threads as live-publish-capable when the configured account can resolve a live Threads publisher. Otherwise the console keeps Threads on the manual handoff path.
 - Manual handoff forms disappear after a job reaches `published`, `failed`, or `cancelled`; if a fresh post is needed later, start from a new approved draft or new handoff instead of reopening the terminal job.
 
 ## Related guides
