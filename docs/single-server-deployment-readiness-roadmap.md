@@ -1,0 +1,135 @@
+# Single-Server Deployment Readiness Roadmap
+
+## Goal
+
+Extend the current local-and-operator-first implementation into a single-server deployment-ready baseline that:
+- can run the web console and scheduler safely on one personal server under `sns.gilgop.cloud`
+- codifies repeatable runtime, environment, and service-layout decisions inside the repository
+- keeps the current manual-review gate, dry-run-first publish defaults, and env-only credential model intact
+- documents edge protection, HTTPS, smoke checks, backup, and rollback expectations before the first live rollout
+
+## Current implementation snapshot
+
+### Already implemented
+
+- The repository already exposes a FastAPI application with `/health` plus server-rendered `/console/...` pages.
+- The CLI already supports `scheduler run`, `publish-due`, `healthcheck`, review actions, and database bootstrap or upgrade flows.
+- The project already uses environment-driven secrets, includes `.env.example`, and ships a small project-local `.env` loader.
+- README already includes a long-running scheduler `systemd` example, and the operator console guide already documents local `uvicorn` startup.
+
+### Current limitations relevant to the new goal
+
+- There is no dedicated deployment guide that covers one-server runtime layout, env, DB, and runtime-role decisions together.
+- The repository does not yet ship a dedicated web-service `systemd` unit, reverse-proxy config assets, or a production env template for remote operation.
+- `uvicorn` is documented for local console use but is not currently part of the packaged runtime dependency set.
+- The browser console does not add authentication, so exposing it remotely without an edge protection layer would be unsafe.
+- README and current operator docs mention local and single-server pieces, but they do not yet provide one cohesive `sns.gilgop.cloud` deployment path.
+
+## Milestones
+
+### M1: Deployment Baseline Assets
+
+Goal:
+- Add the smallest repository-backed baseline for one-server runtime layout and operator conventions.
+
+Tasks:
+- `01` Deployment guide and production conventions
+- `02` Runtime packaging and service units
+
+### M2: Edge Hardening And Domain Routing
+
+Goal:
+- Make `sns.gilgop.cloud` deployable behind explicit HTTPS and access protection.
+
+Tasks:
+- `03` Reverse proxy and domain assets for `sns.gilgop.cloud`
+- `04` Remote console safety alignment
+
+### M3: Operational Rollout And Recovery
+
+Goal:
+- Make the first production rollout and later recovery steps repeatable for one operator.
+
+Tasks:
+- `05` Smoke checks, backup, and rollback runbook
+
+## Phase 1: Deployment Baseline Assets
+
+### Task 01: Deployment guide and production conventions
+
+Goal:
+- Add a dedicated deployment guide that standardizes single-server layout, env handling, database decisions, and service split expectations for `sns.gilgop.cloud`.
+
+Actions:
+- create a deployment guide that covers recommended server directory layout, config path conventions, `.env` handling, and SQLite versus Postgres guidance
+- document the split between the FastAPI web service and the background scheduler service
+- align deployment guidance with existing healthcheck, review-first, and dry-run publish semantics
+
+Verification:
+- `PYTHONPATH=$PWD pytest tests/test_cli.py -k "healthcheck" -q`
+- `PYTHONPATH=$PWD pytest tests/test_env.py -q`
+
+Done when:
+- the repository has one dedicated deployment guide for the personal-server target
+- deployers can infer a stable server layout without guessing from scattered docs
+- the guide preserves the current review and publish safety model
+
+### Task 02: Runtime packaging and service units
+
+Goal:
+- Make the repository carry the minimum runtime and service assets needed to run the web console and scheduler on a real server.
+
+Actions:
+- add `uvicorn` runtime support in the smallest clean shape that fits the current packaging policy
+- add dedicated `systemd` unit files for `sns-web` and `sns-scheduler`
+- add a checked-in production env template such as `.env.production.example`
+
+Verification:
+- `PYTHONPATH=$PWD pytest tests/test_api.py tests/test_console.py -q`
+- `PYTHONPATH=$PWD pytest tests/test_cli.py tests/test_scheduler.py tests/test_env.py -q`
+
+## Phase 2: Edge Hardening And Domain Routing
+
+### Task 03: Reverse proxy and domain assets for `sns.gilgop.cloud`
+
+Goal:
+- Add one preferred reverse-proxy configuration path that safely exposes the web console over HTTPS at `sns.gilgop.cloud`.
+
+Actions:
+- add repository-backed reverse-proxy configuration assets for `sns.gilgop.cloud`
+- keep the application port private and proxied from the edge layer only
+- document TLS, certificate renewal, and DNS expectations for the chosen proxy
+
+Verification:
+- `PYTHONPATH=$PWD pytest tests/test_api.py -k health -q`
+- `PYTHONPATH=$PWD pytest tests/test_console.py -q`
+
+### Task 04: Remote console safety alignment
+
+Goal:
+- Align README and operator-facing docs so remote console deployment is always described as edge-protected and never as directly public.
+
+Actions:
+- update README and console docs with explicit access-protection requirements for remote operation
+- explain acceptable edge protections such as basic auth, IP allowlists, VPN, or a zero-trust gateway
+- keep non-goals explicit by clarifying that this initiative does not add in-app auth
+
+Verification:
+- `PYTHONPATH=$PWD pytest tests/test_console.py -q`
+- `PYTHONPATH=$PWD pytest tests/test_api.py -k health -q`
+
+## Phase 3: Operational Rollout And Recovery
+
+### Task 05: Smoke checks, backup, and rollback runbook
+
+Goal:
+- Add the smallest repeatable rollout and recovery workflow for first deployment and later maintenance.
+
+Actions:
+- add a smoke-check script or operator checklist for service status, `/health`, protected console access, and `publish-due` dry-run validation
+- document backup and rollback steps for the selected database path and service restart sequence
+- align README and deployment docs so rollout order is explicit and non-destructive
+
+Verification:
+- `PYTHONPATH=$PWD pytest tests/test_operations.py tests/test_scripts.py -q`
+- `PYTHONPATH=$PWD pytest tests/test_cli.py tests/test_scheduler.py -q`

@@ -7,6 +7,7 @@ The operator console is the browser surface for the same FastAPI app, database, 
 - Manual review still gates publishing.
 - Browser `publish-due` stays in dry-run mode unless you explicitly opt into one live run.
 - The console does not add authentication, auto-approval, or hidden publish behavior.
+- For remote personal-server use, keep the console behind an HTTPS edge layer and start from the [single-server deployment guide](./single-server-deployment-guide.md).
 
 ## Before you start
 
