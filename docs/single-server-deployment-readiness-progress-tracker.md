@@ -1,90 +1,83 @@
 # Single-Server Deployment Readiness Progress Tracker
 
 ## Usage
+
 This file is the live implementation tracker for the Single-Server Deployment Readiness roadmap.
 
-When an autonomous agent works from `docs/single-server-deployment-readiness-execution-guide.md`, it should update this file:
+Update it:
 - before starting a task
 - during meaningful implementation progress
 - after running tests
-- when a blocker or stop reason appears
+- when a blocker appears
 - when the task is complete
 
-Keep updates short, factual, and current.
-
-## Generated document naming
-When instantiating this template, keep the filename explicit so this file is easy to distinguish from planning or prompt documents.
-
-- Recommended filename: `docs/single-server-deployment-readiness-progress-tracker.md`
-- Related files:
-  - `docs/single-server-deployment-readiness-vibe-coding-prompt.md`
-  - `docs/single-server-deployment-readiness-roadmap.md`
-  - `docs/single-server-deployment-readiness-execution-guide.md`
-
-If `Current task` is already marked `in_progress` or `blocked`, resume or resolve that task before picking a new one unless the roadmap was intentionally reprioritized.
-
 ## Current Status
+
 - Current milestone: `M1_deployment_baseline_assets`
 - Current task: `01_deployment_guide_and_production_conventions`
-- Active status: `pending`
-- Last updated: `2026-04-17 14:30 KST`
+- Active status: `done`
+- Last updated: `2026-04-18 19:33 KST`
 - Base branch: `master`
-- Active branch: `not_started`
-- Latest task commit: `pending`
-- Resume decision: `pick_next_task`
+- Active branch: `codex/task-01-deployment-guide-baseline`
+- Latest task commit: `not_created`
+- Resume decision: `task_01_complete_pick_task_02_next`
 - Stop reason: `none`
 
 ## Scope For Current Task
+
 - Goal: `Add a dedicated deployment guide that standardizes single-server layout, env handling, database decisions, and service split expectations for sns.gilgop.cloud`
-- In scope: `A deployment guide, explicit runtime and storage conventions, and alignment with current healthcheck, review, and dry-run publish semantics`
+- In scope: `A deployment guide, concrete runtime and storage conventions, and alignment with current healthcheck, review, and dry-run publish semantics`
 - Out of scope: `Reverse-proxy implementation, in-app auth, scheduler redesign, distributed deployment, and live-publish behavior changes`
-- Dependencies: `README.md, docs/operator-console-guide.md, app/api/app.py, app/cli.py, and app/storage/database.py`
 - Verification commands:
   - `PYTHONPATH=$PWD pytest tests/test_cli.py -k "healthcheck" -q`
   - `PYTHONPATH=$PWD pytest tests/test_env.py -q`
 
-## Environment Notes
-- Required services status: `unknown`
-- Env or fixture status: `ready (.env.example, config/, and fixture-backed tests already exist; real server secrets are not needed yet for planning work)`
-- Existing unrelated failures: `none known`
-
 ## Roadmap Status
-Duplicate or remove rows as needed. The number of milestones and tasks is intentionally flexible.
 
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M1 | 01 | Deployment guide and production conventions | pending | 2026-04-17 14:30 KST | Roadmap scaffold created; implementation not started |
-| M1 | 02 | Runtime packaging and service units | pending | 2026-04-17 14:30 KST | Waiting for Task 01 |
-| M2 | 03 | Reverse proxy and domain assets for `sns.gilgop.cloud` | pending | 2026-04-17 14:30 KST | Waiting for baseline runtime and service layout |
-| M2 | 04 | Remote console safety alignment | pending | 2026-04-17 14:30 KST | Waiting for concrete edge-proxy path |
-| M3 | 05 | Smoke checks, backup, and rollback runbook | pending | 2026-04-17 14:30 KST | Final rollout and recovery slice |
-
-Status values:
-- `pending`
-- `in_progress`
-- `blocked`
-- `done`
+| M1 | 01 | Deployment guide and production conventions | done | 2026-04-18 19:33 KST | Added the missing single-server docs set plus a dedicated deployment guide and linked it from existing operator docs |
+| M1 | 02 | Runtime packaging and service units | pending | 2026-04-18 19:27 KST | Waiting for Task 01 |
+| M2 | 03 | Reverse proxy and domain assets for `sns.gilgop.cloud` | pending | 2026-04-18 19:27 KST | Waiting for runtime and deployment conventions |
+| M2 | 04 | Remote console safety alignment | pending | 2026-04-18 19:27 KST | Waiting for a concrete edge-proxy path |
+| M3 | 05 | Smoke checks, backup, and rollback runbook | pending | 2026-04-18 19:27 KST | Final rollout and recovery slice |
 
 ## Changed Files For Active Task
-- `none yet (implementation not started; planning documents only)`
+
+- `README.md`
+- `docs/operator-console-guide.md`
+- `docs/single-server-deployment-guide.md`
+- `docs/single-server-deployment-readiness-vibe-coding-prompt.md`
+- `docs/single-server-deployment-readiness-roadmap.md`
+- `docs/single-server-deployment-readiness-execution-guide.md`
+- `docs/single-server-deployment-readiness-progress-tracker.md`
 
 ## Progress Log
-- `2026-04-17 14:30 KST` Created the Single-Server Deployment Readiness roadmap, execution guide, progress tracker, and vibe-coding prompt based on the current personal-server deployment target of `sns.gilgop.cloud`.
-- `2026-04-17 14:30 KST` Chose a three-milestone shape covering baseline deployment assets, edge hardening, and rollout or recovery because that matches the current repository gaps without redesigning the app.
-- `2026-04-17 14:30 KST` Left all implementation tasks in `pending` so the next execution pass can begin cleanly from Task `01`.
+
+- 2026-04-18 19:27 KST: Switched from `master` to `codex/task-01-deployment-guide-baseline` and resumed Task `01` as the active implementation slice.
+- 2026-04-18 19:27 KST: Verified the current deployment-sensitive behavior from code before editing docs: both the CLI and FastAPI app load the project `.env`, `DATABASE_URL` falls back to the repository default SQLite path, `/health` accepts `config_dir` and `database_url`, and readiness checks fail fast on placeholder config input.
+- 2026-04-18 19:27 KST: Chose the smallest safe Task `01` shape: restore the missing single-server roadmap docs on `master`, add one dedicated single-server deployment guide, and defer service-unit, proxy, and rollback assets to later tasks.
+- 2026-04-18 19:33 KST: Added the missing single-server initiative docs on `master`: vibe prompt, roadmap, execution guide, and progress tracker. Added `docs/single-server-deployment-guide.md` to standardize `/opt/sns-content-engine` layout, shared `.env` usage, SQLite-first guidance, loopback-only web binding, and the web/scheduler runtime split.
+- 2026-04-18 19:33 KST: Linked the new deployment guide from `README.md` and `docs/operator-console-guide.md` so operators have one explicit entry point for personal-server rollout guidance.
 
 ## Test Log
-- `2026-04-17 14:30 KST` `not_run` -> `planning docs only; no implementation task has started yet`
+
+- `2026-04-18 19:32 KST` `PYTHONPATH=$PWD pytest tests/test_cli.py -k "healthcheck" -q` -> `passed` `5 passed, 33 deselected`
+- `2026-04-18 19:32 KST` `PYTHONPATH=$PWD pytest tests/test_env.py -q` -> `passed` `2 passed`
 
 ## Open Questions
-- `Should the first live single-server rollout stay on SQLite, or should the initiative switch to Postgres before remote production exposure?`
+
 - `Which edge protection path should be the preferred documented default for sns.gilgop.cloud: basic auth, IP allowlist, VPN, or a zero-trust gateway?`
 
 ## Blockers
+
 - `None currently`
 
 ## Follow-up
-- `Start with Task 01 and keep the first implementation slice focused on one deployment guide plus concrete runtime conventions before adding proxy or recovery assets.`
+
+- Task `02` should package `uvicorn`, add dedicated `sns-web` and `sns-scheduler` service units, and add a production-oriented env template that matches the new deployment guide.
+- Task `03` should choose one concrete edge-protection path for `sns.gilgop.cloud` and add repo-backed reverse-proxy assets.
 
 ## Completion Summary
-- `Initiative scaffolding complete; implementation has not started yet.`
+
+- Task `01` complete. The repository now carries the single-server deployment initiative docs on `master`, one dedicated deployment guide for the current one-server shape, and aligned entry points from the README and operator console guide. No commit was created in this turn.
