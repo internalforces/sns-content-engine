@@ -1,0 +1,17 @@
+sns.gilgop.cloud {
+    encode zstd gzip
+
+    # Keep the health endpoint probeable without console credentials.
+    @health path /health
+    handle @health {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    # Protect the operator console and JSON API at the edge.
+    handle {
+        basic_auth {
+            {$SNS_EDGE_BASIC_AUTH_USER} {$SNS_EDGE_BASIC_AUTH_HASH}
+        }
+        reverse_proxy 127.0.0.1:8000
+    }
+}

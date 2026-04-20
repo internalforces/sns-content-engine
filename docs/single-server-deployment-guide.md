@@ -10,7 +10,7 @@ This guide standardizes the current deployment shape for:
 - one shared environment file and one shared config directory
 - one local database, with SQLite as the default first-rollout choice
 
-It now provides checked-in `systemd` units plus a production-oriented env template, but reverse-proxy config files and a backup and rollback runbook still remain follow-up tasks in the deployment-readiness roadmap.
+It now provides checked-in `systemd` units, a production-oriented env template, and a preferred Caddy reverse-proxy baseline for `sns.gilgop.cloud`. Backup and rollback guidance still remains a follow-up task in the deployment-readiness roadmap.
 
 ## Safety model
 
@@ -158,27 +158,75 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now sns-web.service sns-scheduler.service
 ```
 
-## Remote access requirements for `sns.gilgop.cloud`
+## Preferred remote access path for `sns.gilgop.cloud`
 
 Treat the current app as private-by-default.
 
-Required deployment posture:
-- terminate HTTPS at an edge proxy in front of the FastAPI app
-- keep the app itself bound to loopback only, such as `127.0.0.1:8000`
-- require an access-control layer before requests reach `/console`
+The checked-in default for this repository is Caddy with automatic HTTPS plus edge Basic Auth.
 
-Acceptable edge protection examples:
-- HTTP basic auth at the reverse proxy
-- an IP allowlist
-- a VPN-only route
-- a zero-trust access gateway
+Checked-in assets:
+- `deploy/caddy/sns.gilgop.cloud.Caddyfile`
+- `deploy/caddy/sns.gilgop.cloud.env.example`
+
+This baseline:
+- terminates HTTPS at Caddy and proxies only to `127.0.0.1:8000`
+- leaves `/health` open for simple external probes
+- requires edge Basic Auth for every other route, including `/console` and the JSON review or scheduler APIs
+- keeps edge credentials out of the checked-in Caddyfile by reading the username and password hash from a separate environment file
+
+Suggested install sequence:
+
+1. Install Caddy on the server using the official package instructions for your operating system.
+2. Copy the checked-in site config into place:
+
+```bash
+sudo cp deploy/caddy/sns.gilgop.cloud.Caddyfile /etc/caddy/Caddyfile
+```
+
+3. Copy the edge-credentials template and replace the placeholders:
+
+```bash
+sudo cp deploy/caddy/sns.gilgop.cloud.env.example /etc/caddy/sns-content-engine.env
+sudo chmod 600 /etc/caddy/sns-content-engine.env
+```
+
+4. Generate a password hash for Basic Auth and store it in the environment file:
+
+```bash
+caddy hash-password --plaintext 'replace-with-a-long-random-password'
+```
+
+5. Add a systemd override so the packaged `caddy` service reads the environment file:
+
+```bash
+sudo systemctl edit caddy
+```
+
+```ini
+[Service]
+EnvironmentFile=/etc/caddy/sns-content-engine.env
+```
+
+6. Validate and reload the config:
+
+```bash
+sudo systemctl daemon-reload
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+sudo systemctl reload caddy
+```
+
+DNS and TLS expectations:
+- point the `A` and or `AAAA` record for `sns.gilgop.cloud` at the server before first startup
+- keep inbound ports `80` and `443` open to the Caddy host
+- keep Caddy's data directory persistent so managed certificates can be renewed normally
+- do not prefix the site address with `http://` in the checked-in Caddyfile, because automatic HTTPS depends on the domain name being served as HTTPS-capable
 
 Do not:
 - bind the app directly to `0.0.0.0` and expose it without protection
-- treat the current console as safe for public unauthenticated access
-- move credentials into checked-in config files just to simplify remote startup
+- treat the current console or JSON API routes as safe for public unauthenticated access
+- move Basic Auth or publisher credentials into checked-in config files just to simplify remote startup
 
-Concrete reverse-proxy assets for `sns.gilgop.cloud` are a later deployment-readiness task. Until those land, keep remote exposure private and operator-controlled.
+If you later prefer IP allowlists, VPN-only access, or a zero-trust gateway, apply that as a stricter edge policy in front of or instead of the checked-in Basic Auth baseline. The repository default remains Caddy plus Basic Auth because it is the smallest complete protected path for one personal server.
 
 ## First smoke checks
 
@@ -199,6 +247,5 @@ What to confirm:
 ## What is intentionally deferred
 
 This guide defines the runtime conventions for a single protected server, but these assets still belong to later tasks:
-- checked-in reverse-proxy config for `sns.gilgop.cloud`
 - backup, restore, and rollback procedures
 - a final production smoke checklist that includes service-manager status checks

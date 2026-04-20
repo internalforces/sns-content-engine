@@ -15,15 +15,13 @@ Extend the current local-and-operator-first implementation into a single-server 
 - The repository already exposes a FastAPI application with `/health` plus server-rendered `/console/...` pages.
 - The CLI already supports `scheduler run`, `publish-due`, `healthcheck`, review actions, and database bootstrap or upgrade flows.
 - The project already uses environment-driven secrets, includes `.env.example`, and ships a small project-local `.env` loader.
-- README already includes a long-running scheduler `systemd` example, and the operator console guide already documents local `uvicorn` startup.
+- The repository now ships checked-in single-server runtime assets: `sns-web` and `sns-scheduler` `systemd` units, `.env.production.example`, and a Caddy reverse-proxy baseline for `sns.gilgop.cloud`.
 
 ### Current limitations relevant to the new goal
 
-- There is no dedicated deployment guide that covers one-server runtime layout, env, DB, and runtime-role decisions together.
-- The repository does not yet ship a dedicated web-service `systemd` unit, reverse-proxy config assets, or a production env template for remote operation.
-- `uvicorn` is documented for local console use but is not currently part of the packaged runtime dependency set.
-- The browser console does not add authentication, so exposing it remotely without an edge protection layer would be unsafe.
-- README and current operator docs mention local and single-server pieces, but they do not yet provide one cohesive `sns.gilgop.cloud` deployment path.
+- The browser console and JSON operator routes still do not add in-app authentication, so remote deployment remains dependent on the chosen edge protection layer.
+- README and operator-facing docs still need broader safety alignment around the chosen `sns.gilgop.cloud` proxy path.
+- The repository still lacks the final smoke-check, backup, and rollback runbook for first production rollout.
 
 ## Milestones
 
@@ -93,12 +91,12 @@ Verification:
 ### Task 03: Reverse proxy and domain assets for `sns.gilgop.cloud`
 
 Goal:
-- Add one preferred reverse-proxy configuration path that safely exposes the web console over HTTPS at `sns.gilgop.cloud`.
+- Add one preferred Caddy reverse-proxy configuration path that safely exposes the operator surface over HTTPS at `sns.gilgop.cloud`.
 
 Actions:
-- add repository-backed reverse-proxy configuration assets for `sns.gilgop.cloud`
+- add repository-backed Caddy configuration assets for `sns.gilgop.cloud`
 - keep the application port private and proxied from the edge layer only
-- document TLS, certificate renewal, and DNS expectations for the chosen proxy
+- protect all non-health routes with edge Basic Auth and document TLS, certificate renewal, and DNS expectations for the chosen proxy
 
 Verification:
 - `PYTHONPATH=$PWD pytest tests/test_api.py -k health -q`
