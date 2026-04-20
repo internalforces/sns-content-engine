@@ -244,8 +244,8 @@ Recommended invocation:
 
 ```bash
 cd /opt/sns-content-engine
-SNS_SMOKE_EDGE_USER=operator \
-SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+export SNS_SMOKE_EDGE_USER=operator
+export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 
@@ -328,8 +328,8 @@ sudo systemctl reload caddy
 
 ```bash
 cd /opt/sns-content-engine
-SNS_SMOKE_EDGE_USER=operator \
-SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+export SNS_SMOKE_EDGE_USER=operator
+export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 
