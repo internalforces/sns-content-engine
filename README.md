@@ -246,8 +246,8 @@ For the protected single-server rollout path, the repository also includes `scri
 
 ```bash
 cd /opt/sns-content-engine
-SNS_SMOKE_EDGE_USER=operator \
-SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+export SNS_SMOKE_EDGE_USER=operator
+export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 

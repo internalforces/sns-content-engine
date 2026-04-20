@@ -213,7 +213,7 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
             "SNS_SMOKE_CURL_BIN": str(fake_bin_dir / "curl"),
             "SNS_SMOKE_ENGINE_BIN": str(fake_bin_dir / "sns-engine"),
             "SNS_SMOKE_EDGE_USER": "operator",
-            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",
+            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",  # pragma: allowlist secret
         }
     )
 
