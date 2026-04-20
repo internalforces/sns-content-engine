@@ -88,6 +88,8 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
 - [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, manual publish handoff actions, publish-job visibility, and scheduler-safe HTTP actions.
 
+For remote operation at `sns.gilgop.cloud`, keep the shared FastAPI app on `127.0.0.1:8000` and route both `/console` and the JSON operator routes through the checked-in Caddy plus Basic Auth edge layer. Leave `/health` open only if you need external probes; do not expose the app directly on a public `0.0.0.0` bind.
+
 The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, LinkedIn remains an operator-driven manual upload flow with explicit outcome recording, and Threads stays manual only until its live publisher is configured successfully.
 
 ## CLI Usage

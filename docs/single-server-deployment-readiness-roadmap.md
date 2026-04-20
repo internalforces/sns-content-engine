@@ -16,11 +16,11 @@ Extend the current local-and-operator-first implementation into a single-server 
 - The CLI already supports `scheduler run`, `publish-due`, `healthcheck`, review actions, and database bootstrap or upgrade flows.
 - The project already uses environment-driven secrets, includes `.env.example`, and ships a small project-local `.env` loader.
 - The repository now ships checked-in single-server runtime assets: `sns-web` and `sns-scheduler` `systemd` units, `.env.production.example`, and a Caddy reverse-proxy baseline for `sns.gilgop.cloud`.
+- README plus the operator-facing console and API guides now align on the same loopback-only app binding and Caddy plus Basic Auth remote-access baseline.
 
 ### Current limitations relevant to the new goal
 
 - The browser console and JSON operator routes still do not add in-app authentication, so remote deployment remains dependent on the chosen edge protection layer.
-- README and operator-facing docs still need broader safety alignment around the chosen `sns.gilgop.cloud` proxy path.
 - The repository still lacks the final smoke-check, backup, and rollback runbook for first production rollout.
 
 ## Milestones
@@ -105,14 +105,15 @@ Verification:
 ### Task 04: Remote console safety alignment
 
 Goal:
-- Align README and operator-facing docs so remote console deployment is always described as edge-protected and never as directly public.
+- Align README and operator-facing docs so remote console deployment and JSON operator routes are always described as edge-protected and never as directly public.
 
 Actions:
-- update README and console docs with explicit access-protection requirements for remote operation
+- update README, console docs, and API-facing operator docs with explicit access-protection requirements for remote operation
 - explain acceptable edge protections such as basic auth, IP allowlists, VPN, or a zero-trust gateway
 - keep non-goals explicit by clarifying that this initiative does not add in-app auth
 
 Verification:
+- `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q`
 - `PYTHONPATH=$PWD pytest tests/test_console.py -q`
 - `PYTHONPATH=$PWD pytest tests/test_api.py -k health -q`
 

@@ -2,6 +2,14 @@
 
 This guide documents the operator-facing HTTP surfaces that sit on top of the existing review workflow, publish-job storage, and scheduler helpers.
 
+## Remote personal-server access
+
+The same FastAPI app serves both the browser console and these JSON routes. For `sns.gilgop.cloud`, keep that app bound to `127.0.0.1:8000` and put the checked-in Caddy plus Basic Auth layer in front of the operator API.
+
+- Do not expose `/reviews/...`, `/publish-jobs/...`, or `/scheduler/...` directly on a public bind.
+- The checked-in edge baseline leaves `/health` open for simple probes and protects every other route with Basic Auth.
+- This API does not add in-app auth, so use a stricter edge policy such as IP allowlists, a VPN, or a zero-trust gateway when Basic Auth alone is not enough for your environment.
+
 ## Safety Model
 
 - Manual review remains the gate. Drafts stay in `pending_review` until an operator explicitly approves, rejects, edits, or schedules them.
@@ -19,6 +27,14 @@ This guide documents the operator-facing HTTP surfaces that sit on top of the ex
 - Manual publish action routes accept `operator` and optionally `external_post_id` or `reason`; the failure route requires `error_message`.
 - Scheduler action routes accept `config_dir`, and `publish-due` also accepts `live`.
 - Response timestamps are ISO 8601 strings in UTC.
+
+Remote access examples:
+
+```bash
+curl -fsS "http://127.0.0.1:8000/health?config_dir=/opt/sns-content-engine/config"
+curl -u operator:replace-with-password \
+  "https://sns.gilgop.cloud/reviews/pending?database_url=sqlite:////opt/sns-content-engine/data/sns_content_engine.db"
+```
 
 ## Review Surfaces
 

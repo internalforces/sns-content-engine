@@ -47,6 +47,7 @@ Notes:
 - `config_dir` tells review and scheduler actions which config set to use.
 - `database_url` tells the console which SQLite database to read and mutate.
 - The console keeps these query parameters across navigation so dashboard, review, publish, and scheduler pages stay on the same operator context.
+- This loopback URL is the local-only path. For remote use, keep the app on loopback and open the same console through `https://sns.gilgop.cloud/console/...` only after Caddy has applied the checked-in Basic Auth gate.
 
 ## Remote personal-server baseline
 
@@ -56,6 +57,8 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 - Let Caddy terminate HTTPS and enforce Basic Auth before requests reach the app.
 - Treat the Basic Auth layer as protecting the whole operator surface, not just `/console`, because the same FastAPI app also exposes state-changing JSON routes.
 - The checked-in Caddy baseline leaves `/health` open for simple probes and protects every other route, including `/console`, `/reviews/...`, `/scheduler/...`, and publish-job actions.
+- If you need remote browser access, use `https://sns.gilgop.cloud/console/?config_dir=/opt/sns-content-engine/config` after the Basic Auth prompt. Do not rebind `uvicorn` to `0.0.0.0` just to avoid the reverse proxy.
+- If Basic Auth alone is not strong enough for your environment, add IP allowlists, a VPN, or a zero-trust gateway in front of the same Caddy entrypoint instead of removing the edge gate.
 
 ## Main pages
 
