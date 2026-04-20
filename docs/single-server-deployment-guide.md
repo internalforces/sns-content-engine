@@ -10,7 +10,7 @@ This guide standardizes the current deployment shape for:
 - one shared environment file and one shared config directory
 - one local database, with SQLite as the default first-rollout choice
 
-It now provides checked-in `systemd` units, a production-oriented env template, and a preferred Caddy reverse-proxy baseline for `sns.gilgop.cloud`. Backup and rollback guidance still remains a follow-up task in the deployment-readiness roadmap.
+It now provides checked-in `systemd` units, a production-oriented env template, a preferred Caddy reverse-proxy baseline for `sns.gilgop.cloud`, a smoke-check helper script, and a first-pass backup plus rollback runbook for the same one-server shape.
 
 ## Safety model
 
@@ -228,24 +228,153 @@ Do not:
 
 If you later prefer IP allowlists, VPN-only access, or a zero-trust gateway, apply that as a stricter edge policy in front of or instead of the checked-in Basic Auth baseline. The repository default remains Caddy plus Basic Auth because it is the smallest complete protected path for one personal server.
 
-## First smoke checks
+## Checked-in smoke-check helper
 
-After the web process and scheduler are running, verify the minimum safe surface:
+The repository now includes `scripts/single_server_smoke_check.sh` for first-rollout and post-change verification.
+
+It checks:
+- `sns-web.service`, `sns-scheduler.service`, and `caddy.service` are active
+- `sns-engine healthcheck` passes against the chosen config directory
+- the loopback-only `/health` route responds on `127.0.0.1:8000`
+- anonymous requests to `https://sns.gilgop.cloud/console/...` are rejected at the edge
+- authenticated requests to the same console URL render the app shell
+- `sns-engine scheduler publish-due` still reports the dry-run executor mode
+
+Recommended invocation:
 
 ```bash
-./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
-curl -fsS "http://127.0.0.1:8000/health?config_dir=/opt/sns-content-engine/config"
-./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+cd /opt/sns-content-engine
+SNS_SMOKE_EDGE_USER=operator \
+SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+scripts/single_server_smoke_check.sh
 ```
 
-What to confirm:
-- `healthcheck` passes config, config-readiness, and database checks
-- `/health` returns successfully on the loopback-only app port
-- `scheduler publish-due` stays in dry-run mode unless you deliberately add `--live`
-- the console opens with an explicit operator context such as `/console/?config_dir=/opt/sns-content-engine/config`
+Notes:
+- Use one-shot environment variables or another short-lived secret-injection method for the cleartext Basic Auth password. Do not commit that value into the repository.
+- The script defaults to `/opt/sns-content-engine`, `sns-web.service`, `sns-scheduler.service`, and `caddy.service`.
+- If your service names, config path, or URLs differ, override the `SNS_SMOKE_*` environment variables instead of editing the script ad hoc.
 
-## What is intentionally deferred
+## Backup baseline for SQLite-first rollout
 
-This guide defines the runtime conventions for a single protected server, but these assets still belong to later tasks:
-- backup, restore, and rollback procedures
-- a final production smoke checklist that includes service-manager status checks
+For the default SQLite deployment shape, take a simple operator-owned filesystem backup before code, env, or service changes that you may need to undo.
+
+Recommended steps:
+
+1. Record the currently deployed Git commit so you know which code revision is still known-good:
+
+```bash
+cd /opt/sns-content-engine
+git rev-parse HEAD
+```
+
+2. Create a backup directory once if it does not already exist:
+
+```bash
+mkdir -p /opt/sns-content-engine/backups
+chmod 700 /opt/sns-content-engine/backups
+```
+
+3. Stop the scheduler first, then the web service, so no new review or publish state is written during the copy:
+
+```bash
+sudo systemctl stop sns-scheduler.service sns-web.service
+```
+
+4. Copy the SQLite database to a timestamped backup file:
+
+```bash
+timestamp="$(date +%Y%m%d-%H%M%S)"
+cp /opt/sns-content-engine/data/sns_content_engine.db \
+  "/opt/sns-content-engine/backups/sns_content_engine.${timestamp}.db"
+```
+
+5. If you changed `/opt/sns-content-engine/.env`, copy it separately into an operator-managed secret store or another protected backup location. Keep that copy `0600` and do not place it inside the Git checkout unless the directory is already secured for secrets.
+
+If you are taking a standalone backup only, restart the services in this order when the copy is complete:
+
+```bash
+sudo systemctl start sns-web.service sns-scheduler.service
+```
+
+## Non-destructive rollout order
+
+Use this order for a normal one-server update:
+
+1. Record the current commit and take the SQLite backup above.
+2. Pull or switch to the new repository revision under `/opt/sns-content-engine`.
+3. Reinstall the package if `pyproject.toml` or dependencies changed:
+
+```bash
+cd /opt/sns-content-engine
+python -m pip install -e .
+```
+
+4. Update `/opt/sns-content-engine/.env`, `/opt/sns-content-engine/config`, and any checked-in `deploy/systemd/` or `deploy/caddy/` assets only as needed for the rollout.
+5. Run schema upgrades only when reusing an older database that needs them:
+
+```bash
+./.venv/bin/sns-engine db upgrade
+```
+
+6. Reload service metadata, then restart the app services before reloading Caddy:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart sns-web.service sns-scheduler.service
+sudo systemctl reload caddy
+```
+
+7. Run the checked-in smoke helper before you declare the rollout complete:
+
+```bash
+cd /opt/sns-content-engine
+SNS_SMOKE_EDGE_USER=operator \
+SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+scripts/single_server_smoke_check.sh
+```
+
+This order keeps the rollout non-destructive by preserving the previous code revision and a fresh SQLite copy before services move onto the new version.
+
+## Rollback order
+
+If the new rollout fails the smoke helper or exposes an operator-visible regression, use the same one-server assets to roll back in a small, explicit sequence:
+
+1. Stop the scheduler first, then the web service:
+
+```bash
+sudo systemctl stop sns-scheduler.service sns-web.service
+```
+
+2. Restore the previously known-good repository revision:
+
+```bash
+cd /opt/sns-content-engine
+git checkout <known-good-commit>
+python -m pip install -e .
+```
+
+3. Restore the SQLite backup when the failed rollout changed schema or stored state that you want to unwind:
+
+```bash
+cp /opt/sns-content-engine/backups/sns_content_engine.<timestamp>.db \
+  /opt/sns-content-engine/data/sns_content_engine.db
+```
+
+4. Restore `/opt/sns-content-engine/.env`, `deploy/systemd/`, or `deploy/caddy/` files only if the failed rollout changed them.
+5. Reload service metadata, then start the web service before the scheduler so the UI and `/health` surface are available first:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start sns-web.service
+sudo systemctl start sns-scheduler.service
+sudo systemctl reload caddy
+```
+
+6. Run the same smoke helper again and confirm it returns to the known-good baseline.
+
+## What is intentionally still manual
+
+This guide now includes the minimum repeatable rollout and recovery path for one protected server, but a few things still remain intentionally operator-driven:
+- backup scheduling and off-host retention
+- automated rollback orchestration
+- stronger edge controls than the checked-in Basic Auth baseline, such as VPN-only or zero-trust access

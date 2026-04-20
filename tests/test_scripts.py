@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -95,6 +96,151 @@ def test_create_db_script_upgrades_legacy_database(tmp_path: Path) -> None:
         assert "schema_migrations" in set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
+
+
+def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_publish(
+    tmp_path: Path,
+) -> None:
+    fake_bin_dir = tmp_path / "bin"
+    fake_bin_dir.mkdir()
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    database_url = f"sqlite:///{tmp_path / 'smoke.db'}"
+    engine_call_log = tmp_path / "engine-call-log.txt"
+
+    _write_executable(
+        fake_bin_dir / "systemctl",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if [[ "$1" == "is-active" && "$2" == "--quiet" ]]; then
+          exit 0
+        fi
+
+        echo "unexpected systemctl args: $*" >&2
+        exit 1
+        """,
+    )
+    _write_executable(
+        fake_bin_dir / "curl",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        auth=""
+        write_out=""
+        url=""
+
+        while [[ "$#" -gt 0 ]]; do
+          case "$1" in
+            --user)
+              auth="$2"
+              shift 2
+              ;;
+            --write-out)
+              write_out="$2"
+              shift 2
+              ;;
+            --output)
+              shift 2
+              ;;
+            --silent|--show-error|--fail)
+              shift
+              ;;
+            *)
+              url="$1"
+              shift
+              ;;
+          esac
+        done
+
+        case "$url" in
+          http://127.0.0.1:8000/health*)
+            printf '{"status":"ok"}'
+            ;;
+          https://sns.gilgop.cloud/console/*)
+            if [[ -n "$write_out" ]]; then
+              printf '401'
+              exit 0
+            fi
+            if [[ "$auth" == "operator:secret-password" ]]; then
+              printf '<html><title>sns-content-engine</title></html>'
+              exit 0
+            fi
+            echo "unexpected curl auth: $auth" >&2
+            exit 22
+            ;;
+          *)
+            echo "unexpected curl url: $url" >&2
+            exit 1
+            ;;
+        esac
+        """,
+    )
+    _write_executable(
+        fake_bin_dir / "sns-engine",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        : "${ENGINE_CALL_LOG:?}"
+        printf '%s\n' "$*" >> "$ENGINE_CALL_LOG"
+
+        if [[ "$1" == "healthcheck" ]]; then
+          printf 'event=healthcheck component=cli status=ok check_count=3 failed_check_count=0\n'
+          exit 0
+        fi
+
+        if [[ "$1" == "scheduler" && "$2" == "publish-due" ]]; then
+          printf 'processed due jobs: 0 (dry_run=0, failed=0, skipped=0)\n'
+          printf 'executor mode: fake dry-run (no state changes)\n'
+          exit 0
+        fi
+
+        echo "unexpected sns-engine args: $*" >&2
+        exit 1
+        """,
+    )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "ENGINE_CALL_LOG": str(engine_call_log),
+            "SNS_SMOKE_CONFIG_DIR": str(config_dir),
+            "SNS_SMOKE_DATABASE_URL": database_url,
+            "SNS_SMOKE_SYSTEMCTL_BIN": str(fake_bin_dir / "systemctl"),
+            "SNS_SMOKE_CURL_BIN": str(fake_bin_dir / "curl"),
+            "SNS_SMOKE_ENGINE_BIN": str(fake_bin_dir / "sns-engine"),
+            "SNS_SMOKE_EDGE_USER": "operator",
+            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",
+        }
+    )
+
+    result = subprocess.run(
+        [str(PROJECT_ROOT / "scripts/single_server_smoke_check.sh")],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "smoke_check=service service=sns-web.service status=ok" in result.stdout
+    assert "smoke_check=service service=sns-scheduler.service status=ok" in result.stdout
+    assert "smoke_check=service service=caddy.service status=ok" in result.stdout
+    assert "smoke_check=healthcheck_cli status=ok" in result.stdout
+    assert "smoke_check=loopback_health status=ok" in result.stdout
+    assert "smoke_check=console_edge_gate status=ok" in result.stdout
+    assert "smoke_check=console_authenticated status=ok" in result.stdout
+    assert "smoke_check=publish_due_dry_run status=ok" in result.stdout
+    assert "smoke_check=single_server_rollout status=ok" in result.stdout
+
+    assert engine_call_log.read_text(encoding="utf-8").splitlines() == [
+        f"healthcheck --config-dir {config_dir} --database-url {database_url}",
+        f"scheduler publish-due --config-dir {config_dir} --database-url {database_url}",
+    ]
 
 
 def test_operations_smoke_cli_flow(tmp_path: Path) -> None:
@@ -464,3 +610,8 @@ def _write_smoke_project_config(path: Path) -> Path:
 
 def _write_file(path: Path, content: str) -> None:
     path.write_text(dedent(content).strip() + "\n", encoding="utf-8")
+
+
+def _write_executable(path: Path, content: str) -> None:
+    _write_file(path, content)
+    path.chmod(0o755)

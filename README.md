@@ -82,7 +82,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 ## Operator Guides
 
-- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, and the preferred `deploy/caddy/` HTTPS plus Basic Auth baseline for a protected `sns.gilgop.cloud` rollout.
+- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, the preferred `deploy/caddy/` HTTPS plus Basic Auth baseline for a protected `sns.gilgop.cloud` rollout, and the checked-in smoke-check plus backup or rollback runbook.
 - [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
@@ -241,6 +241,17 @@ sns-engine scheduler publish-due --config-dir config --database-url sqlite:///da
 scripts/scan_secrets.sh check
 ./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
 ```
+
+For the protected single-server rollout path, the repository also includes `scripts/single_server_smoke_check.sh` to verify `sns-web.service`, `sns-scheduler.service`, `caddy.service`, loopback `/health`, the edge-protected console, and dry-run `publish-due` behavior after a restart:
+
+```bash
+cd /opt/sns-content-engine
+SNS_SMOKE_EDGE_USER=operator \
+SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+scripts/single_server_smoke_check.sh
+```
+
+Use one-shot environment variables for that check instead of storing the cleartext console password in a checked-in file. The corresponding SQLite backup and rollback order lives in the single-server deployment guide.
 
 Checked-in `systemd` units for one-server operation now live under:
 
