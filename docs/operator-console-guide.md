@@ -7,7 +7,7 @@ The operator console is the browser surface for the same FastAPI app, database, 
 - Manual review still gates publishing.
 - Browser `publish-due` stays in dry-run mode unless you explicitly opt into one live run.
 - The console does not add authentication, auto-approval, or hidden publish behavior.
-- For remote personal-server use, keep the console behind an HTTPS edge layer and start from the [single-server deployment guide](./single-server-deployment-guide.md).
+- For remote personal-server use, keep the console and JSON API behind the checked-in Caddy plus Basic Auth edge layer from the [single-server deployment guide](./single-server-deployment-guide.md).
 
 ## Before you start
 
@@ -47,6 +47,15 @@ Notes:
 - `config_dir` tells review and scheduler actions which config set to use.
 - `database_url` tells the console which SQLite database to read and mutate.
 - The console keeps these query parameters across navigation so dashboard, review, publish, and scheduler pages stay on the same operator context.
+
+## Remote personal-server baseline
+
+For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseline under `deploy/caddy/`.
+
+- Keep `uvicorn` bound to `127.0.0.1:8000`; do not expose the app port directly.
+- Let Caddy terminate HTTPS and enforce Basic Auth before requests reach the app.
+- Treat the Basic Auth layer as protecting the whole operator surface, not just `/console`, because the same FastAPI app also exposes state-changing JSON routes.
+- The checked-in Caddy baseline leaves `/health` open for simple probes and protects every other route, including `/console`, `/reviews/...`, `/scheduler/...`, and publish-job actions.
 
 ## Main pages
 
@@ -111,6 +120,7 @@ export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-wi
 - LinkedIn handoffs are never auto-published by the browser. Threads handoffs are also manual-only whenever live credentials are missing, invalid, or not configured for that account.
 - Scheduler backfill and review-page scheduling only treat Threads as live-publish-capable when the configured account can resolve a live Threads publisher. Otherwise the console keeps Threads on the manual handoff path.
 - Manual handoff forms disappear after a job reaches `published`, `failed`, or `cancelled`; if a fresh post is needed later, start from a new approved draft or new handoff instead of reopening the terminal job.
+- Edge Basic Auth is an access-control wrapper only. It does not replace the repository's own review-first workflow or justify public unauthenticated exposure.
 
 ## Related guides
 

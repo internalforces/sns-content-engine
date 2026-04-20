@@ -82,7 +82,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 ## Operator Guides
 
-- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, and the split between the loopback-only web process and the scheduler service before a protected `sns.gilgop.cloud` rollout.
+- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, and the preferred `deploy/caddy/` HTTPS plus Basic Auth baseline for a protected `sns.gilgop.cloud` rollout.
 - [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.

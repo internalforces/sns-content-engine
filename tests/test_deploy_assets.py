@@ -43,3 +43,20 @@ def test_production_env_template_matches_single_server_defaults() -> None:
     assert "LOG_LEVEL=INFO" in env_template
     assert "DATABASE_URL=sqlite:////opt/sns-content-engine/data/sns_content_engine.db" in env_template
     assert "DEFAULT_TIMEZONE=Asia/Seoul" in env_template
+
+
+def test_caddy_reverse_proxy_assets_pin_the_edge_protection_baseline() -> None:
+    caddyfile = (PROJECT_ROOT / "deploy/caddy/sns.gilgop.cloud.Caddyfile").read_text(encoding="utf-8")
+    env_template = (PROJECT_ROOT / "deploy/caddy/sns.gilgop.cloud.env.example").read_text(
+        encoding="utf-8"
+    )
+
+    assert "sns.gilgop.cloud" in caddyfile
+    assert "@health path /health" in caddyfile
+    assert "basic_auth" in caddyfile
+    assert "{$SNS_EDGE_BASIC_AUTH_USER}" in caddyfile
+    assert "{$SNS_EDGE_BASIC_AUTH_HASH}" in caddyfile
+    assert "reverse_proxy 127.0.0.1:8000" in caddyfile
+
+    assert "SNS_EDGE_BASIC_AUTH_USER=replace-with-console-user" in env_template
+    assert "SNS_EDGE_BASIC_AUTH_HASH=" in env_template
