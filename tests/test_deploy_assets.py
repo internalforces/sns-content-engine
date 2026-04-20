@@ -60,3 +60,25 @@ def test_caddy_reverse_proxy_assets_pin_the_edge_protection_baseline() -> None:
 
     assert "SNS_EDGE_BASIC_AUTH_USER=replace-with-console-user" in env_template
     assert "SNS_EDGE_BASIC_AUTH_HASH=" in env_template
+
+
+def test_operator_docs_keep_remote_access_on_the_edge_baseline() -> None:
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    console_guide = (PROJECT_ROOT / "docs/operator-console-guide.md").read_text(encoding="utf-8")
+    control_plane_guide = (PROJECT_ROOT / "docs/operator-control-plane-api.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "keep the shared FastAPI app on `127.0.0.1:8000`" in readme
+    assert "Caddy plus Basic Auth edge layer" in readme
+    assert "do not expose the app directly on a public `0.0.0.0` bind" in readme
+
+    assert "https://sns.gilgop.cloud/console/" in console_guide
+    assert "Do not rebind `uvicorn` to `0.0.0.0`" in console_guide
+    assert "protects every other route, including `/console`, `/reviews/...`, `/scheduler/...`" in (
+        console_guide
+    )
+
+    assert "keep that app bound to `127.0.0.1:8000`" in control_plane_guide
+    assert "protects every other route with Basic Auth" in control_plane_guide
+    assert '"https://sns.gilgop.cloud/reviews/pending?' in control_plane_guide

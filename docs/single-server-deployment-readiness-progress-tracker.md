@@ -14,22 +14,23 @@ Update it:
 ## Current Status
 
 - Current milestone: `M2_edge_hardening_and_domain_routing`
-- Current task: `03_reverse_proxy_and_domain_assets`
+- Current task: `04_remote_console_safety_alignment`
 - Active status: `done`
-- Last updated: `2026-04-20 10:05 KST`
+- Last updated: `2026-04-20 10:34 KST`
 - Base branch: `master`
-- Active branch: `codex/task-03-edge-proxy-assets`
-- Latest task commit: `not_created`
-- Resume decision: `task_03_complete_pick_task_04_next`
-- Stop reason: `none`
+- Active branch: `codex/task-04-remote-console-safety`
+- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 04 docs and regressions commit created after this tracker update`
+- Resume decision: `task_04_complete_pick_task_05_next`
+- Stop reason: `task_complete`
 
 ## Scope For Current Task
 
-- Goal: `Add one preferred reverse-proxy path that exposes sns.gilgop.cloud over HTTPS while keeping the app private on loopback and preserving the manual-review safety model`
-- In scope: `Checked-in reverse-proxy assets for sns.gilgop.cloud, one concrete edge-protection choice, the smallest doc alignment needed to explain that choice, and deployment-asset regression coverage`
-- Out of scope: `In-app auth, scheduler redesign, distributed deployment, backup automation, live-publish behavior changes, and a broader operations rollback runbook`
+- Goal: `Align every operator-facing remote-access guide around the chosen sns.gilgop.cloud edge path so the console and JSON routes are consistently described as loopback-only behind Caddy plus Basic Auth`
+- In scope: `README, the operator console guide, the operator control-plane API guide, the smallest roadmap refresh needed to reflect that alignment, and deployment-asset regression coverage for the doc baseline`
+- Out of scope: `In-app auth, runtime behavior changes, scheduler redesign, distributed deployment, backup automation, live-publish behavior changes, and the final rollback runbook`
 - Verification commands:
-  - `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py tests/test_api.py -k "health" -q`
+  - `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q`
+  - `PYTHONPATH=$PWD pytest tests/test_api.py -k "health" -q`
   - `PYTHONPATH=$PWD pytest tests/test_console.py -q`
 
 ## Roadmap Status
@@ -39,16 +40,14 @@ Update it:
 | M1 | 01 | Deployment guide and production conventions | done | 2026-04-18 19:33 KST | Added the missing single-server docs set plus a dedicated deployment guide and linked it from existing operator docs |
 | M1 | 02 | Runtime packaging and service units | done | 2026-04-20 09:12 KST | Added packaged uvicorn metadata, checked-in web and scheduler service units, a production env template, and deployment-asset regression coverage |
 | M2 | 03 | Reverse proxy and domain assets for `sns.gilgop.cloud` | done | 2026-04-20 09:50 KST | Added checked-in Caddy plus Basic Auth assets, documented DNS or TLS expectations, and pinned the baseline with regression coverage |
-| M2 | 04 | Remote console safety alignment | pending | 2026-04-20 09:50 KST | Proxy path is now chosen; remaining work is the wider operator-doc sweep around that baseline |
+| M2 | 04 | Remote console safety alignment | done | 2026-04-20 10:33 KST | README plus the operator console and control-plane API guides now all require the same loopback-only app binding and Caddy plus Basic Auth remote-access path |
 | M3 | 05 | Smoke checks, backup, and rollback runbook | pending | 2026-04-18 19:27 KST | Final rollout and recovery slice |
 
 ## Changed Files For Active Task
 
 - `README.md`
-- `deploy/caddy/sns.gilgop.cloud.Caddyfile`
-- `deploy/caddy/sns.gilgop.cloud.env.example`
+- `docs/operator-control-plane-api.md`
 - `docs/operator-console-guide.md`
-- `docs/single-server-deployment-guide.md`
 - `docs/single-server-deployment-readiness-progress-tracker.md`
 - `docs/single-server-deployment-readiness-roadmap.md`
 - `tests/test_deploy_assets.py`
@@ -73,6 +72,13 @@ Update it:
 - 2026-04-20 09:49 KST: Updated `README.md`, `docs/single-server-deployment-guide.md`, `docs/operator-console-guide.md`, and `docs/single-server-deployment-readiness-roadmap.md` so the repository now names Caddy plus Basic Auth as the preferred `sns.gilgop.cloud` path and documents DNS, TLS, and credential-file expectations.
 - 2026-04-20 09:50 KST: Extended `tests/test_deploy_assets.py` to pin the new Caddy deployment assets and verified the health plus console regression slices after the docs and asset updates.
 - 2026-04-20 10:05 KST: User requested a commit for the completed Task `03` slice, so the working tree is being closed out on `codex/task-03-edge-proxy-assets` without widening scope beyond the checked-in Caddy baseline, doc alignment, and deployment-asset regression coverage.
+- 2026-04-20 10:18 KST: Switched from `codex/task-03-edge-proxy-assets` to `codex/task-04-remote-console-safety` and resumed Task `04` as the active implementation slice.
+- 2026-04-20 10:19 KST: Verified that the console guide already points at the checked-in Caddy baseline, but the README and operator control-plane API guide still needed one explicit whole-surface rule for loopback-only app binding and protected remote access to the JSON routes.
+- 2026-04-20 10:20 KST: Chose the smallest safe Task `04` shape: tighten README plus the console and API guides around the same `sns.gilgop.cloud` entry path, add one protected-route example for the control-plane API, and pin that documentation baseline in `tests/test_deploy_assets.py` without changing runtime behavior.
+- 2026-04-20 10:23 KST: Updated `README.md`, `docs/operator-console-guide.md`, and `docs/operator-control-plane-api.md` so remote usage is consistently described as Caddy plus Basic Auth in front of a loopback-only FastAPI app, with `/health` remaining the only intentionally probeable unauthenticated route in the checked-in baseline.
+- 2026-04-20 10:24 KST: Refreshed `docs/single-server-deployment-readiness-roadmap.md` and this tracker to record Task `04` completion and the narrower remaining gap around the rollout plus recovery runbook.
+- 2026-04-20 10:33 KST: Added a documentation-alignment regression to `tests/test_deploy_assets.py` and reran the deployment-asset, API health, and full console slices successfully.
+- 2026-04-20 10:34 KST: Prepared the Task `04` branch for commit, recorded the self-referential commit-note convention used by other initiative trackers, and kept the staged scope limited to the remote-access doc alignment plus deployment-asset regression coverage.
 
 ## Test Log
 
@@ -82,6 +88,9 @@ Update it:
 - `2026-04-20 09:10 KST` `PYTHONPATH=$PWD pytest tests/test_cli.py tests/test_scheduler.py tests/test_env.py -q` -> `passed` `59 passed`
 - `2026-04-20 09:49 KST` `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py tests/test_api.py -k "health" -q` -> `passed` `1 passed, 41 deselected`
 - `2026-04-20 09:50 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -q` -> `passed` `41 passed`
+- `2026-04-20 10:31 KST` `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q` -> `passed`
+- `2026-04-20 10:32 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "health" -q` -> `passed`
+- `2026-04-20 10:33 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -q` -> `passed`
 
 ## Open Questions
 
@@ -93,9 +102,8 @@ Update it:
 
 ## Follow-up
 
-- Task `04` should sweep the remaining operator-facing docs, especially API-facing guidance, so remote usage is always described as going through the chosen Caddy plus Basic Auth baseline.
 - Task `05` should add the rollout smoke checklist, backup procedure, and rollback order on top of the now-checked-in web, scheduler, and proxy assets.
 
 ## Completion Summary
 
-- Task `03` complete. The repository now carries a checked-in Caddy reverse-proxy baseline for `sns.gilgop.cloud`, keeps the FastAPI app private on loopback, uses edge Basic Auth for all non-health routes, documents the DNS and TLS expectations for automatic HTTPS, and pins the new assets with regression coverage. No commit was created in this turn.
+- Task `04` complete. The repository now describes remote operation consistently across README plus the operator console and API guides: keep the FastAPI app on loopback, route all operator traffic through the checked-in Caddy plus Basic Auth layer at `sns.gilgop.cloud`, leave only `/health` probeable without operator credentials, and pin that documentation baseline with deployment-asset regression coverage. No commit was created in this turn.
