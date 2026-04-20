@@ -10,7 +10,7 @@ This guide standardizes the current deployment shape for:
 - one shared environment file and one shared config directory
 - one local database, with SQLite as the default first-rollout choice
 
-It does not yet provide checked-in `systemd` units, reverse-proxy config files, or a backup and rollback runbook. Those remain follow-up tasks in the deployment-readiness roadmap.
+It now provides checked-in `systemd` units plus a production-oriented env template, but reverse-proxy config files and a backup and rollback runbook still remain follow-up tasks in the deployment-readiness roadmap.
 
 ## Safety model
 
@@ -90,22 +90,16 @@ Whichever backend you choose, keep one shared `DATABASE_URL` for both the web pr
 ## Bring-up checklist
 
 1. Clone the repository onto the server and create a Python 3.12 or 3.13 virtual environment.
-2. Install the package and development extras:
+2. Install the package into the server virtual environment. Use development extras only when you also want the local test tooling on the server:
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e .
 ```
 
-3. Install `uvicorn` in the same environment for now. It is documented and used by the console today, but it is not yet included in the runtime dependency set.
-
-```bash
-python -m pip install uvicorn
-```
-
-4. Prepare an operator-owned config directory under `/opt/sns-content-engine/config`.
+3. Prepare an operator-owned config directory under `/opt/sns-content-engine/config`.
    Copy from `config/` or a sample directory only as a starting point, then replace placeholder URLs and sample account details.
-5. Create `/opt/sns-content-engine/.env` from `.env.example` and fill only the values you actually use.
-6. Initialize a fresh database or upgrade an older one:
+4. Create `/opt/sns-content-engine/.env` from `.env.production.example` and fill only the values you actually use.
+5. Initialize a fresh database or upgrade an older one:
 
 ```bash
 ./.venv/bin/sns-engine db init
@@ -113,7 +107,7 @@ python -m pip install uvicorn
 ```
 
 Use `db init` only for a brand-new database. Use `db upgrade` when reusing an older SQLite file.
-7. Run a readiness check before starting long-running processes:
+6. Run a readiness check before starting long-running processes:
 
 ```bash
 ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
@@ -126,7 +120,7 @@ Keep the web console and scheduler as separate long-running processes.
 Recommended web command:
 
 ```bash
-./.venv/bin/python -m uvicorn app.api.app:app --host 127.0.0.1 --port 8000
+./.venv/bin/uvicorn app.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 Recommended scheduler command:
@@ -139,6 +133,30 @@ Why this shape matters:
 - the web process serves `/health` and the operator console
 - the scheduler keeps background discover, backfill, and publish-due execution separate
 - both processes can share one `.env`, one config directory, and one database URL without merging responsibilities
+
+## Checked-in service units
+
+The repository now includes one-server `systemd` units under `deploy/systemd/`:
+
+- `deploy/systemd/sns-web.service`
+- `deploy/systemd/sns-scheduler.service`
+
+They assume:
+- a working tree rooted at `/opt/sns-content-engine`
+- one shared environment file at `/opt/sns-content-engine/.env`
+- one shared runtime config at `/opt/sns-content-engine/config`
+- a dedicated service account named `sns-engine`
+
+If you use a different service account, update `User=` and `Group=` before enabling the units.
+
+Suggested install sequence:
+
+```bash
+sudo cp deploy/systemd/sns-web.service /etc/systemd/system/
+sudo cp deploy/systemd/sns-scheduler.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sns-web.service sns-scheduler.service
+```
 
 ## Remote access requirements for `sns.gilgop.cloud`
 
@@ -181,7 +199,6 @@ What to confirm:
 ## What is intentionally deferred
 
 This guide defines the runtime conventions for a single protected server, but these assets still belong to later tasks:
-- dedicated `systemd` units for `sns-web` and `sns-scheduler`
 - checked-in reverse-proxy config for `sns.gilgop.cloud`
 - backup, restore, and rollback procedures
 - a final production smoke checklist that includes service-manager status checks

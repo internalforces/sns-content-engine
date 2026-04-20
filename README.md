@@ -82,7 +82,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 ## Operator Guides
 
-- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, env handling, SQLite-first database choice, and the split between the loopback-only web process and the scheduler service before a protected `sns.gilgop.cloud` rollout.
+- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, and the split between the loopback-only web process and the scheduler service before a protected `sns.gilgop.cloud` rollout.
 - [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
@@ -240,28 +240,12 @@ scripts/scan_secrets.sh check
 ./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
 ```
 
-Example `systemd` unit for the long-running scheduler:
+Checked-in `systemd` units for one-server operation now live under:
 
-```ini
-[Unit]
-Description=sns-content-engine scheduler
-After=network-online.target
-Wants=network-online.target
+- `deploy/systemd/sns-web.service`
+- `deploy/systemd/sns-scheduler.service`
 
-[Service]
-Type=simple
-WorkingDirectory=/opt/sns-content-engine
-Environment=DATABASE_URL=sqlite:////opt/sns-content-engine/data/sns_content_engine.db
-EnvironmentFile=/opt/sns-content-engine/.env
-ExecStart=/opt/sns-content-engine/.venv/bin/sns-engine scheduler run --config-dir /opt/sns-content-engine/config
-Restart=on-failure
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
+Copy them into `/etc/systemd/system/`, adjust `User` and `Group` if you use a different service account than the default `sns-engine`, and keep both services pointed at the same `/opt/sns-content-engine/.env` file plus `/opt/sns-content-engine/config` directory.
 
 ## Testing
 

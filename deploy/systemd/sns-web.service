@@ -1,0 +1,19 @@
+[Unit]
+Description=sns-content-engine web console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sns-engine
+Group=sns-engine
+WorkingDirectory=/opt/sns-content-engine
+EnvironmentFile=/opt/sns-content-engine/.env
+ExecStart=/opt/sns-content-engine/.venv/bin/uvicorn app.api.app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

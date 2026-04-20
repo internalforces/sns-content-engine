@@ -32,11 +32,7 @@ Run the FastAPI app with an ASGI server such as `uvicorn`:
 python -m uvicorn app.api.app:app --reload
 ```
 
-If `uvicorn` is not installed in your environment yet:
-
-```bash
-python -m pip install uvicorn
-```
+`uvicorn` is now included in the runtime dependency set, so the normal project install is enough for local console startup.
 
 ## Open the console
 
