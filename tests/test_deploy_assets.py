@@ -58,7 +58,7 @@ def test_caddy_reverse_proxy_assets_pin_the_edge_protection_baseline() -> None:
     assert "{$SNS_EDGE_BASIC_AUTH_HASH}" in caddyfile
     assert "reverse_proxy 127.0.0.1:8000" in caddyfile
 
-    assert "SNS_EDGE_BASIC_AUTH_USER=replace-with-console-user" in env_template
+    assert "SNS_EDGE_BASIC_AUTH_USER=replace-with-console-user" in env_template  # pragma: allowlist secret
     assert "SNS_EDGE_BASIC_AUTH_HASH=" in env_template
 
 
