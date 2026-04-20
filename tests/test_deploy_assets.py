@@ -82,3 +82,29 @@ def test_operator_docs_keep_remote_access_on_the_edge_baseline() -> None:
     assert "keep that app bound to `127.0.0.1:8000`" in control_plane_guide
     assert "protects every other route with Basic Auth" in control_plane_guide
     assert '"https://sns.gilgop.cloud/reviews/pending?' in control_plane_guide
+
+
+def test_single_server_runbook_assets_cover_smoke_checks_and_recovery() -> None:
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    deployment_guide = (PROJECT_ROOT / "docs/single-server-deployment-guide.md").read_text(
+        encoding="utf-8"
+    )
+    smoke_script = (PROJECT_ROOT / "scripts/single_server_smoke_check.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/single_server_smoke_check.sh" in readme
+    assert "SNS_SMOKE_EDGE_USER=operator" in readme
+    assert "backup and rollback order lives in the single-server deployment guide" in readme
+
+    assert "scripts/single_server_smoke_check.sh" in deployment_guide
+    assert "Backup baseline for SQLite-first rollout" in deployment_guide
+    assert "Non-destructive rollout order" in deployment_guide
+    assert "Rollback order" in deployment_guide
+
+    assert "sns-web.service" in smoke_script
+    assert "sns-scheduler.service" in smoke_script
+    assert "caddy.service" in smoke_script
+    assert "executor mode: fake dry-run (no state changes)" in smoke_script
+    assert "SNS_SMOKE_EDGE_USER" in smoke_script
+    assert "SNS_SMOKE_EDGE_PASSWORD" in smoke_script

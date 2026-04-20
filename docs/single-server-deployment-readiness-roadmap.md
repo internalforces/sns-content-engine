@@ -17,11 +17,12 @@ Extend the current local-and-operator-first implementation into a single-server 
 - The project already uses environment-driven secrets, includes `.env.example`, and ships a small project-local `.env` loader.
 - The repository now ships checked-in single-server runtime assets: `sns-web` and `sns-scheduler` `systemd` units, `.env.production.example`, and a Caddy reverse-proxy baseline for `sns.gilgop.cloud`.
 - README plus the operator-facing console and API guides now align on the same loopback-only app binding and Caddy plus Basic Auth remote-access baseline.
+- The deployment guide now includes a checked-in one-server smoke-check helper plus a first-pass SQLite backup and rollback runbook for the same `/opt/sns-content-engine` layout.
 
 ### Current limitations relevant to the new goal
 
 - The browser console and JSON operator routes still do not add in-app authentication, so remote deployment remains dependent on the chosen edge protection layer.
-- The repository still lacks the final smoke-check, backup, and rollback runbook for first production rollout.
+- Backup and rollback remain operator-invoked runbook steps rather than automated platform features.
 
 ## Milestones
 

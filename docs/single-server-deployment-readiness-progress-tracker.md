@@ -13,25 +13,25 @@ Update it:
 
 ## Current Status
 
-- Current milestone: `M2_edge_hardening_and_domain_routing`
-- Current task: `04_remote_console_safety_alignment`
+- Current milestone: `M3_operational_rollout_and_recovery`
+- Current task: `05_smoke_checks_backup_and_rollback_runbook`
 - Active status: `done`
-- Last updated: `2026-04-20 10:34 KST`
+- Last updated: `2026-04-20 10:43 KST`
 - Base branch: `master`
-- Active branch: `codex/task-04-remote-console-safety`
-- Latest task commit: `self-referential commit SHA cannot be recorded in-band; see git history for the Task 04 docs and regressions commit created after this tracker update`
-- Resume decision: `task_04_complete_pick_task_05_next`
+- Active branch: `codex/task-05-rollout-runbook`
+- Latest task commit: `not created in this turn`
+- Resume decision: `task_05_complete_first_pass_done_wait_for_next_request`
 - Stop reason: `task_complete`
 
 ## Scope For Current Task
 
-- Goal: `Align every operator-facing remote-access guide around the chosen sns.gilgop.cloud edge path so the console and JSON routes are consistently described as loopback-only behind Caddy plus Basic Auth`
-- In scope: `README, the operator console guide, the operator control-plane API guide, the smallest roadmap refresh needed to reflect that alignment, and deployment-asset regression coverage for the doc baseline`
-- Out of scope: `In-app auth, runtime behavior changes, scheduler redesign, distributed deployment, backup automation, live-publish behavior changes, and the final rollback runbook`
+- Goal: `Add one repeatable one-server rollout and recovery slice: a checked-in smoke-check helper plus SQLite-first backup and rollback guidance aligned with the existing web, scheduler, and Caddy baseline`
+- In scope: `one checked-in smoke-check script under scripts/, rollout plus recovery guidance in the single-server deployment guide and README, the smallest roadmap refresh needed to reflect the new baseline, and focused regression coverage for the script and docs`
+- Out of scope: `In-app auth, runtime behavior changes, scheduler redesign, distributed deployment, backup automation, off-host retention systems, and live-publish behavior changes`
 - Verification commands:
+  - `PYTHONPATH=$PWD pytest tests/test_operations.py tests/test_scripts.py -q`
+  - `PYTHONPATH=$PWD pytest tests/test_cli.py tests/test_scheduler.py -q`
   - `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q`
-  - `PYTHONPATH=$PWD pytest tests/test_api.py -k "health" -q`
-  - `PYTHONPATH=$PWD pytest tests/test_console.py -q`
 
 ## Roadmap Status
 
@@ -41,16 +41,17 @@ Update it:
 | M1 | 02 | Runtime packaging and service units | done | 2026-04-20 09:12 KST | Added packaged uvicorn metadata, checked-in web and scheduler service units, a production env template, and deployment-asset regression coverage |
 | M2 | 03 | Reverse proxy and domain assets for `sns.gilgop.cloud` | done | 2026-04-20 09:50 KST | Added checked-in Caddy plus Basic Auth assets, documented DNS or TLS expectations, and pinned the baseline with regression coverage |
 | M2 | 04 | Remote console safety alignment | done | 2026-04-20 10:33 KST | README plus the operator console and control-plane API guides now all require the same loopback-only app binding and Caddy plus Basic Auth remote-access path |
-| M3 | 05 | Smoke checks, backup, and rollback runbook | pending | 2026-04-18 19:27 KST | Final rollout and recovery slice |
+| M3 | 05 | Smoke checks, backup, and rollback runbook | done | 2026-04-20 10:36 KST | Added a checked-in smoke helper plus SQLite-first backup and rollback guidance for the `/opt/sns-content-engine` server baseline |
 
 ## Changed Files For Active Task
 
 - `README.md`
-- `docs/operator-control-plane-api.md`
-- `docs/operator-console-guide.md`
+- `docs/single-server-deployment-guide.md`
 - `docs/single-server-deployment-readiness-progress-tracker.md`
 - `docs/single-server-deployment-readiness-roadmap.md`
+- `scripts/single_server_smoke_check.sh`
 - `tests/test_deploy_assets.py`
+- `tests/test_scripts.py`
 
 ## Progress Log
 
@@ -79,6 +80,11 @@ Update it:
 - 2026-04-20 10:24 KST: Refreshed `docs/single-server-deployment-readiness-roadmap.md` and this tracker to record Task `04` completion and the narrower remaining gap around the rollout plus recovery runbook.
 - 2026-04-20 10:33 KST: Added a documentation-alignment regression to `tests/test_deploy_assets.py` and reran the deployment-asset, API health, and full console slices successfully.
 - 2026-04-20 10:34 KST: Prepared the Task `04` branch for commit, recorded the self-referential commit-note convention used by other initiative trackers, and kept the staged scope limited to the remote-access doc alignment plus deployment-asset regression coverage.
+- 2026-04-20 10:36 KST: Switched from `codex/task-04-remote-console-safety` to `codex/task-05-rollout-runbook` and resumed Task `05` as the active implementation slice.
+- 2026-04-20 10:36 KST: Verified that the checked-in deployment baseline now covers web, scheduler, and Caddy assets, but still stops short of one repeatable rollout smoke helper and an explicit SQLite backup or rollback order for the `/opt/sns-content-engine` server path.
+- 2026-04-20 10:36 KST: Chose the smallest safe Task `05` shape: add one repo-backed smoke-check script that validates service status, loopback health, edge-protected console access, and dry-run `publish-due`, then document the matching backup, rollout, and rollback order without changing application behavior.
+- 2026-04-20 10:36 KST: Added `scripts/single_server_smoke_check.sh`, updated `README.md` plus `docs/single-server-deployment-guide.md` with the new smoke helper and SQLite-first recovery runbook, and refreshed the roadmap snapshot so the final single-server readiness gap is now represented as intentionally manual operations rather than missing repository guidance.
+- 2026-04-20 10:43 KST: Verified the new Task `05` baseline with focused scripts, operations, CLI, scheduler, and deployment-asset regressions. All targeted slices passed, so the first-pass single-server deployment-readiness roadmap can now be treated as complete.
 
 ## Test Log
 
@@ -91,6 +97,9 @@ Update it:
 - `2026-04-20 10:31 KST` `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q` -> `passed`
 - `2026-04-20 10:32 KST` `PYTHONPATH=$PWD pytest tests/test_api.py -k "health" -q` -> `passed`
 - `2026-04-20 10:33 KST` `PYTHONPATH=$PWD pytest tests/test_console.py -q` -> `passed`
+- `2026-04-20 10:42 KST` `PYTHONPATH=$PWD pytest tests/test_operations.py tests/test_scripts.py -q` -> `passed` `7 passed`
+- `2026-04-20 10:42 KST` `PYTHONPATH=$PWD pytest tests/test_cli.py tests/test_scheduler.py -q` -> `passed` `57 passed`
+- `2026-04-20 10:42 KST` `PYTHONPATH=$PWD pytest tests/test_deploy_assets.py -q` -> `passed` `6 passed`
 
 ## Open Questions
 
@@ -102,8 +111,8 @@ Update it:
 
 ## Follow-up
 
-- Task `05` should add the rollout smoke checklist, backup procedure, and rollback order on top of the now-checked-in web, scheduler, and proxy assets.
+- First-pass single-server deployment readiness is now in place. Future work, if needed, can automate backup retention or replace Basic Auth with a stricter edge-access pattern.
 
 ## Completion Summary
 
-- Task `04` complete. The repository now describes remote operation consistently across README plus the operator console and API guides: keep the FastAPI app on loopback, route all operator traffic through the checked-in Caddy plus Basic Auth layer at `sns.gilgop.cloud`, leave only `/health` probeable without operator credentials, and pin that documentation baseline with deployment-asset regression coverage. No commit was created in this turn.
+- Task `05` complete. The repository now carries a checked-in single-server smoke helper, a documented SQLite-first backup and rollback sequence, and an explicit non-destructive rollout order aligned with the existing web, scheduler, and Caddy deployment assets. The first-pass single-server deployment-readiness roadmap is complete, and no commit was created in this turn.
