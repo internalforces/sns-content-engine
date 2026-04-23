@@ -8,7 +8,7 @@ This repository bootstraps the MVP foundation for a shared content engine that c
 
 The initial MVP is intentionally limited to:
 
-- X live publishing, config-gated Threads live publishing, and operator-recorded manual handoff tracking for LinkedIn plus Threads fallback cases
+- X live publishing as the only intended first-rollout live path, operator-recorded manual handoff tracking for LinkedIn, and config-gated Threads live publishing kept as a later opt-in path with manual fallback until it is intentionally enabled
 - English-language operation
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
@@ -48,7 +48,7 @@ sns-content-engine/
 python -m pip install -e ".[dev]"
 ```
 
-3. Optional: enable live draft generation. If `<config-dir>/providers.yaml` is present, `generate-drafts` and `run-local` use its `draft_generate` route chain at runtime. If the file is absent, draft generation falls back to environment-based auto-detection in this order: OpenAI, Anthropic, then Codex-Wrapper. If no supported provider credentials are present, local workflows use the built-in fake provider for safety.
+3. Optional: enable live draft generation. If `<config-dir>/providers.yaml` is present, `generate-drafts` and `run-local` use its route chain at runtime. The checked-in `config/providers.yaml` is OpenAI-first for the first rollout, so the default production path is to keep that file in place and export `OPENAI_API_KEY`. If the file is absent, draft generation falls back to environment-based auto-detection in this order: OpenAI, Anthropic, then Codex-Wrapper. If no supported provider credentials are present, local workflows use the built-in fake provider for safety.
 
 ```bash
 export OPENAI_API_KEY="your_api_key_here"
@@ -57,7 +57,7 @@ export OPENAI_REASONING_EFFORT="none"
 export OPENAI_TIMEOUT_SECONDS="30"
 ```
 
-For Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
+For non-default Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
 
 4. Optional: install the local secret-scanning hook and keep your real `.env` file private.
 
@@ -72,7 +72,7 @@ Keep real credentials in the ignored local `.env` file only. `.env.example` is t
 
 ## Example Config Sets
 
-- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` by default and source-linked sharing as the default link strategy instead of routing to a house destination site. Threads can be promoted to live publishing by adding `publisher.credential_ref` under the `threads` channel and exporting the referenced env bundle.
+- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines the built-in AI/SEO operator accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` by default and source-linked sharing as the default link strategy instead of routing to a house destination site. The checked-in default source sets stay manual CSV-only for the first rollout baseline; use a separate config directory when you want live RSS, sitemap, or GDELT sources. For the first live rollout, keep Threads on the manual fallback path even though the codebase can promote it later by adding `publisher.credential_ref` under the `threads` channel and exporting the referenced env bundle.
 - `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
 
@@ -90,7 +90,7 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 For remote operation at `sns.gilgop.cloud`, keep the shared FastAPI app on `127.0.0.1:8000` and route both `/console` and the JSON operator routes through the checked-in Caddy plus Basic Auth edge layer. Leave `/health` open only if you need external probes; do not expose the app directly on a public `0.0.0.0` bind.
 
-The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, LinkedIn remains an operator-driven manual upload flow with explicit outcome recording, and Threads stays manual only until its live publisher is configured successfully.
+The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, LinkedIn remains an operator-driven manual upload flow with explicit outcome recording, and the first live rollout should keep Threads on the manual path even though the platform can support a later live Threads opt-in.
 
 ## CLI Usage
 
@@ -144,7 +144,7 @@ The `ingest` command runs discovery, applies canonical URL / title / fingerprint
 
 The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for the configured `x`, `linkedin`, and `threads` accounts. When `<config-dir>/providers.yaml` is present, it uses the configured `draft_generate` route chain and model overrides at runtime. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
+The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for the configured `x`, `linkedin`, and `threads` accounts. When `<config-dir>/providers.yaml` is present, it uses the configured route chain and model overrides at runtime. The checked-in default file is OpenAI-first for the first rollout. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
 
 The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving LinkedIn drafts always creates an explicit manual publish handoff job. Threads drafts create that same handoff only when live publishing is not configured cleanly; otherwise Threads stays on the scheduled publish path alongside X.
 
@@ -154,7 +154,7 @@ The `history runs` and `history failures` commands expose operator-readable summ
 
 The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
 
-The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring a channel publisher and its referenced environment variable. Only scheduled jobs enter the due queue, so manual LinkedIn handoffs and manual-fallback Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
+The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring the X publisher path and its referenced environment variables. For the first live rollout, keep Threads on the manual fallback path. Only scheduled jobs enter the due queue, so manual LinkedIn handoffs and manual-fallback Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
 
 Example channel config:
 
@@ -167,24 +167,16 @@ channels:
       max_chars: 280
     publisher:
       credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
-  threads:
-    schedule:
-      cron: "0 11 * * *"
-    render:
-      max_chars: 10000
-    publisher:
-      credential_ref: THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
 ```
 
-Example credential bundle:
+Example first-rollout X credential bundle:
 
 ```bash
 export X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-user-access-token"}'
-export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-threads-user-access-token","threads_user_id":"replace-with-threads-user-id"}'
 sns-engine scheduler publish-due --live
 ```
 
-Threads credential bundles use the same `publisher.credential_ref` lookup pattern as X, but the JSON object must include both `access_token` and `threads_user_id`. Keep that bundle in the environment only; do not store the raw token or user ID in YAML.
+Threads credential bundles use the same `publisher.credential_ref` lookup pattern as X, but the JSON object must include both `access_token` and `threads_user_id`. Keep that bundle in the environment only; do not store the raw token or user ID in YAML. Treat that Threads live path as a later rollout step instead of part of the first protected live enablement.
 
 If you already have an older SQLite file from a previous milestone, run `sns-engine db upgrade --database-url ...` before `ingest` or `run-local`. Fresh databases should still start with `sns-engine db init`.
 
@@ -224,7 +216,8 @@ Operational notes:
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
-- Draft generation checks `<config-dir>/providers.yaml` first when present. Without it, environment-based auto-detection tries OpenAI, Anthropic, then Codex-Wrapper; if no supported credentials are configured, local workflows fall back to the deterministic fake provider.
+- For the first live rollout, configure live publish only for `x`; keep `threads` on the manual fallback path and keep LinkedIn manual-only.
+- Draft generation checks `<config-dir>/providers.yaml` first when present. The checked-in default file is OpenAI-first for the first rollout. Without it, environment-based auto-detection tries OpenAI, Anthropic, then Codex-Wrapper; if no supported credentials are configured, local workflows fall back to the deterministic fake provider.
 - Provider credentials still come from environment variables only. `providers.yaml` selects route order and optional model overrides; it does not store secrets.
 - If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.

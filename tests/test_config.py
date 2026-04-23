@@ -92,14 +92,8 @@ def test_registry_loads_sample_config_directory() -> None:
     assert registry.get_prompt_profile(
         "all_domain_attribution_first_short_post"
     ).system_template.startswith("You are the attribution-first editor")
-    assert registry.get_source_set("ai_tools_primary").sources == (
-        "ai_tools_rss",
-        "ai_tools_manual",
-    )
-    assert registry.get_source_set("seo_tools_primary").sources == (
-        "seo_tools_rss",
-        "seo_tools_manual",
-    )
+    assert registry.get_source_set("ai_tools_primary").sources == ("ai_tools_manual",)
+    assert registry.get_source_set("seo_tools_primary").sources == ("seo_tools_manual",)
 
 
 def test_source_landing_strategy_allows_missing_fallback_url() -> None:

@@ -14,6 +14,7 @@ The operator console is the browser surface for the same FastAPI app, database, 
 1. Prepare a config directory such as `config/` or your own copied example config.
 2. Initialize or upgrade the database you want the console to read.
 3. Seed data through the existing CLI if you want populated dashboard, review, or publish pages.
+4. For the first protected live rollout, plan to keep `x` as the only live-publish channel. Leave LinkedIn manual-only and keep Threads on the manual fallback path unless you are intentionally doing a later Threads rollout.
 
 Example local setup:
 
@@ -76,7 +77,7 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 2. Open `Pending Review` and inspect one draft workspace.
 3. Approve, reject, or edit the draft.
 4. If the approved draft is `x`, use the schedule form and then follow its queued or published state through `Publish Jobs`.
-5. If the approved draft is `threads` and the review page still shows the schedule form, treat it like a live-publish channel: schedule it directly or let `Scheduler -> Backfill` create a future slot.
+5. For the first live rollout, do not use the optional Threads live path even if the review page could show the schedule form later. Keep Threads on the manual upload path until a separate Threads rollout is intentionally prepared.
 6. If the approved draft is `linkedin`, or `threads` still shows manual upload guidance, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
 7. Use `Scheduler` only for discovery, backfill, and due scheduled jobs after confirming the current live-publish queue.
 
@@ -89,7 +90,9 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 5. `발행 실패 기록` stores the handoff as `failed` with the readable error message you provide.
 6. `전달 취소` closes the handoff as `cancelled` without sending it to the scheduler queue.
 
-## Enabling Threads live publishing
+## Enabling Threads live publishing later
+
+This section is intentionally not part of the first protected live rollout. Use it only when you are preparing a separate Threads live enablement.
 
 1. Add `publisher.credential_ref` under the target `threads` channel in your chosen `accounts.yaml`.
 2. Export the referenced environment variable as a JSON bundle with `access_token` and `threads_user_id`.

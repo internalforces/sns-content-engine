@@ -523,6 +523,16 @@ def test_resolver_prefers_openai_over_anthropic_when_both_keys_set() -> None:
         pass  # expected in test env without real SDK
 
 
+def test_resolver_returns_fake_when_openai_key_is_blank() -> None:
+    provider = resolve_text_generation_provider(environment={"OPENAI_API_KEY": "   "})
+    assert isinstance(provider, FakeTextGenerationProvider)
+
+
+def test_resolver_returns_fake_when_anthropic_key_is_blank() -> None:
+    provider = resolve_text_generation_provider(environment={"ANTHROPIC_API_KEY": ""})
+    assert isinstance(provider, FakeTextGenerationProvider)
+
+
 def test_resolver_falls_back_to_fake_when_no_env_vars() -> None:
     provider = resolve_text_generation_provider(environment={})
     assert isinstance(provider, FakeTextGenerationProvider)

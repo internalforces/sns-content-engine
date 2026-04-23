@@ -136,9 +136,10 @@ def test_resolver_uses_openai_provider_when_api_key_is_present() -> None:
     assert isinstance(provider, OpenAIDraftGenerationProvider)
 
 
-def test_resolver_rejects_blank_api_key() -> None:
-    with pytest.raises(DraftGenerationProviderError, match="OPENAI_API_KEY is set but empty"):
-        resolve_draft_generation_provider(environment={"OPENAI_API_KEY": "   "})
+def test_resolver_uses_fake_provider_when_api_key_is_blank() -> None:
+    provider = resolve_draft_generation_provider(environment={"OPENAI_API_KEY": "   "})
+
+    assert isinstance(provider, FakeLLMProvider)
 
 
 def test_resolver_uses_codex_wrapper_provider_when_route_is_selected_from_config() -> None:
