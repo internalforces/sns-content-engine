@@ -4,6 +4,10 @@
 # step. It is OPTIONAL: when absent the system falls back to environment-variable
 # auto-detection (OPENAI_API_KEY → OpenAI, ANTHROPIC_API_KEY → Anthropic, etc.).
 #
+# For the first live rollout, the checked-in default is OpenAI-first for draft
+# and metadata generation so the production story matches .env.production.example
+# and the single-server deployment guide.
+#
 # Routes are tried in ascending priority order. If the first provider fails
 # (API error, timeout, etc.) the system automatically falls back to the next
 # route. Each provider is only active when its API key / credentials are present
@@ -24,26 +28,32 @@
 #   fake                 — No credentials needed (deterministic stub, for testing)
 
 routes:
-  # ── LLM: draft generation ────────────────────────────────────────────────
+  # ── LLM: first-rollout default path ──────────────────────────────────────
   - step: draft_generate
-    provider: codex_wrapper
+    provider: openai
     model: gpt-5.4-mini
     priority: 1
-  - step: draft_generate
-    provider: anthropic
-    model: claude-haiku-4-5-20251001
-    priority: 2
-    # Uncomment to try OpenAI as an additional fallback:
-    # - step: draft_generate
-    #   provider: openai
-    #   model: gpt-5.4-mini
-    #   priority: 3
 
-  # ── LLM: metadata generation ─────────────────────────────────────────────
   - step: metadata_generate
-    provider: anthropic
-    model: claude-haiku-4-5-20251001
+    provider: openai
+    model: gpt-5.4-mini
     priority: 1
+
+  # Optional LLM alternatives for non-default environments:
+  # - step: draft_generate
+  #   provider: anthropic
+  #   model: claude-haiku-4-5-20251001
+  #   priority: 2
+  #
+  # - step: draft_generate
+  #   provider: codex_wrapper
+  #   model: gpt-5.4-mini
+  #   priority: 2
+  #
+  # - step: metadata_generate
+  #   provider: anthropic
+  #   model: claude-haiku-4-5-20251001
+  #   priority: 2
 
   # ── TTS: speech synthesis ────────────────────────────────────────────────
   - step: tts_synthesize

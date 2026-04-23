@@ -54,7 +54,7 @@ APP_ENV=production
 LOG_LEVEL=INFO
 DATABASE_URL=sqlite:////opt/sns-content-engine/data/sns_content_engine.db
 DEFAULT_TIMEZONE=Asia/Seoul
-OPENAI_API_KEY=replace-me
+OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4-mini
 OPENAI_REASONING_EFFORT=none
 OPENAI_TIMEOUT_SECONDS=30
@@ -62,9 +62,21 @@ OPENAI_TIMEOUT_SECONDS=30
 
 Additional rules:
 - Keep provider credentials and publisher credential bundles in the environment only.
+- The checked-in `config/providers.yaml` is OpenAI-first for the first rollout, so filling `OPENAI_API_KEY` is the default production draft-generation path.
+- Keep unused provider vars blank or unset; blank values are ignored safely during provider route selection.
 - Keep `publisher.credential_ref` values in `accounts.yaml`, but store the referenced JSON payload in the environment variable named by that ref.
 - Use one explicit config directory for both processes, for example `/opt/sns-content-engine/config`.
 - Do not run the server from bundled `config/examples/...` directories. `sns-engine healthcheck` intentionally fails when sample configs or placeholder `example.*` URLs are still present.
+
+## First-rollout guardrails
+
+For the first protected live rollout on one server:
+
+- Keep `x` as the only live-publish channel.
+- Keep LinkedIn on the manual handoff path.
+- Keep Threads on the manual fallback path even though the product can support a later live Threads rollout.
+- Fill only the X publisher credential bundles in `.env.production.example`; leave the commented Threads bundles disabled unless you are intentionally preparing a later rollout.
+- Do not skip the dry-run and smoke-check steps before the first `scheduler publish-due --live` run.
 
 ## Database choice
 
@@ -112,6 +124,36 @@ Use `db init` only for a brand-new database. Use `db upgrade` when reusing an ol
 ```bash
 ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
 ```
+
+## First-rollout preflight
+
+Run this short sequence before the first live `x` publish:
+
+1. Confirm the checked-in `config/providers.yaml` and `/opt/sns-content-engine/.env` still reflect the OpenAI-first, X-only first-rollout path.
+2. Run the full repo regression gate:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/pytest -q
+```
+
+3. Run the local readiness and dry-run checks:
+
+```bash
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+scripts/scan_secrets.sh check
+```
+
+4. Run the checked-in single-server smoke helper:
+
+```bash
+export SNS_SMOKE_EDGE_USER=operator
+export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
+scripts/single_server_smoke_check.sh
+```
+
+5. Only after the dry-run queue, readiness check, secret scan, and smoke helper all pass should you run a one-off live publish for `x`.
 
 ## Runtime split
 

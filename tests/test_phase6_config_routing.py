@@ -258,6 +258,19 @@ def test_from_config_skips_routes_without_credentials() -> None:
     assert routes[0].provider == "anthropic"
 
 
+def test_from_config_skips_routes_with_blank_credentials() -> None:
+    config = AIProvidersConfig(
+        routes=[
+            RouteConfig(step="draft_generate", provider="openai", priority=1),
+        ]
+    )
+    env = {"OPENAI_API_KEY": "   "}
+
+    registry = RouteRegistry.from_config(config, environment=env)
+
+    assert registry.resolve_routes(StepKey.DRAFT_GENERATE) == []
+
+
 def test_from_config_skips_disabled_routes() -> None:
     config = AIProvidersConfig(
         routes=[
@@ -690,6 +703,21 @@ def test_from_environment_empty_env_yields_no_llm_routes() -> None:
         assert registry.resolve_routes(step) == [], f"{step!r} should have no routes"
 
 
+def test_from_environment_ignores_blank_llm_credentials() -> None:
+    env = {"OPENAI_API_KEY": "   ", "ANTHROPIC_API_KEY": ""}
+    registry = RouteRegistry.from_environment(env)
+
+    for step in (StepKey.DRAFT_GENERATE, StepKey.METADATA_GENERATE, StepKey.IMAGE_PROMPT_GENERATE):
+        assert registry.resolve_routes(step) == [], f"{step!r} should ignore blank credentials"
+
+
+def test_from_environment_ignores_blank_openai_tts_configuration() -> None:
+    env = {"OPENAI_API_KEY": "sk-test", "OPENAI_TTS_MODEL": "   "}
+    registry = RouteRegistry.from_environment(env)
+
+    assert registry.resolve_routes(StepKey.TTS_SYNTHESIZE) == []
+
+
 def test_sample_providers_yaml_is_valid(tmp_path: Path) -> None:
     """The bundled config/providers.yaml sample file must pass schema validation."""
     from pathlib import Path as P
@@ -707,6 +735,6 @@ def test_sample_providers_yaml_is_valid(tmp_path: Path) -> None:
         assert route.step
         assert route.provider
     assert any(
-        route.step == "draft_generate" and route.provider == "codex_wrapper"
+        route.step == "draft_generate" and route.provider == "openai"
         for route in config.routes
     )

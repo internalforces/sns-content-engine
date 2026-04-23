@@ -7,6 +7,7 @@ import os
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from app.connectors._env_helpers import has_non_empty_env
 from app.connectors.routing.models import Route, StepKey
 
 if TYPE_CHECKING:
@@ -86,7 +87,7 @@ class RouteRegistry:
         # with_account_override() and from_config() work consistently
         # regardless of which step is being served.
         for llm_step in _LLM_STEP_KEYS:
-            if "OPENAI_API_KEY" in env:
+            if has_non_empty_env(env, "OPENAI_API_KEY"):
                 routes.append(
                     Route(
                         step_key=llm_step,
@@ -96,7 +97,7 @@ class RouteRegistry:
                     )
                 )
 
-            if "ANTHROPIC_API_KEY" in env:
+            if has_non_empty_env(env, "ANTHROPIC_API_KEY"):
                 routes.append(
                     Route(
                         step_key=llm_step,
@@ -120,7 +121,7 @@ class RouteRegistry:
             )
 
         # ---- TTS routes ----
-        if "ELEVENLABS_API_KEY" in env:
+        if has_non_empty_env(env, "ELEVENLABS_API_KEY"):
             routes.append(
                 Route(
                     step_key=StepKey.TTS_SYNTHESIZE,
@@ -144,7 +145,7 @@ class RouteRegistry:
                 )
             )
 
-        if "OPENAI_API_KEY" in env and _openai_tts_explicitly_configured(env):
+        if has_non_empty_env(env, "OPENAI_API_KEY") and _openai_tts_explicitly_configured(env):
             routes.append(
                 Route(
                     step_key=StepKey.TTS_SYNTHESIZE,
@@ -346,20 +347,26 @@ def _provider_credentials_available(provider: str, env: Mapping[str, str]) -> bo
         return True
     if key == "GOOGLE_APPLICATION_CREDENTIALS":
         return _google_credentials_available(env)
-    return key in env
+    return has_non_empty_env(env, key)
 
 
 def _google_credentials_available(env: Mapping[str, str]) -> bool:
     return (
-        "GOOGLE_APPLICATION_CREDENTIALS" in env
-        or "GOOGLE_TTS_CREDENTIALS_JSON" in env
+        has_non_empty_env(env, "GOOGLE_APPLICATION_CREDENTIALS")
+        or has_non_empty_env(env, "GOOGLE_TTS_CREDENTIALS_JSON")
     )
 
 
 def _codex_wrapper_credentials_available(env: Mapping[str, str]) -> bool:
-    return "CODEX_WRAPPER_API_KEY" in env and "CODEX_WRAPPER_BASE_URL" in env
+    return (
+        has_non_empty_env(env, "CODEX_WRAPPER_API_KEY")
+        and has_non_empty_env(env, "CODEX_WRAPPER_BASE_URL")
+    )
 
 
 def _openai_tts_explicitly_configured(env: Mapping[str, str]) -> bool:
     """True when the operator has set OpenAI-specific TTS env vars."""
-    return "OPENAI_TTS_MODEL" in env or "OPENAI_TTS_VOICE" in env
+    return (
+        has_non_empty_env(env, "OPENAI_TTS_MODEL")
+        or has_non_empty_env(env, "OPENAI_TTS_VOICE")
+    )

@@ -14,7 +14,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from app.connectors.llm._env_helpers import optional_env, require_env, resolve_float_env
+from app.connectors._env_helpers import has_non_empty_env
+from app.connectors.llm._env_helpers import (
+    optional_env,
+    require_env,
+    resolve_float_env,
+)
 
 if TYPE_CHECKING:
     from app.config.schemas import AIProvidersConfig
@@ -347,10 +352,10 @@ def resolve_text_generation_provider(
             return _build_text_provider_for_route(top, env)
 
     # Env-var fallback (original behaviour)
-    if "OPENAI_API_KEY" in env:
+    if has_non_empty_env(env, "OPENAI_API_KEY"):
         return OpenAITextGenerationProvider.from_environment(environment=env)
 
-    if "ANTHROPIC_API_KEY" in env:
+    if has_non_empty_env(env, "ANTHROPIC_API_KEY"):
         return AnthropicTextGenerationProvider.from_environment(environment=env)
 
     return FakeTextGenerationProvider()
@@ -376,10 +381,8 @@ def _build_text_provider_for_route(
         return FakeTextGenerationProvider()
 
     # Unknown provider — fall back to env detection
-    if "OPENAI_API_KEY" in environment:
+    if has_non_empty_env(environment, "OPENAI_API_KEY"):
         return OpenAITextGenerationProvider.from_environment(environment=environment)
-    if "ANTHROPIC_API_KEY" in environment:
+    if has_non_empty_env(environment, "ANTHROPIC_API_KEY"):
         return AnthropicTextGenerationProvider.from_environment(environment=environment)
     return FakeTextGenerationProvider()
-
-
