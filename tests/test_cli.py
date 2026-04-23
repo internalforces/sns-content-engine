@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from textwrap import dedent
 
 import app.cli as cli_module
@@ -39,6 +40,10 @@ from app.workflows import (
 )
 
 runner = CliRunner()
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_version_command_outputs_application_version() -> None:
@@ -642,9 +647,11 @@ def test_generate_drafts_command_surfaces_provider_errors_cleanly(monkeypatch) -
 
 def test_generate_drafts_command_rejects_invalid_variant_count() -> None:
     result = runner.invoke(app, ["generate-drafts", "--variant-count", "4"])
+    output = _strip_ansi(result.output)
 
     assert result.exit_code == 2
-    assert "--variant-count" in result.output
+    assert "generate-drafts" in output
+    assert "4 is not in the range 2<=x<=3" in output
 
 
 def test_review_list_command_reports_pending_drafts(monkeypatch) -> None:
