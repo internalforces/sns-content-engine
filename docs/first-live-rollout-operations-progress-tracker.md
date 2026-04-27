@@ -25,35 +25,37 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M1_local_launch_gate`
-- Current task: `01_confirm_rollout_inputs_and_approval_boundary`
+- Current task: `02_run_local_regression_and_secret_gates`
 - Active status: `done`
-- Last updated: `2026-04-26 20:39 KST`
+- Last updated: `2026-04-27 22:29 KST`
 - Base branch: `master`
-- Active branch: `codex/first-live-rollout-operations-docs`
-- Latest task commit: `branch_head_after_task_01_completion`
-- Resume decision: `task_01_complete_next_task_02_pending`
+- Active branch: `codex/task-02-local-launch-gate`
+- Latest task commit: `branch_head_after_task_02_completion`
+- Resume decision: `task_02_complete_next_task_03_pending`
 - Stop reason: `none`
 
 ## Scope For Current Task
-- Goal: `Confirm launch context, required access, X-only scope, and explicit live-approval boundary before running rollout checks.`
-- In scope: `branch and worktree inspection, completed readiness tracker review, rollout doc scan, required credential and server-access checklist`
-- Out of scope: `server-side commands, live publish commands, Threads live rollout, LinkedIn direct publish, and infrastructure redesign`
-- Dependencies: `completed first-live-rollout-readiness roadmap and current local checkout`
+- Goal: `Run the local regression and secret-scan gates before any server-side rollout command.`
+- In scope: `targeted config/deploy tests, targeted CLI/scheduler/X publisher tests, full pytest suite, and checked-in secret scan`
+- Out of scope: `server-side commands, smoke checks, live publish commands, Threads live rollout, LinkedIn direct publish, and infrastructure redesign`
+- Dependencies: `completed Task 01 launch-context confirmation and current local checkout`
 - Verification commands:
-  - `git status --short --branch`
-  - `rg -n "First-rollout preflight|X-only|publish-due|--live" README.md docs/single-server-deployment-guide.md docs/operator-console-guide.md`
+  - `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q`
+  - `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q`
+  - `./.venv/bin/pytest -q`
+  - `scripts/scan_secrets.sh check`
 
 ## Environment Notes
-- Required services status: `not_running_locally; none required for Task 01`
+- Required services status: `not_running_locally; none required for Task 02 local verification`
 - Env or fixture status: `production secrets and smoke credentials not loaded in this local planning context`
-- Existing unrelated failures: `none currently recorded; latest readiness verification reported 530 passing tests; Task 01 did not require runtime regression tests`
+- Existing unrelated failures: `none currently recorded after Task 02 verification`
 
 ## Roadmap Status
 
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
-| M1 | 02 | Run Local Regression And Secret Gates | pending | 2026-04-26 20:13 KST | Run targeted tests, full pytest, and secret scan before server-side checks |
+| M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | pending | 2026-04-26 20:13 KST | Requires server access and redacted production env/config checks |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | pending | 2026-04-26 20:13 KST | Requires production services plus edge smoke credentials |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
@@ -66,15 +68,15 @@ Status values:
 - `done`
 
 ## Changed Files Or Evidence For Active Task
-- `docs/first-live-rollout-operations-vibe-coding-prompt.md`
-- `docs/first-live-rollout-operations-roadmap.md`
-- `docs/first-live-rollout-operations-execution-guide.md`
 - `docs/first-live-rollout-operations-progress-tracker.md`
-- `README.md` evidence: dry-run-first `scheduler publish-due`, explicit `--live`, and first-rollout Threads deferral remain documented.
-- `docs/single-server-deployment-guide.md` evidence: `First-rollout preflight` covers full pytest, healthcheck, dry-run publish, secret scan, smoke helper, and one-off live `x` only after gates pass.
-- `docs/operator-console-guide.md` evidence: browser `publish-due` remains dry-run unless the operator explicitly opts into one live run.
+- `README.md`, `docs/single-server-deployment-guide.md`, and `docs/operator-console-guide.md` evidence: first-rollout and `publish-due` guidance still preserve dry-run-first and explicit `--live` boundaries.
 - `app/cli.py` evidence: `scheduler publish-due` keeps `live=False` by default and calls `publish_due_jobs(..., dry_run=not live)`.
 - `app/scheduler/jobs.py` evidence: scheduler due-publish execution defaults to dry-run when no live executor or publisher resolver is supplied.
+- `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint is available before Task 02 verification.
+- `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` evidence: `33 passed`
+- `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q` evidence: `67 passed`
+- `./.venv/bin/pytest -q` evidence: `530 passed`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output`
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -84,6 +86,8 @@ Status values:
 - `2026-04-26 20:38 KST` Checked the CLI and scheduler code path and confirmed the documented behavior matches implementation: `--live` defaults to false, dry-run mode is passed by default, and live publisher resolution is only used outside dry-run mode.
 - `2026-04-26 20:38 KST` Completed Task `01` without running server-side commands, smoke checks, or any live publish command.
 - `2026-04-26 20:39 KST` Ran the checked-in secret scan as a narrow pre-commit safety check for the operations document set; this does not replace the full Task `02` local gate.
+- `2026-04-27 22:27 KST` Started Task `02` on branch `codex/task-02-local-launch-gate` after confirming the Task `01` branch was clean, the local CLI entrypoint works, and the docs plus implementation still preserve the dry-run-first `publish-due` boundary.
+- `2026-04-27 22:29 KST` Completed Task `02`: targeted config/deploy tests, targeted CLI/scheduler/X publisher tests, full pytest, and the checked-in secret scan all passed. No server-side command, smoke check, or live publish command was run.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -92,15 +96,21 @@ Status values:
 - `2026-04-26 20:38 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
 - `2026-04-26 20:39 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-26 20:38 KST` `runtime_regression_tests` -> `not_run` `Task 01 was an operational launch-context confirmation; Task 02 owns targeted pytest, full pytest, and secret scan gates`
+- `2026-04-27 22:27 KST` `git status --short --branch` -> `passed` `on codex/first-live-rollout-operations-docs before Task 02 branch creation; worktree clean`
+- `2026-04-27 22:27 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-27 22:28 KST` `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` -> `passed` `33 passed in 0.16s`
+- `2026-04-27 22:28 KST` `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q` -> `passed` `67 passed in 1.16s`
+- `2026-04-27 22:29 KST` `./.venv/bin/pytest -q` -> `passed` `530 passed in 24.16s`
+- `2026-04-27 22:29 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
-- `None for Task 01. The next safe task is Task 02 local regression and secret gates.`
+- `None for Task 02. The next safe task is Task 03 production config and healthcheck verification, which requires server access and redacted env/config checks.`
 
 ## Blockers
-- `None for Task 01. Future server-side tasks still require production server access, production env presence, and smoke credentials.`
+- `None for Task 02. Future server-side tasks still require production server access, production env presence, and smoke credentials.`
 
 ## Follow-up
-- `Start Task 02 by running the targeted config/deploy tests, targeted CLI/scheduler/X publisher tests, full pytest suite, and scripts/scan_secrets.sh check before any server-side rollout command.`
+- `Start Task 03 only when production server access is available; verify env and config presence without exposing secret values, then run the server-side healthcheck.`
 
 ## Completion Summary
-- `Task 01 is complete. The operations document set is initialized, the current branch and worktree were inspected, existing rollout docs and implementation were checked against the X-only dry-run-first safety model, and no server-side or live publish command was run. The next work is Task 02 local regression and secret gates.`
+- `Task 02 is complete. The local launch gate passed targeted tests, full pytest, and secret scan; no server-side or live publish command was run. The next work is Task 03 production config and healthcheck verification.`
