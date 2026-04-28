@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `in_progress`
-- Last updated: `2026-04-28 22:47 KST`
+- Last updated: `2026-04-28 22:50 KST`
 - Base branch: `master`
 - Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Record Task 04 smoke pass`
-- Resume decision: `operator_provided_task_04_smoke_output`
-- Stop reason: `waiting_for_task_04_production_secret_scan_result`
+- Latest task commit: `Record Task 04 secret scan git safety blocker`
+- Resume decision: `operator_provided_task_04_secret_scan_blocker`
+- Stop reason: `waiting_for_task_04_production_secret_scan_after_git_safe_directory_fix`
 
 ## Scope For Current Task
 - Goal: `Prove the production publish path stays dry-run and the protected edge is reachable, while enforcing the X-only rollout summary gate first.`
@@ -57,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
-| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | in_progress | 2026-04-28 22:47 KST | Smoke helper passed all checks, including dry-run publish; awaiting explicit production `scripts/scan_secrets.sh check` result before marking done |
+| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | in_progress | 2026-04-28 22:50 KST | Smoke helper passed all checks, including dry-run publish; production secret scan is blocked by Git `safe.directory` ownership protection and must be rerun after registering the app root as safe |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
@@ -160,6 +160,7 @@ Status values:
 - `git diff --check` evidence: `passed with no output after recording the Task 04 Caddy port blocker`.
 - `2026-04-28 22:29 KST Task 04 operator-provided Docker Caddy evidence` evidence: `starterkit-prod-caddy-1` owns host ports `80` and `443`; after adding `host.docker.internal` support, `docker compose -p starterkit-prod -f infra/compose/docker-compose.prod.yml up -d caddy` recreated Caddy and related starterkit containers but emitted many missing-env warnings and ended with `minio-init` failing, so the next check is whether Caddy is healthy and can reach `host.docker.internal:8001`.
 - `2026-04-28 22:47 KST Task 04 operator-provided smoke evidence` evidence: `scripts/single_server_smoke_check.sh` passed `sns-web.service`, `sns-scheduler.service`, `docker.service`, `rollout_summary`, `healthcheck_cli`, `loopback_health`, `console_edge_gate`, `console_authenticated`, `publish_due_dry_run`, and `single_server_rollout`.
+- `2026-04-28 22:50 KST Task 04 operator-provided secret scan attempt` evidence: `scripts/scan_secrets.sh check` did not complete because Git rejected `/opt/sns-content-engine` as a dubious-ownership repository and then printed `git diff --no-index` usage; no secret-scan pass/fail result was produced.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 04 smoke pass`.
 - `git diff --check` evidence: `passed with no output after recording the Task 04 smoke pass`.
 
@@ -212,6 +213,7 @@ Status values:
 - `2026-04-28 22:16 KST` Recorded operator-provided Task `04` Caddy startup failure. The Caddyfile validates, but Caddy cannot bind HTTPS because another process is already listening on port `443`; Task `04` remains blocked before smoke-check completion.
 - `2026-04-28 22:29 KST` Recorded operator-provided Docker Caddy compose output. The existing edge is `starterkit-prod-caddy-1`, not host `caddy.service`; the compose recreate attempted to apply host-gateway routing but also touched starterkit dependencies and failed at `minio-init` because required compose env values were not loaded.
 - `2026-04-28 22:47 KST` Recorded operator-provided Task `04` smoke helper success. The production web service, scheduler service, Docker edge service, redacted rollout summary, healthcheck, loopback health, protected console gate, authenticated console, dry-run publish, and overall single-server rollout smoke checks all passed. A separate production secret scan result is still needed before Task `04` can be marked done.
+- `2026-04-28 22:50 KST` Recorded operator-provided Task `04` secret scan attempt. The command was blocked by Git dubious-ownership protection for `/opt/sns-content-engine`, so the operator must add that path to the current user's Git `safe.directory` list and rerun the scan before Task `04` can be marked done.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -315,6 +317,7 @@ Status values:
 - `2026-04-28 22:29 KST` `docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}'` -> `passed` `starterkit-prod-caddy-1 owns 0.0.0.0:80 and 0.0.0.0:443`
 - `2026-04-28 22:29 KST` `docker compose -p starterkit-prod -f infra/compose/docker-compose.prod.yml up -d caddy` -> `blocked` `Caddy was recreated, but compose emitted missing-env warnings and minio-init exited with status 1; host-gateway and edge reachability still need verification`
 - `2026-04-28 22:47 KST` `scripts/single_server_smoke_check.sh` -> `passed` `service checks passed for sns-web.service, sns-scheduler.service, and docker.service; rollout_summary, healthcheck_cli, loopback_health, console_edge_gate, console_authenticated, publish_due_dry_run, and single_server_rollout all status=ok`
+- `2026-04-28 22:50 KST` `scripts/scan_secrets.sh check` -> `blocked` `Git rejected /opt/sns-content-engine as a dubious-ownership repository; no production secret-scan result was produced`
 - `2026-04-28 22:47 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 22:47 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
@@ -326,7 +329,7 @@ Status values:
 - `Can the operator confirm /opt/sns-content-engine/.env and /opt/sns-content-engine/config exist on the server without exposing any secret values?`
 
 ## Blockers
-- `Task 04 still needs explicit production scripts/scan_secrets.sh check evidence before live approval can be requested.`
+- `Task 04 still needs explicit production scripts/scan_secrets.sh check evidence before live approval can be requested; the first attempt was blocked by Git safe.directory ownership protection.`
 - `The 2026-04-28 14:02 KST handoff execution attempt confirmed the current shell is not the production app root; do not treat local handoff failure as a production healthcheck or smoke-check result.`
 - `The 2026-04-28 14:06 KST production shell attempt did not open a trusted remote shell, so Task 03 and Task 04 still cannot be marked passed.`
 - `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud returns NXDOMAIN from this environment.`
