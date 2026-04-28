@@ -196,6 +196,7 @@ When instantiating this template, use a filename that clearly shows the document
 ### Task 04: Run Server Dry-Run Publish And Smoke Helper
 - Goal: prove the production publish path is safe in dry-run mode and the edge deployment is reachable.
 - Actions:
+  - confirm the server-side smoke helper enforces the redacted `rollout-summary` X-only gate
   - run server-side dry-run `scheduler publish-due`
   - run `scripts/single_server_smoke_check.sh` with edge credentials supplied from the environment
   - capture dry-run queue shape, service status, and smoke helper result
@@ -204,6 +205,7 @@ When instantiating this template, use a filename that clearly shows the document
   - production services running
   - `SNS_SMOKE_EDGE_USER` and `SNS_SMOKE_EDGE_PASSWORD` available in the shell environment
 - Verification commands:
+  - `./.venv/bin/pytest tests/test_scripts.py -q`
   - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config`
   - `scripts/single_server_smoke_check.sh`
 - Risk or rollback note:

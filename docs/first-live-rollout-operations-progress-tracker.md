@@ -25,26 +25,28 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M2_server_dry_run_gate`
-- Current task: `03_verify_production_config_and_healthcheck`
+- Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:40 KST`
+- Last updated: `2026-04-28 11:55 KST`
 - Base branch: `master`
-- Active branch: `codex/task-03-production-healthcheck`
-- Latest task commit: `rollout_summary_hardening_pending`
-- Resume decision: `task_03_started_after_completed_task_02`
-- Stop reason: `production_server_access_not_available_public_dns_returns_nxdomain_and_no_local_ssh_alias_reconfirmed`
+- Active branch: `codex/task-04-smoke-rollout-summary`
+- Latest task commit: `Add smoke rollout summary gate`
+- Resume decision: `operator_requested_next_task_while_task_03_server_execution_blocked`
+- Stop reason: `production_server_access_and_edge_smoke_context_not_available_locally`
 
 ## Scope For Current Task
-- Goal: `Confirm production config and env presence without exposing secrets, then run the server-side healthcheck.`
-- In scope: `redacted server env/config presence checks, production config path confirmation, rollout summary hardening, and server-side healthcheck`
-- Out of scope: `server dry-run publish, smoke checks, live publish commands, Threads live rollout, LinkedIn direct publish, and infrastructure redesign`
-- Dependencies: `completed Task 02 local launch gate, production server shell access, production env file, and production config directory`
+- Goal: `Prove the production publish path stays dry-run and the protected edge is reachable, while enforcing the X-only rollout summary gate first.`
+- In scope: `smoke helper X-only rollout-summary gate, script coverage, docs alignment, and server-side dry-run/smoke command evidence when available`
+- Out of scope: `live publish commands, Threads live rollout, LinkedIn direct publish, auth redesign, and infrastructure redesign`
+- Dependencies: `blocked Task 03 server healthcheck, production services, edge smoke credentials, and production server shell access`
 - Verification commands:
   - `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
   - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
+  - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config`
+  - `scripts/single_server_smoke_check.sh`
 
 ## Environment Notes
-- Required services status: `production server services not accessible from the current local Codex workspace; sns.gilgop.cloud currently returns NXDOMAIN from local DNS checks; no matching local SSH alias was found`
+- Required services status: `production server services not accessible from the current local Codex workspace; local direct smoke-helper execution stops before checks because systemctl is unavailable; sns.gilgop.cloud currently returns NXDOMAIN from local DNS checks; no matching local SSH alias was found`
 - Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; local /opt exists but /opt/sns-content-engine is absent; no secret values were requested, printed, or recorded`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
 
@@ -55,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:36 KST | Added a repo-native redacted `rollout-summary` CLI for provider and X-only publisher evidence, but server command execution remains blocked because the current workspace has no production `/opt/sns-content-engine`, public `sns.gilgop.cloud` DNS checks still return NXDOMAIN, and no matching local SSH route is configured |
-| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | pending | 2026-04-26 20:13 KST | Requires production services plus edge smoke credentials |
+| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 11:52 KST | Smoke helper now enforces `rollout-summary` X-only output before healthcheck and dry-run publish; actual server dry-run and smoke execution still require production access, running services, and edge credentials |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
@@ -77,7 +79,10 @@ Status values:
 - `docs/single-server-deployment-guide.md` evidence: Task 03 command shape is documented as `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`.
 - `docs/single-server-deployment-guide.md` evidence: first-rollout preflight now uses `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config` before healthcheck and dry-run checks.
 - `docs/first-live-rollout-operations-roadmap.md` and `docs/first-live-rollout-operations-execution-guide.md` evidence: Task 03 verification now includes `rollout-summary`.
-- `scripts/single_server_smoke_check.sh` evidence: the smoke helper reuses the same server-side healthcheck before dry-run publish checks.
+- `scripts/single_server_smoke_check.sh` evidence: the smoke helper now runs `rollout-summary` before healthcheck and fails before dry-run publish unless `first_rollout_x_only=true` is present.
+- `tests/test_scripts.py` evidence: smoke helper coverage now verifies the successful X-only path and the failure path for a non-X publisher channel.
+- `README.md` and `docs/single-server-deployment-guide.md` evidence: smoke helper docs now mention the redacted first-rollout config summary check.
+- `docs/first-live-rollout-operations-roadmap.md` and `docs/first-live-rollout-operations-execution-guide.md` evidence: Task 04 now includes local script coverage and the X-only smoke-helper gate.
 - `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint is available before Task 02 verification.
 - `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` evidence: `33 passed`
 - `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q` evidence: `67 passed`
@@ -115,6 +120,12 @@ Status values:
 - `./.venv/bin/pytest -q` evidence: `533 passed` after adding `rollout-summary`.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after adding rollout-summary`.
 - `git diff --check` evidence: `passed with no output after adding rollout-summary`.
+- `./.venv/bin/pytest tests/test_scripts.py -q` evidence: `5 passed` after adding the smoke-helper `rollout-summary` gate.
+- `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py tests/test_scripts.py -q` evidence: `75 passed` after adding the smoke-helper `rollout-summary` gate.
+- `scripts/single_server_smoke_check.sh` evidence: `blocked locally`; direct local execution stopped with `missing command: systemctl`, which confirms the script still requires a production-like systemd context.
+- `./.venv/bin/pytest -q` evidence: `534 passed` after adding the smoke-helper `rollout-summary` gate.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the smoke-helper rollout-summary gate`.
+- `git diff --check` evidence: `passed with no output after adding the smoke-helper rollout-summary gate`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -151,6 +162,10 @@ Status values:
 - `2026-04-28 11:36 KST` Verified the checked-in config with `rollout-summary`; it reports OpenAI-first draft and metadata generation, two X publisher channels, and `first_rollout_x_only=true` without reading or printing credential values.
 - `2026-04-28 11:36 KST` Task `03` remains blocked for actual production verification because the production server shell, env file, config directory, and reachable DNS or SSH route are still unavailable from this workspace.
 - `2026-04-28 11:40 KST` Completed local hardening verification for the `rollout-summary` addition: targeted Task `03` tests, full pytest, secret scan, and diff whitespace checks passed.
+- `2026-04-28 11:52 KST` Started Task `04` local hardening on branch `codex/task-04-smoke-rollout-summary` because the operator requested the next task while server execution remains blocked.
+- `2026-04-28 11:52 KST` Updated `scripts/single_server_smoke_check.sh` so the server smoke helper runs `rollout-summary` and stops before healthcheck or dry-run publish when `first_rollout_x_only=true` is not present.
+- `2026-04-28 11:52 KST` Added script tests for the X-only success path and non-X publisher failure path, and aligned README plus rollout docs with the stronger smoke-helper gate.
+- `2026-04-28 11:55 KST` Completed local verification for Task `04` smoke-helper hardening: focused script tests, broader CLI/scheduler/X/script tests, full pytest, secret scan, and diff whitespace checks passed. Actual server dry-run and smoke execution remain blocked on production access and edge credentials.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -204,6 +219,12 @@ Status values:
 - `2026-04-28 11:40 KST` `./.venv/bin/pytest -q` -> `passed` `533 passed`
 - `2026-04-28 11:40 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 11:40 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:52 KST` `scripts/single_server_smoke_check.sh` -> `blocked` `local workspace lacks systemctl; this script is intended for the production server context`
+- `2026-04-28 11:52 KST` `./.venv/bin/pytest tests/test_scripts.py -q` -> `passed` `5 passed`
+- `2026-04-28 11:52 KST` `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py tests/test_scripts.py -q` -> `passed` `75 passed`
+- `2026-04-28 11:55 KST` `./.venv/bin/pytest -q` -> `passed` `534 passed`
+- `2026-04-28 11:55 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:55 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`

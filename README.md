@@ -235,7 +235,7 @@ scripts/scan_secrets.sh check
 ./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
 ```
 
-For the protected single-server rollout path, the repository also includes `scripts/single_server_smoke_check.sh` to verify `sns-web.service`, `sns-scheduler.service`, `caddy.service`, loopback `/health`, the edge-protected console, and dry-run `publish-due` behavior after a restart:
+For the protected single-server rollout path, the repository also includes `scripts/single_server_smoke_check.sh` to verify the redacted first-rollout config summary, `sns-web.service`, `sns-scheduler.service`, `caddy.service`, loopback `/health`, the edge-protected console, and dry-run `publish-due` behavior after a restart:
 
 ```bash
 cd /opt/sns-content-engine

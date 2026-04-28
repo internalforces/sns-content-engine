@@ -84,12 +84,22 @@ check_service "$WEB_SERVICE"
 check_service "$SCHEDULER_SERVICE"
 check_service "$EDGE_SERVICE"
 
+rollout_summary_args=("$SNS_ENGINE_BIN" rollout-summary --config-dir "$CONFIG_DIR")
 healthcheck_args=("$SNS_ENGINE_BIN" healthcheck --config-dir "$CONFIG_DIR")
 publish_due_args=("$SNS_ENGINE_BIN" scheduler publish-due --config-dir "$CONFIG_DIR")
 if [[ -n "$DATABASE_URL" ]]; then
   healthcheck_args+=(--database-url "$DATABASE_URL")
   publish_due_args+=(--database-url "$DATABASE_URL")
 fi
+
+rollout_summary_output="$(run_and_capture "smoke_check=rollout_summary" "${rollout_summary_args[@]}")"
+if ! grep -Fq "status=ok" <<<"$rollout_summary_output"; then
+  fail_check "smoke_check=rollout_summary" "$rollout_summary_output"
+fi
+if ! grep -Fq "first_rollout_x_only=true" <<<"$rollout_summary_output"; then
+  fail_check "smoke_check=rollout_summary" "$rollout_summary_output"
+fi
+pass_check "smoke_check=rollout_summary"
 
 healthcheck_output="$(run_and_capture "smoke_check=healthcheck_cli" "${healthcheck_args[@]}")"
 if ! grep -Fq "status=ok" <<<"$healthcheck_output"; then
