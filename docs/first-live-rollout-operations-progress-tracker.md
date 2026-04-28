@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `03_verify_production_config_and_healthcheck`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:03 KST`
+- Last updated: `2026-04-28 11:17 KST`
 - Base branch: `master`
 - Active branch: `codex/task-03-production-healthcheck`
-- Latest task commit: `branch_head_after_task_03_recheck`
+- Latest task commit: `task_03_config_summary_handoff_pending`
 - Resume decision: `task_03_started_after_completed_task_02`
-- Stop reason: `production_server_access_not_available_and_public_health_probe_dns_unresolved`
+- Stop reason: `production_server_access_not_available_public_dns_returns_nxdomain_and_no_local_ssh_alias`
 
 ## Scope For Current Task
 - Goal: `Confirm production config and env presence without exposing secrets, then run the server-side healthcheck.`
@@ -43,7 +43,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
   - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
 
 ## Environment Notes
-- Required services status: `production server services not accessible from the current local Codex workspace; https://sns.gilgop.cloud could not be resolved by curl from this environment`
+- Required services status: `production server services not accessible from the current local Codex workspace; sns.gilgop.cloud currently returns NXDOMAIN from local DNS checks; no matching local SSH alias was found`
 - Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; local /opt exists but /opt/sns-content-engine is absent; no secret values were requested, printed, or recorded`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
 
@@ -53,7 +53,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
-| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:03 KST | Blocked before server command execution because the current workspace has no production server shell access or production `/opt/sns-content-engine` context; public `sns.gilgop.cloud` health probe also failed DNS resolution |
+| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:09 KST | Blocked before server command execution because the current workspace has no production `/opt/sns-content-engine`, public `sns.gilgop.cloud` DNS checks return NXDOMAIN, and no matching local SSH alias is configured |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | pending | 2026-04-26 20:13 KST | Requires production services plus edge smoke credentials |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
@@ -79,10 +79,23 @@ Status values:
 - `scripts/scan_secrets.sh check` evidence: `passed with no output`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 tracker update`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 recheck tracker update`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 DNS recheck tracker update`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 local access hints recheck tracker update`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 03 server handoff block`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 03 config summary handoff`
 - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config` evidence: `not_run`; this command must run on the production server where `/opt/sns-content-engine/.env` and `/opt/sns-content-engine/config` exist.
 - `ls -ld /opt /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` evidence: local `/opt` exists, but the production app root is not present in this workspace.
 - `curl --fail https://sns.gilgop.cloud/health?config_dir=/opt/sns-content-engine/config` evidence: `failed`; DNS resolution returned `Could not resolve host`.
 - `curl https://sns.gilgop.cloud/console/?config_dir=/opt/sns-content-engine/config` evidence: `failed`; DNS resolution returned `Could not resolve host`.
+- `nslookup sns.gilgop.cloud` evidence: `failed`; resolver returned `NXDOMAIN`.
+- `host sns.gilgop.cloud` evidence: `failed`; resolver returned `NXDOMAIN`.
+- `ssh -o BatchMode=yes -o ConnectTimeout=5 sns.gilgop.cloud 'pwd'` evidence: `failed`; SSH could not resolve the hostname, so no authentication or remote command occurred.
+- `SSH config and /etc/hosts scan` evidence: no `sns`, `gilgop`, `content-engine`, `sns-engine`, or `/opt/sns-content-engine` host alias entries were found.
+- `env variable name scan` evidence: only `SSH_AUTH_SOCK` matched the deployment-related prefix check; no `SNS_*`, `DEPLOY_*`, `PRODUCTION_*`, or `PROD_*` variable names were present.
+- `ssh-add -l` evidence: SSH agent reported no identities.
+- `Task 03 server handoff block` evidence: added a redacted command bundle in this tracker so an operator with server shell access can verify path presence and run healthcheck without printing secret values.
+- `local config summary command` evidence: checked-in config reports `draft_generate` and `metadata_generate` provider `openai` at priority `1`; publisher-enabled channels are `ai_tools_daily:x` and `seo_tools_daily:x`; `first_rollout_x_only=yes`.
+- `Task 03 server handoff block` evidence: expanded the redacted command bundle to include the same provider-route and publisher-channel summary on the production server.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -101,6 +114,16 @@ Status values:
 - `2026-04-28 11:03 KST` Resumed Task `03` after the operator requested the next work. Confirmed the current local machine is still not the production server because `/opt/sns-content-engine` is absent.
 - `2026-04-28 11:03 KST` Checked the read-only public health and console URLs for `sns.gilgop.cloud`; both attempts failed DNS resolution from this environment, so no production health evidence could be captured through the edge path either.
 - `2026-04-28 11:03 KST` Ran the checked-in secret scan after recording the Task `03` recheck results; it passed with no output.
+- `2026-04-28 11:06 KST` Rechecked Task `03` blockers after the operator requested the next work. Local `/opt/sns-content-engine` is still absent, and DNS tools now confirm `sns.gilgop.cloud` returns NXDOMAIN rather than a reachable production host.
+- `2026-04-28 11:06 KST` Tried a non-interactive SSH reachability probe with `BatchMode=yes`; it failed at hostname resolution, so no remote shell or server-side command was executed.
+- `2026-04-28 11:06 KST` Ran the checked-in secret scan after recording the DNS recheck results; it passed with no output.
+- `2026-04-28 11:09 KST` Rechecked local access hints after the operator requested the next work. No matching SSH config, `/etc/hosts` entry, deployment-related env var name, or SSH agent identity was available to reach the production server without new external input.
+- `2026-04-28 11:09 KST` Ran the checked-in secret scan after recording the local access hints recheck; it passed with no output.
+- `2026-04-28 11:11 KST` Confirmed Task `03` still cannot be executed from the local workspace. Added a concrete, redacted server-side handoff block under Follow-up so the next operator action is copy-pasteable without exposing secrets.
+- `2026-04-28 11:11 KST` Ran the checked-in secret scan after adding the server handoff block; it passed with no output.
+- `2026-04-28 11:17 KST` Built and tested a redacted config summary command against the checked-in local config. It verifies OpenAI-first draft and metadata routes plus X-only publisher-enabled channels without printing credential values.
+- `2026-04-28 11:17 KST` Added the config summary command to the Task `03` server handoff block so the server-side operator can capture provider and X-only rollout evidence before healthcheck.
+- `2026-04-28 11:17 KST` Ran the checked-in secret scan after adding the config summary handoff; it passed with no output.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -123,20 +146,77 @@ Status values:
 - `2026-04-28 11:02 KST` `curl --fail https://sns.gilgop.cloud/health?config_dir=/opt/sns-content-engine/config` -> `failed` `curl could not resolve host sns.gilgop.cloud`
 - `2026-04-28 11:02 KST` `curl https://sns.gilgop.cloud/console/?config_dir=/opt/sns-content-engine/config` -> `failed` `curl could not resolve host sns.gilgop.cloud`
 - `2026-04-28 11:03 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:05 KST` `ls -ld /opt /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` -> `blocked` `local /opt exists but /opt/sns-content-engine is still absent`
+- `2026-04-28 11:05 KST` `nslookup sns.gilgop.cloud` -> `failed` `resolver returned NXDOMAIN`
+- `2026-04-28 11:05 KST` `host sns.gilgop.cloud` -> `failed` `resolver returned NXDOMAIN`
+- `2026-04-28 11:05 KST` `dig +short sns.gilgop.cloud A; dig +short sns.gilgop.cloud AAAA` -> `failed` `no A or AAAA records returned`
+- `2026-04-28 11:05 KST` `ssh -o BatchMode=yes -o ConnectTimeout=5 sns.gilgop.cloud 'pwd'` -> `failed` `hostname could not resolve; no remote command ran`
+- `2026-04-28 11:06 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:08 KST` `SSH config and /etc/hosts scan for sns/gilgop/content-engine` -> `blocked` `no matching host alias or hosts entry found`
+- `2026-04-28 11:08 KST` `env | cut -d= -f1 | sort | rg '^(SNS|SSH|DEPLOY|PRODUCTION|PROD)_'` -> `blocked` `only SSH_AUTH_SOCK was present; no deployment or smoke override env var names were present`
+- `2026-04-28 11:08 KST` `ssh-add -l` -> `blocked` `SSH agent has no identities`
+- `2026-04-28 11:09 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:11 KST` `server_side_healthcheck_handoff` -> `not_run` `documented as a redacted command bundle because this workspace still lacks production server shell access`
+- `2026-04-28 11:11 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:17 KST` `local_config_summary_handoff_command` -> `passed` `draft_generate=openai priority 1; metadata_generate=openai priority 1; publisher channels ai_tools_daily:x and seo_tools_daily:x; first_rollout_x_only=yes`
+- `2026-04-28 11:17 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
+- `Is there a reachable SSH host, IP address, or local alias other than sns.gilgop.cloud that should be used for the production server?`
 - `Which deployed Git revision should be treated as the production baseline before running the server-side healthcheck?`
-- `Should DNS for sns.gilgop.cloud resolve before continuing with edge smoke checks, or is the server intentionally not published yet?`
+- `Should DNS for sns.gilgop.cloud be created or restored before continuing with edge smoke checks, or is the server intentionally not published yet?`
 - `Can the operator confirm /opt/sns-content-engine/.env and /opt/sns-content-engine/config exist on the server without exposing any secret values?`
 
 ## Blockers
 - `Task 03 is blocked because production server access is not available in the current local workspace. The server-side healthcheck cannot be run safely or truthfully until a production shell context is available.`
-- `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud does not resolve from this environment.`
+- `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud returns NXDOMAIN from this environment.`
+- `No local SSH alias, hosts entry, deployment override env var name, or SSH agent identity is available to bridge the missing server context.`
 
 ## Follow-up
 - `Resume Task 03 when a production server shell is available. Verify the presence of /opt/sns-content-engine/.env and /opt/sns-content-engine/config without printing secret values, then run ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config from /opt/sns-content-engine.`
-- `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
+- `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host, provide a reachable SSH host or IP for Task 03, load the needed SSH identity or agent, or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
+
+## Server Handoff For Task 03
+Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
+
+```bash
+cd /opt/sns-content-engine
+printf 'app_root_present=%s\n' "$([ -d /opt/sns-content-engine ] && echo yes || echo no)"
+printf 'env_file_present=%s\n' "$([ -f /opt/sns-content-engine/.env ] && echo yes || echo no)"
+printf 'config_dir_present=%s\n' "$([ -d /opt/sns-content-engine/config ] && echo yes || echo no)"
+git rev-parse --short HEAD
+./.venv/bin/python - <<'PY'
+from pathlib import Path
+from app.config import ConfigRegistry, load_providers_config
+
+config_dir = Path("/opt/sns-content-engine/config")
+providers = load_providers_config(config_dir / "providers.yaml")
+for step in ("draft_generate", "metadata_generate"):
+    routes = sorted(
+        [route for route in providers.routes if route.step == step and route.enabled],
+        key=lambda route: route.priority,
+    )
+    if not routes:
+        print(f"provider_route step={step} provider=none priority=none model=none")
+        continue
+    top = routes[0]
+    print(f"provider_route step={step} provider={top.provider} priority={top.priority} model={top.model or 'default'}")
+
+registry = ConfigRegistry.from_directory(config_dir)
+publisher_channels = []
+for account_key, account in sorted(registry.accounts.items()):
+    for channel_key, channel in sorted(account.channels.items()):
+        if channel.publisher is not None:
+            publisher_channels.append((account_key, channel_key, channel.publisher.credential_ref))
+
+print("publisher_channels=" + (",".join(f"{account}:{channel}" for account, channel, _ in publisher_channels) or "none"))
+print("first_rollout_x_only=" + ("yes" if publisher_channels and all(channel == "x" for _, channel, _ in publisher_channels) else "no"))
+for account, channel, credential_ref in publisher_channels:
+    print(f"publisher_ref account={account} channel={channel} credential_ref={credential_ref}")
+PY
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+```
 
 ## Completion Summary
-- `Task 03 remains blocked, not complete. The repository-side command surface was rechecked and remains aligned with the rollout plan, but the production healthcheck requires server access that is not available in this local workspace. The read-only public health fallback also cannot run because sns.gilgop.cloud does not resolve here. No server-side command, smoke check, or live publish command was run.`
+- `Task 03 remains blocked, not complete. The repository-side command surface was rechecked and remains aligned with the rollout plan, but the production healthcheck requires server access that is not available in this local workspace. The read-only public health fallback cannot run because sns.gilgop.cloud returns NXDOMAIN here, and local SSH or env hints did not reveal another route. No server-side command, smoke check, or live publish command was run.`
