@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, make_url
 
-from app.config import ConfigRegistry, RssSourceConfig, SitemapSourceConfig
+from app.config import ConfigRegistry, RssSourceConfig, SitemapSourceConfig, load_providers_config
 from app.storage import ensure_database_schema_is_current, resolve_database_url
 
 _OPERATIONS_LOGGER_NAME = "sns_engine.operations"
@@ -23,6 +23,7 @@ _SAFE_LOG_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLED_SAMPLE_CONFIG_ROOT = (_PROJECT_ROOT / "config" / "examples").resolve()
 _PLACEHOLDER_HOST_SUFFIXES = ("example.com", "example.org", "example.net")
+_ROLLOUT_PROVIDER_STEPS = ("draft_generate", "metadata_generate")
 
 
 class RetryPolicy(str, Enum):
@@ -89,6 +90,87 @@ class HealthcheckResult:
         return tuple(lines)
 
 
+@dataclass(frozen=True, slots=True)
+class RolloutProviderRouteSummary:
+    """Top enabled provider route for one rollout-relevant pipeline step."""
+
+    step: str
+    provider: str
+    priority: int | None
+    model: str
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutPublisherChannelSummary:
+    """Configured live publisher reference for one account channel."""
+
+    account: str
+    channel: str
+    credential_ref: str
+    credential_ref_env_style: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RolloutConfigSummary:
+    """Redacted rollout configuration summary for operator preflight."""
+
+    config_dir: Path
+    provider_routes: tuple[RolloutProviderRouteSummary, ...]
+    publisher_channels: tuple[RolloutPublisherChannelSummary, ...]
+
+    @property
+    def first_rollout_x_only(self) -> bool:
+        """Return whether every configured live publisher channel is X."""
+
+        return bool(self.publisher_channels) and all(
+            publisher.channel == "x" for publisher in self.publisher_channels
+        )
+
+    def to_lines(self, *, component: str = "cli") -> tuple[str, ...]:
+        """Render the summary as redacted key=value lines."""
+
+        lines = [
+            format_log_line(
+                event="rollout_config_summary",
+                component=component,
+                status="ok",
+                config_dir=self.config_dir,
+                provider_route_count=len(self.provider_routes),
+                publisher_channel_count=len(self.publisher_channels),
+                first_rollout_x_only=self.first_rollout_x_only,
+            )
+        ]
+        for route in self.provider_routes:
+            lines.append(
+                format_log_line(
+                    event="rollout_config_summary",
+                    component=component,
+                    status="ok",
+                    step=route.step,
+                    provider=route.provider,
+                    priority=route.priority,
+                    model=route.model,
+                )
+            )
+        for publisher in self.publisher_channels:
+            lines.append(
+                format_log_line(
+                    event="rollout_config_summary",
+                    component=component,
+                    status="ok",
+                    account=publisher.account,
+                    channel=publisher.channel,
+                    credential_ref=(
+                        publisher.credential_ref
+                        if publisher.credential_ref_env_style
+                        else "non_env_style_redacted"
+                    ),
+                    credential_ref_env_style=publisher.credential_ref_env_style,
+                )
+            )
+        return tuple(lines)
+
+
 def run_healthcheck(
     *,
     config_dir: Path | str = Path("config"),
@@ -150,6 +232,65 @@ def run_healthcheck(
         )
 
     return HealthcheckResult(checks=tuple(checks))
+
+
+def summarize_rollout_config(
+    *,
+    config_dir: Path | str = Path("config"),
+) -> RolloutConfigSummary:
+    """Build a redacted summary of rollout-relevant config surfaces."""
+
+    normalized_config_dir = Path(config_dir).resolve()
+    providers = load_providers_config(normalized_config_dir / "providers.yaml")
+    registry = ConfigRegistry.from_directory(normalized_config_dir)
+
+    provider_routes: list[RolloutProviderRouteSummary] = []
+    for step in _ROLLOUT_PROVIDER_STEPS:
+        enabled_routes = sorted(
+            (route for route in providers.routes if route.step == step and route.enabled),
+            key=lambda route: (route.priority, route.provider, route.model or ""),
+        )
+        if not enabled_routes:
+            provider_routes.append(
+                RolloutProviderRouteSummary(
+                    step=step,
+                    provider="none",
+                    priority=None,
+                    model="none",
+                )
+            )
+            continue
+
+        top_route = enabled_routes[0]
+        provider_routes.append(
+            RolloutProviderRouteSummary(
+                step=step,
+                provider=top_route.provider,
+                priority=top_route.priority,
+                model=top_route.model or "default",
+            )
+        )
+
+    publisher_channels: list[RolloutPublisherChannelSummary] = []
+    for account_key, account in sorted(registry.accounts.items()):
+        for channel_key, channel in sorted(account.channels.items()):
+            if channel.publisher is None:
+                continue
+            credential_ref = channel.publisher.credential_ref
+            publisher_channels.append(
+                RolloutPublisherChannelSummary(
+                    account=account_key,
+                    channel=channel_key,
+                    credential_ref=credential_ref,
+                    credential_ref_env_style=_looks_like_env_var_name(credential_ref),
+                )
+            )
+
+    return RolloutConfigSummary(
+        config_dir=normalized_config_dir,
+        provider_routes=tuple(provider_routes),
+        publisher_channels=tuple(publisher_channels),
+    )
 
 
 def get_operations_logger() -> logging.Logger:
@@ -298,6 +439,18 @@ def _format_log_value(value: Any) -> str:
     if text and all(character in _SAFE_LOG_CHARS for character in text):
         return text
     return json.dumps(text, ensure_ascii=True)
+
+
+def _looks_like_env_var_name(value: str) -> bool:
+    if not value or "_" not in value:
+        return False
+    first_character = value[0]
+    if not (first_character == "_" or "A" <= first_character <= "Z"):
+        return False
+    return all(
+        character == "_" or character.isdigit() or "A" <= character <= "Z"
+        for character in value
+    )
 
 
 def _run_database_healthcheck(database_url: str) -> str:

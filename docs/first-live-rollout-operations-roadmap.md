@@ -104,6 +104,7 @@ When instantiating this template, use a filename that clearly shows the document
   - any `--live` publish command
   - server infrastructure redesign
 - Verification target:
+  - `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
   - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
   - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config`
   - `scripts/single_server_smoke_check.sh`
@@ -184,6 +185,7 @@ When instantiating this template, use a filename that clearly shows the document
   - server shell access
   - production env file present
 - Verification commands:
+  - `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
   - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
 - Risk or rollback note:
   - never print secret values; only record presence, absence, or command status

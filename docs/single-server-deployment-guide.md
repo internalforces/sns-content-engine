@@ -129,7 +129,14 @@ Use `db init` only for a brand-new database. Use `db upgrade` when reusing an ol
 
 Run this short sequence before the first live `x` publish:
 
-1. Confirm the checked-in `config/providers.yaml` and `/opt/sns-content-engine/.env` still reflect the OpenAI-first, X-only first-rollout path.
+1. Confirm the checked-in `config/providers.yaml` and `/opt/sns-content-engine/.env` still reflect the OpenAI-first, X-only first-rollout path:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config
+```
+
+The summary is read-only and reports provider route names, publisher channel names, and credential reference names without reading or printing credential values. `first_rollout_x_only=true` must be present before continuing the first protected rollout.
 2. Run the full repo regression gate:
 
 ```bash

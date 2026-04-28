@@ -989,6 +989,60 @@ def test_main_runs_the_typer_app(monkeypatch) -> None:
     assert called is True
 
 
+def test_rollout_summary_command_reports_redacted_x_only_preflight(tmp_path: Path) -> None:
+    _write_rollout_summary_config(tmp_path)
+
+    result = runner.invoke(app, ["rollout-summary", "--config-dir", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "event=rollout_config_summary component=cli status=ok" in result.stdout
+    assert f"config_dir={tmp_path.resolve()}" in result.stdout
+    assert "provider_route_count=2" in result.stdout
+    assert "publisher_channel_count=2" in result.stdout
+    assert "first_rollout_x_only=true" in result.stdout
+    assert (
+        "step=draft_generate provider=openai priority=1 model=gpt-5.4-mini"
+        in result.stdout
+    )
+    assert (
+        "step=metadata_generate provider=openai priority=1 model=gpt-5.4-mini"
+        in result.stdout
+    )
+    assert (
+        "account=ai_tools_daily channel=x "
+        "credential_ref=X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS "
+        "credential_ref_env_style=true"
+        in result.stdout
+    )
+    assert "channel=threads" not in result.stdout
+
+
+def test_rollout_summary_command_flags_non_x_publishers(tmp_path: Path) -> None:
+    _write_rollout_summary_config(tmp_path, include_threads_publisher=True)
+
+    result = runner.invoke(app, ["rollout-summary", "--config-dir", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "first_rollout_x_only=false" in result.stdout
+    assert (
+        "account=ai_tools_daily channel=threads "
+        "credential_ref=THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS "
+        "credential_ref_env_style=true"
+        in result.stdout
+    )
+
+
+def test_rollout_summary_command_redacts_non_env_style_credential_refs(tmp_path: Path) -> None:
+    _write_rollout_summary_config(tmp_path, credential_ref="raw-json-value")
+
+    result = runner.invoke(app, ["rollout-summary", "--config-dir", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert "credential_ref=non_env_style_redacted" in result.stdout
+    assert "credential_ref_env_style=false" in result.stdout
+    assert "raw-json-value" not in result.stdout
+
+
 def _create_legacy_upgrade_fixture(connection) -> None:
     connection.exec_driver_sql(
         """
@@ -1238,6 +1292,151 @@ def _write_minimal_project_config(
             sources:
               - ai_tools_rss
         """.format(source_url=source_url),
+    )
+
+
+def _write_rollout_summary_config(
+    path: Path,
+    *,
+    credential_ref: str = "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS",
+    include_threads_publisher: bool = False,
+) -> None:
+    if include_threads_publisher:
+        accounts_yaml = """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: {credential_ref}
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                render:
+                  max_chars: 3000
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                render:
+                  max_chars: 10000
+                publisher:
+                  credential_ref: THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+          seo_tools_daily:
+            topic: "SEO tools and search optimization"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/seo-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 12 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: X_SEO_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+        """
+    else:
+        accounts_yaml = """
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 9 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: {credential_ref}
+              linkedin:
+                schedule:
+                  cron: "0 10 * * *"
+                render:
+                  max_chars: 3000
+              threads:
+                schedule:
+                  cron: "0 11 * * *"
+                render:
+                  max_chars: 10000
+          seo_tools_daily:
+            topic: "SEO tools and search optimization"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/seo-tools
+              rules: []
+            channels:
+              x:
+                schedule:
+                  cron: "0 12 * * *"
+                render:
+                  max_chars: 280
+                publisher:
+                  credential_ref: X_SEO_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+        """
+
+    _write_file(path / "accounts.yaml", accounts_yaml.format(credential_ref=credential_ref))
+    _write_file(
+        path / "prompts.yaml",
+        """
+        profiles:
+          ai_tools_default:
+            system_template: "system"
+            user_template: "user"
+        """,
+    )
+    _write_file(
+        path / "sources.yaml",
+        """
+        sources:
+          ai_tools_rss:
+            type: rss
+            url: https://gilgop.cloud/feed.xml
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_rss
+        """,
+    )
+    _write_file(
+        path / "providers.yaml",
+        """
+        routes:
+          - step: draft_generate
+            provider: openai
+            model: gpt-5.4-mini
+            priority: 1
+          - step: metadata_generate
+            provider: openai
+            model: gpt-5.4-mini
+            priority: 1
+          - step: draft_generate
+            provider: fake
+            priority: 99
+            enabled: false
+        """,
     )
 
 
