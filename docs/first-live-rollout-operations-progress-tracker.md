@@ -27,10 +27,10 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `03_verify_production_config_and_healthcheck`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:11 KST`
+- Last updated: `2026-04-28 11:17 KST`
 - Base branch: `master`
 - Active branch: `codex/task-03-production-healthcheck`
-- Latest task commit: `branch_head_after_task_03_server_handoff_block`
+- Latest task commit: `task_03_config_summary_handoff_pending`
 - Resume decision: `task_03_started_after_completed_task_02`
 - Stop reason: `production_server_access_not_available_public_dns_returns_nxdomain_and_no_local_ssh_alias`
 
@@ -82,6 +82,7 @@ Status values:
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 DNS recheck tracker update`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 local access hints recheck tracker update`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 03 server handoff block`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 03 config summary handoff`
 - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config` evidence: `not_run`; this command must run on the production server where `/opt/sns-content-engine/.env` and `/opt/sns-content-engine/config` exist.
 - `ls -ld /opt /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` evidence: local `/opt` exists, but the production app root is not present in this workspace.
 - `curl --fail https://sns.gilgop.cloud/health?config_dir=/opt/sns-content-engine/config` evidence: `failed`; DNS resolution returned `Could not resolve host`.
@@ -93,6 +94,8 @@ Status values:
 - `env variable name scan` evidence: only `SSH_AUTH_SOCK` matched the deployment-related prefix check; no `SNS_*`, `DEPLOY_*`, `PRODUCTION_*`, or `PROD_*` variable names were present.
 - `ssh-add -l` evidence: SSH agent reported no identities.
 - `Task 03 server handoff block` evidence: added a redacted command bundle in this tracker so an operator with server shell access can verify path presence and run healthcheck without printing secret values.
+- `local config summary command` evidence: checked-in config reports `draft_generate` and `metadata_generate` provider `openai` at priority `1`; publisher-enabled channels are `ai_tools_daily:x` and `seo_tools_daily:x`; `first_rollout_x_only=yes`.
+- `Task 03 server handoff block` evidence: expanded the redacted command bundle to include the same provider-route and publisher-channel summary on the production server.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -118,6 +121,9 @@ Status values:
 - `2026-04-28 11:09 KST` Ran the checked-in secret scan after recording the local access hints recheck; it passed with no output.
 - `2026-04-28 11:11 KST` Confirmed Task `03` still cannot be executed from the local workspace. Added a concrete, redacted server-side handoff block under Follow-up so the next operator action is copy-pasteable without exposing secrets.
 - `2026-04-28 11:11 KST` Ran the checked-in secret scan after adding the server handoff block; it passed with no output.
+- `2026-04-28 11:17 KST` Built and tested a redacted config summary command against the checked-in local config. It verifies OpenAI-first draft and metadata routes plus X-only publisher-enabled channels without printing credential values.
+- `2026-04-28 11:17 KST` Added the config summary command to the Task `03` server handoff block so the server-side operator can capture provider and X-only rollout evidence before healthcheck.
+- `2026-04-28 11:17 KST` Ran the checked-in secret scan after adding the config summary handoff; it passed with no output.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -152,6 +158,8 @@ Status values:
 - `2026-04-28 11:09 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 11:11 KST` `server_side_healthcheck_handoff` -> `not_run` `documented as a redacted command bundle because this workspace still lacks production server shell access`
 - `2026-04-28 11:11 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:17 KST` `local_config_summary_handoff_command` -> `passed` `draft_generate=openai priority 1; metadata_generate=openai priority 1; publisher channels ai_tools_daily:x and seo_tools_daily:x; first_rollout_x_only=yes`
+- `2026-04-28 11:17 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -178,6 +186,35 @@ printf 'app_root_present=%s\n' "$([ -d /opt/sns-content-engine ] && echo yes || 
 printf 'env_file_present=%s\n' "$([ -f /opt/sns-content-engine/.env ] && echo yes || echo no)"
 printf 'config_dir_present=%s\n' "$([ -d /opt/sns-content-engine/config ] && echo yes || echo no)"
 git rev-parse --short HEAD
+./.venv/bin/python - <<'PY'
+from pathlib import Path
+from app.config import ConfigRegistry, load_providers_config
+
+config_dir = Path("/opt/sns-content-engine/config")
+providers = load_providers_config(config_dir / "providers.yaml")
+for step in ("draft_generate", "metadata_generate"):
+    routes = sorted(
+        [route for route in providers.routes if route.step == step and route.enabled],
+        key=lambda route: route.priority,
+    )
+    if not routes:
+        print(f"provider_route step={step} provider=none priority=none model=none")
+        continue
+    top = routes[0]
+    print(f"provider_route step={step} provider={top.provider} priority={top.priority} model={top.model or 'default'}")
+
+registry = ConfigRegistry.from_directory(config_dir)
+publisher_channels = []
+for account_key, account in sorted(registry.accounts.items()):
+    for channel_key, channel in sorted(account.channels.items()):
+        if channel.publisher is not None:
+            publisher_channels.append((account_key, channel_key, channel.publisher.credential_ref))
+
+print("publisher_channels=" + (",".join(f"{account}:{channel}" for account, channel, _ in publisher_channels) or "none"))
+print("first_rollout_x_only=" + ("yes" if publisher_channels and all(channel == "x" for _, channel, _ in publisher_channels) else "no"))
+for account, channel, credential_ref in publisher_channels:
+    print(f"publisher_ref account={account} channel={channel} credential_ref={credential_ref}")
+PY
 ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
 ```
 
