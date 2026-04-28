@@ -27,10 +27,10 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `03_verify_production_config_and_healthcheck`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:09 KST`
+- Last updated: `2026-04-28 11:11 KST`
 - Base branch: `master`
 - Active branch: `codex/task-03-production-healthcheck`
-- Latest task commit: `branch_head_after_task_03_local_access_hints_recheck`
+- Latest task commit: `branch_head_after_task_03_server_handoff_block`
 - Resume decision: `task_03_started_after_completed_task_02`
 - Stop reason: `production_server_access_not_available_public_dns_returns_nxdomain_and_no_local_ssh_alias`
 
@@ -81,6 +81,7 @@ Status values:
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 recheck tracker update`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 DNS recheck tracker update`
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the Task 03 local access hints recheck tracker update`
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 03 server handoff block`
 - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config` evidence: `not_run`; this command must run on the production server where `/opt/sns-content-engine/.env` and `/opt/sns-content-engine/config` exist.
 - `ls -ld /opt /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` evidence: local `/opt` exists, but the production app root is not present in this workspace.
 - `curl --fail https://sns.gilgop.cloud/health?config_dir=/opt/sns-content-engine/config` evidence: `failed`; DNS resolution returned `Could not resolve host`.
@@ -91,6 +92,7 @@ Status values:
 - `SSH config and /etc/hosts scan` evidence: no `sns`, `gilgop`, `content-engine`, `sns-engine`, or `/opt/sns-content-engine` host alias entries were found.
 - `env variable name scan` evidence: only `SSH_AUTH_SOCK` matched the deployment-related prefix check; no `SNS_*`, `DEPLOY_*`, `PRODUCTION_*`, or `PROD_*` variable names were present.
 - `ssh-add -l` evidence: SSH agent reported no identities.
+- `Task 03 server handoff block` evidence: added a redacted command bundle in this tracker so an operator with server shell access can verify path presence and run healthcheck without printing secret values.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -114,6 +116,8 @@ Status values:
 - `2026-04-28 11:06 KST` Ran the checked-in secret scan after recording the DNS recheck results; it passed with no output.
 - `2026-04-28 11:09 KST` Rechecked local access hints after the operator requested the next work. No matching SSH config, `/etc/hosts` entry, deployment-related env var name, or SSH agent identity was available to reach the production server without new external input.
 - `2026-04-28 11:09 KST` Ran the checked-in secret scan after recording the local access hints recheck; it passed with no output.
+- `2026-04-28 11:11 KST` Confirmed Task `03` still cannot be executed from the local workspace. Added a concrete, redacted server-side handoff block under Follow-up so the next operator action is copy-pasteable without exposing secrets.
+- `2026-04-28 11:11 KST` Ran the checked-in secret scan after adding the server handoff block; it passed with no output.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -146,6 +150,8 @@ Status values:
 - `2026-04-28 11:08 KST` `env | cut -d= -f1 | sort | rg '^(SNS|SSH|DEPLOY|PRODUCTION|PROD)_'` -> `blocked` `only SSH_AUTH_SOCK was present; no deployment or smoke override env var names were present`
 - `2026-04-28 11:08 KST` `ssh-add -l` -> `blocked` `SSH agent has no identities`
 - `2026-04-28 11:09 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:11 KST` `server_side_healthcheck_handoff` -> `not_run` `documented as a redacted command bundle because this workspace still lacks production server shell access`
+- `2026-04-28 11:11 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -162,6 +168,18 @@ Status values:
 ## Follow-up
 - `Resume Task 03 when a production server shell is available. Verify the presence of /opt/sns-content-engine/.env and /opt/sns-content-engine/config without printing secret values, then run ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config from /opt/sns-content-engine.`
 - `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host, provide a reachable SSH host or IP for Task 03, load the needed SSH identity or agent, or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
+
+## Server Handoff For Task 03
+Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
+
+```bash
+cd /opt/sns-content-engine
+printf 'app_root_present=%s\n' "$([ -d /opt/sns-content-engine ] && echo yes || echo no)"
+printf 'env_file_present=%s\n' "$([ -f /opt/sns-content-engine/.env ] && echo yes || echo no)"
+printf 'config_dir_present=%s\n' "$([ -d /opt/sns-content-engine/config ] && echo yes || echo no)"
+git rev-parse --short HEAD
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+```
 
 ## Completion Summary
 - `Task 03 remains blocked, not complete. The repository-side command surface was rechecked and remains aligned with the rollout plan, but the production healthcheck requires server access that is not available in this local workspace. The read-only public health fallback cannot run because sns.gilgop.cloud returns NXDOMAIN here, and local SSH or env hints did not reveal another route. No server-side command, smoke check, or live publish command was run.`
