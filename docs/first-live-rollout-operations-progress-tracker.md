@@ -27,11 +27,11 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:55 KST`
+- Last updated: `2026-04-28 13:37 KST`
 - Base branch: `master`
 - Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Add smoke rollout summary gate`
-- Resume decision: `operator_requested_next_task_while_task_03_server_execution_blocked`
+- Latest task commit: `Reconfirm Task 04 server blocker`
+- Resume decision: `operator_requested_execution_from_vibe_prompt_while_task_04_server_execution_blocked`
 - Stop reason: `production_server_access_and_edge_smoke_context_not_available_locally`
 
 ## Scope For Current Task
@@ -46,8 +46,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
   - `scripts/single_server_smoke_check.sh`
 
 ## Environment Notes
-- Required services status: `production server services not accessible from the current local Codex workspace; local direct smoke-helper execution stops before checks because systemctl is unavailable; sns.gilgop.cloud currently returns NXDOMAIN from local DNS checks; no matching local SSH alias was found`
-- Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; local /opt exists but /opt/sns-content-engine is absent; no secret values were requested, printed, or recorded`
+- Required services status: `production server services not accessible from the current local Codex workspace; local direct smoke-helper execution stops before checks because systemctl is unavailable; sns.gilgop.cloud still returns NXDOMAIN from 2026-04-28 13:37 KST local DNS checks; no matching local SSH route was found`
+- Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; local /opt exists but /opt/sns-content-engine is absent as of 2026-04-28 13:37 KST; no secret values were requested, printed, or recorded`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
 
 ## Roadmap Status
@@ -57,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:36 KST | Added a repo-native redacted `rollout-summary` CLI for provider and X-only publisher evidence, but server command execution remains blocked because the current workspace has no production `/opt/sns-content-engine`, public `sns.gilgop.cloud` DNS checks still return NXDOMAIN, and no matching local SSH route is configured |
-| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 11:52 KST | Smoke helper now enforces `rollout-summary` X-only output before healthcheck and dry-run publish; actual server dry-run and smoke execution still require production access, running services, and edge credentials |
+| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 13:37 KST | Rechecked production access locally; smoke helper already enforces `rollout-summary` X-only output, but actual server dry-run and smoke execution still require production access, running services, and edge credentials |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
@@ -126,6 +126,12 @@ Status values:
 - `./.venv/bin/pytest -q` evidence: `534 passed` after adding the smoke-helper `rollout-summary` gate.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the smoke-helper rollout-summary gate`.
 - `git diff --check` evidence: `passed with no output after adding the smoke-helper rollout-summary gate`.
+- `2026-04-28 13:37 KST local production root recheck` evidence: local `/opt` exists, but `/opt/sns-content-engine`, `/opt/sns-content-engine/.env`, and `/opt/sns-content-engine/config` are still absent.
+- `2026-04-28 13:37 KST DNS recheck` evidence: `nslookup sns.gilgop.cloud` and `host sns.gilgop.cloud` still return `NXDOMAIN`.
+- `2026-04-28 13:37 KST SSH recheck` evidence: non-interactive SSH to `sns.gilgop.cloud` failed at hostname resolution, so no remote command ran.
+- `2026-04-28 13:37 KST local access hint recheck` evidence: only `SSH_AUTH_SOCK` matched the deployment-related env-name scan, `ssh-add -l` reported no identities, and `~/.ssh/config` is absent.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after the 2026-04-28 13:37 KST Task 04 blocker recheck tracker update`.
+- `git diff --check` evidence: `passed with no output after the 2026-04-28 13:37 KST Task 04 blocker recheck tracker update`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -166,6 +172,7 @@ Status values:
 - `2026-04-28 11:52 KST` Updated `scripts/single_server_smoke_check.sh` so the server smoke helper runs `rollout-summary` and stops before healthcheck or dry-run publish when `first_rollout_x_only=true` is not present.
 - `2026-04-28 11:52 KST` Added script tests for the X-only success path and non-X publisher failure path, and aligned README plus rollout docs with the stronger smoke-helper gate.
 - `2026-04-28 11:55 KST` Completed local verification for Task `04` smoke-helper hardening: focused script tests, broader CLI/scheduler/X/script tests, full pytest, secret scan, and diff whitespace checks passed. Actual server dry-run and smoke execution remain blocked on production access and edge credentials.
+- `2026-04-28 13:37 KST` Resumed from the operations vibe prompt while Task `04` was blocked, then rechecked local production path, DNS, non-interactive SSH, deployment-related env variable names, SSH agent identities, and local SSH config. The production server context is still unavailable, so no server dry-run, smoke check, or live publish command was run.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -225,6 +232,15 @@ Status values:
 - `2026-04-28 11:55 KST` `./.venv/bin/pytest -q` -> `passed` `534 passed`
 - `2026-04-28 11:55 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 11:55 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-28 13:37 KST` `ls -ld /opt /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` -> `blocked` `local /opt exists but the production app root, env file, and config directory are still absent`
+- `2026-04-28 13:37 KST` `nslookup sns.gilgop.cloud` -> `failed` `resolver returned NXDOMAIN`
+- `2026-04-28 13:37 KST` `host sns.gilgop.cloud` -> `failed` `resolver returned NXDOMAIN`
+- `2026-04-28 13:37 KST` `ssh -o BatchMode=yes -o ConnectTimeout=5 sns.gilgop.cloud 'pwd'` -> `failed` `hostname could not resolve; no remote command ran`
+- `2026-04-28 13:37 KST` `printenv | cut -d= -f1 | sort | rg '^(SNS|DEPLOY|PRODUCTION|PROD|SSH)_'` -> `blocked` `only SSH_AUTH_SOCK was present; no deployment or smoke override env var names were present`
+- `2026-04-28 13:37 KST` `rg -n "sns|gilgop|content-engine|sns-engine|/opt/sns-content-engine" ~/.ssh/config /etc/hosts` -> `blocked` `~/.ssh/config does not exist and no matching local route was found`
+- `2026-04-28 13:37 KST` `ssh-add -l` -> `blocked` `SSH agent has no identities`
+- `2026-04-28 13:37 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 13:37 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -235,6 +251,7 @@ Status values:
 
 ## Blockers
 - `Task 03 is blocked because production server access is not available in the current local workspace. The server-side healthcheck cannot be run safely or truthfully until a production shell context is available.`
+- `Task 04 is blocked because production server access, running systemd services, edge smoke credentials, and a reachable public edge route are not available in the current local workspace. The server-side dry-run publish and smoke helper cannot be run safely or truthfully until that context is available.`
 - `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud returns NXDOMAIN from this environment.`
 - `No local SSH alias, hosts entry, deployment override env var name, or SSH agent identity is available to bridge the missing server context.`
 
@@ -257,3 +274,4 @@ git rev-parse --short HEAD
 
 ## Completion Summary
 - `Task 03 remains blocked, not complete. The repository-side command surface now includes a first-class redacted rollout-summary command for provider and X-only publisher evidence, but the production healthcheck still requires server access that is not available in this local workspace. The 2026-04-28 11:25 KST recheck confirmed the production app root is absent locally, sns.gilgop.cloud still returns NXDOMAIN, and local SSH or env hints do not reveal another route. No server-side command, smoke check, or live publish command was run.`
+- `Task 04 also remains blocked, not complete. The smoke helper already enforces the redacted X-only rollout-summary gate before healthcheck and dry-run publish, but the 2026-04-28 13:37 KST recheck confirmed the current local workspace still lacks production /opt context, DNS/SSH reachability, running systemd services, and edge smoke credentials. No server-side dry-run, smoke check, or live publish command was run.`
