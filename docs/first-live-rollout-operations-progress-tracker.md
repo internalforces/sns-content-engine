@@ -27,11 +27,11 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `blocked`
-- Last updated: `2026-04-28 14:02 KST`
+- Last updated: `2026-04-28 14:06 KST`
 - Base branch: `master`
 - Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Record Task 03 and 04 handoff execution blocker`
-- Resume decision: `operator_requested_task_03_04_handoff_execution`
+- Latest task commit: `Record production shell access attempt`
+- Resume decision: `operator_requested_production_shell_verification`
 - Stop reason: `production_server_access_and_edge_smoke_context_not_available_locally`
 
 ## Scope For Current Task
@@ -46,8 +46,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
   - `scripts/single_server_smoke_check.sh`
 
 ## Environment Notes
-- Required services status: `production server services not accessible from the current local Codex workspace; Task 03 and Task 04 handoff execution stopped before service checks because /opt/sns-content-engine is absent locally`
-- Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; Task 03 handoff reported app root, env file, and config dir absent; Task 04 handoff reported edge auth env absent; no secret values were requested, printed, or recorded`
+- Required services status: `production server services not accessible from the current local Codex workspace; direct Task 03 and Task 04 handoff execution stopped before service checks because /opt/sns-content-engine is absent locally; remote shell attempts did not open a production shell`
+- Env or fixture status: `production /opt/sns-content-engine/.env and /opt/sns-content-engine/config cannot be verified without server shell access; local checks found app root, env file, and config dir absent; remote shell attempts did not reach the production app root; no secret values were requested, printed, or recorded`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
 
 ## Roadmap Status
@@ -56,8 +56,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
-| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 14:02 KST | Task 03 handoff execution reported `app_root_present=no`, `env_file_present=no`, and `config_dir_present=no`, then stopped at `cd /opt/sns-content-engine`; server `rollout-summary` and `healthcheck` did not run |
-| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 14:02 KST | Task 04 handoff execution reported missing edge smoke env and production app root, then stopped at `cd /opt/sns-content-engine`; server dry-run publish, secret scan, and smoke helper did not run |
+| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 14:06 KST | Production shell attempts did not open a server session; Task 03 server `rollout-summary` and `healthcheck` still have not run |
+| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 14:06 KST | Production shell attempts did not open a server session; Task 04 server dry-run publish, secret scan, and smoke helper still have not run |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
@@ -149,6 +149,9 @@ Status values:
 - `2026-04-28 14:02 KST Task 04 handoff execution` evidence: reported edge auth env absent plus `app_root_present=no` and `config_dir_present=no`, then stopped at `cd /opt/sns-content-engine`; no server dry-run publish, secret scan, or smoke helper command ran.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 03 and Task 04 handoff execution blocker`.
 - `git diff --check` evidence: `passed with no output after recording the Task 03 and Task 04 handoff execution blocker`.
+- `2026-04-28 14:06 KST production shell access attempt` evidence: `sns.gilgop.cloud` still returned NXDOMAIN; `gilgop.cloud` resolved but SSH stopped at host-key verification; Tailscale `sonubuntu-server` was visible, but SSH to tested user candidates was denied, including with the local key explicitly selected.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the production shell access attempt`.
+- `git diff --check` evidence: `passed with no output after recording the production shell access attempt`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -194,6 +197,7 @@ Status values:
 - `2026-04-28 13:51 KST` Rechecked Task `04` blockers after the operator requested next work. Production server access and edge reachability remain unavailable locally, so Task `05` was not started; instead, added a Task `05` approval handoff to make the future live gate explicit after Task `03` and Task `04` pass.
 - `2026-04-28 13:53 KST` Added a Task `06` observation handoff so a future live attempt can be closed with job evidence, logs, external X observation, and a continue, pause, retry, or hold decision. Task `06` remains pending because Task `05` has not run.
 - `2026-04-28 14:02 KST` Executed the Task `03` and Task `04` handoff command bundles in the current session as requested. Both stopped before production commands because `/opt/sns-content-engine` is absent locally; the result confirms Task `03` and Task `04` remain blocked rather than passed.
+- `2026-04-28 14:06 KST` Tried to locate and use a production shell route. Repository docs expose the intended server layout and `sns.gilgop.cloud` edge host, local env names expose no deploy host override, SSH agent has no identities, `sns.gilgop.cloud` still does not resolve, direct SSH to `gilgop.cloud` was not accepted due to host-key verification, and Tailscale `sonubuntu-server` rejected the tested SSH user candidates. No production shell command ran.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -281,6 +285,9 @@ Status values:
 - `2026-04-28 14:02 KST` `task_04_server_handoff_bundle` -> `blocked` `edge auth env absent; app_root_present=no; config_dir_present=no; cd /opt/sns-content-engine failed, so production dry-run publish, secret scan, and smoke helper did not run`
 - `2026-04-28 14:02 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0 after wording update for the handoff execution record`
 - `2026-04-28 14:02 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-28 14:06 KST` `production_shell_route_discovery` -> `blocked` `no repo SSH host config, no deploy-host env-name hint, no loaded SSH identity, sns.gilgop.cloud NXDOMAIN, gilgop.cloud SSH host-key verification stopped, and Tailscale sonubuntu-server SSH access was denied for tested user candidates`
+- `2026-04-28 14:06 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 14:06 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -293,6 +300,7 @@ Status values:
 - `Task 03 is blocked because production server access is not available in the current local workspace. The server-side healthcheck cannot be run safely or truthfully until a production shell context is available.`
 - `Task 04 is blocked because production server access, running systemd services, edge smoke credentials, and a reachable public edge route are not available in the current local workspace. The server-side dry-run publish and smoke helper cannot be run safely or truthfully until that context is available.`
 - `The 2026-04-28 14:02 KST handoff execution attempt confirmed the current shell is not the production app root; do not treat local handoff failure as a production healthcheck or smoke-check result.`
+- `The 2026-04-28 14:06 KST production shell attempt did not open a trusted remote shell, so Task 03 and Task 04 still cannot be marked passed.`
 - `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud returns NXDOMAIN from this environment.`
 - `No local SSH alias, hosts entry, deployment override env var name, or SSH agent identity is available to bridge the missing server context.`
 
@@ -375,5 +383,6 @@ If the first live attempt failed or timed out, do not retry automatically. Recor
 ## Completion Summary
 - `Task 03 remains blocked, not complete. The repository-side command surface now includes a first-class redacted rollout-summary command for provider and X-only publisher evidence, but the production healthcheck still requires server access that is not available in this local workspace. The 2026-04-28 11:25 KST recheck confirmed the production app root is absent locally, sns.gilgop.cloud still returns NXDOMAIN, and local SSH or env hints do not reveal another route. No server-side command, smoke check, or live publish command was run.`
 - `Task 04 also remains blocked, not complete. The smoke helper already enforces the redacted X-only rollout-summary gate before healthcheck and dry-run publish, but the 2026-04-28 14:02 KST handoff execution attempt confirmed the current local workspace still lacks production /opt context and edge smoke credentials. No server-side dry-run, smoke check, or live publish command was run.`
+- `A 2026-04-28 14:06 KST production shell access attempt found possible host routes but did not open a trusted server session; production verification remains unavailable from this Codex workspace.`
 - `Task 05 remains pending, not started. The 2026-04-28 13:51 KST recheck confirmed Task 03 and Task 04 production evidence is still unavailable, so no live publish command was run. A Task 05 approval handoff now records the evidence summary and explicit one-command approval boundary needed after the dry-run and smoke gates pass.`
 - `Task 06 remains pending, not started. A Task 06 observation handoff now records the post-live evidence fields, read-only log commands, next-decision values, and no-automatic-retry boundary needed after exactly one approved live attempt.`
