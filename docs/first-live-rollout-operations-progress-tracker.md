@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `blocked`
-- Last updated: `2026-04-28 22:16 KST`
+- Last updated: `2026-04-28 22:29 KST`
 - Base branch: `master`
 - Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Record Task 04 Caddy port blocker`
-- Resume decision: `operator_provided_task_04_caddy_start_failure`
-- Stop reason: `task_04_blocked_by_caddy_443_port_conflict`
+- Latest task commit: `Record Task 04 Docker Caddy compose issue`
+- Resume decision: `operator_provided_docker_caddy_recreate_output`
+- Stop reason: `task_04_blocked_pending_docker_caddy_host_gateway_verification`
 
 ## Scope For Current Task
 - Goal: `Prove the production publish path stays dry-run and the protected edge is reachable, while enforcing the X-only rollout summary gate first.`
@@ -46,7 +46,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
   - `scripts/single_server_smoke_check.sh`
 
 ## Environment Notes
-- Required services status: `Task 03 production evidence was provided by the operator and passed; Task 04 Caddy config validated, but caddy.service failed to start because port 443 is already in use`
+- Required services status: `Task 03 production evidence was provided by the operator and passed; Task 04 host Caddy was abandoned because Docker Caddy already owns port 443; Docker Caddy recreate emitted missing-env warnings and minio-init failed, so host-gateway routing still needs verification`
 - Env or fixture status: `production app root, env file, and config dir were reported present by the operator; rollout-summary and healthcheck passed without printing secret values`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
 
@@ -57,7 +57,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
-| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 22:16 KST | Caddy config validated, but `caddy.service` failed to start because `:443` is already in use; smoke helper cannot pass until the port conflict is resolved |
+| M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | blocked | 2026-04-28 22:29 KST | Existing Docker Caddy owns `:443`; compose recreate emitted missing-env warnings and `minio-init` failed, so verify `host.docker.internal` and Docker Caddy health before smoke |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
@@ -158,6 +158,7 @@ Status values:
 - `2026-04-28 22:16 KST Task 04 operator-provided Caddy evidence` evidence: `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` returned `Valid configuration`, but `systemctl restart caddy` failed because `listen tcp :443: bind: address already in use`; `caddy.service` is failed, so the edge smoke gate is blocked.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 04 Caddy port blocker`.
 - `git diff --check` evidence: `passed with no output after recording the Task 04 Caddy port blocker`.
+- `2026-04-28 22:29 KST Task 04 operator-provided Docker Caddy evidence` evidence: `starterkit-prod-caddy-1` owns host ports `80` and `443`; after adding `host.docker.internal` support, `docker compose -p starterkit-prod -f infra/compose/docker-compose.prod.yml up -d caddy` recreated Caddy and related starterkit containers but emitted many missing-env warnings and ended with `minio-init` failing, so the next check is whether Caddy is healthy and can reach `host.docker.internal:8001`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -206,6 +207,7 @@ Status values:
 - `2026-04-28 14:06 KST` Tried to locate and use a production shell route. Repository docs expose the intended server layout and `sns.gilgop.cloud` edge host, local env names expose no deploy host override, SSH agent has no identities, `sns.gilgop.cloud` still does not resolve, direct SSH to `gilgop.cloud` was not accepted due to host-key verification, and Tailscale `sonubuntu-server` rejected the tested SSH user candidates. No production shell command ran.
 - `2026-04-28 20:19 KST` Recorded operator-provided Task `03` production evidence. The server-side app root, env file, config dir, rollout summary, provider route, X-only publisher channel, and healthcheck gates all passed. Task `04` is now the active remaining gate before any live approval can be requested.
 - `2026-04-28 22:16 KST` Recorded operator-provided Task `04` Caddy startup failure. The Caddyfile validates, but Caddy cannot bind HTTPS because another process is already listening on port `443`; Task `04` remains blocked before smoke-check completion.
+- `2026-04-28 22:29 KST` Recorded operator-provided Docker Caddy compose output. The existing edge is `starterkit-prod-caddy-1`, not host `caddy.service`; the compose recreate attempted to apply host-gateway routing but also touched starterkit dependencies and failed at `minio-init` because required compose env values were not loaded.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -306,6 +308,8 @@ Status values:
 - `2026-04-28 22:16 KST` `sudo systemctl status caddy --no-pager` -> `blocked` `caddy.service Active=failed; status says loading new config failed on :443 address already in use`
 - `2026-04-28 22:16 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 22:16 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-28 22:29 KST` `docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}'` -> `passed` `starterkit-prod-caddy-1 owns 0.0.0.0:80 and 0.0.0.0:443`
+- `2026-04-28 22:29 KST` `docker compose -p starterkit-prod -f infra/compose/docker-compose.prod.yml up -d caddy` -> `blocked` `Caddy was recreated, but compose emitted missing-env warnings and minio-init exited with status 1; host-gateway and edge reachability still need verification`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -317,13 +321,14 @@ Status values:
 ## Blockers
 - `Task 04 still needs production dry-run publish, secret scan, and smoke helper evidence before live approval can be requested.`
 - `Task 04 edge smoke is blocked until the process currently listening on port 443 is identified and either stopped, reconfigured, or intentionally chosen as the edge service instead of Caddy.`
+- `Task 04 edge smoke is now expected to use the existing Docker Caddy container; do not run the host caddy.service on port 443. Verify the Docker Caddy host-gateway route and existing starterkit health before smoke-checking sns-content-engine.`
 - `The 2026-04-28 14:02 KST handoff execution attempt confirmed the current shell is not the production app root; do not treat local handoff failure as a production healthcheck or smoke-check result.`
 - `The 2026-04-28 14:06 KST production shell attempt did not open a trusted remote shell, so Task 03 and Task 04 still cannot be marked passed.`
 - `A read-only public edge fallback is also unavailable right now because sns.gilgop.cloud returns NXDOMAIN from this environment.`
 - `No local SSH alias, hosts entry, deployment override env var name, or SSH agent identity is available to bridge the missing server context.`
 
 ## Follow-up
-- `Resolve the port 443 conflict on the production server, restart caddy.service successfully, then run Task 04 from /opt/sns-content-engine: dry-run scheduler publish-due, scripts/scan_secrets.sh check, and scripts/single_server_smoke_check.sh with edge auth env supplied in the shell.`
+- `Verify starterkit-prod-caddy-1 has host.docker.internal mapped, can reach http://host.docker.internal:8001/health, and has a sns.gilgop.cloud site block, then run Task 04 from /opt/sns-content-engine: dry-run scheduler publish-due, scripts/scan_secrets.sh check, and scripts/single_server_smoke_check.sh with edge auth env supplied in the shell.`
 
 ## Server Handoff For Task 03
 Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
@@ -399,7 +404,7 @@ If the first live attempt failed or timed out, do not retry automatically. Recor
 
 ## Completion Summary
 - `Task 03 is complete based on operator-provided production evidence: required paths are present, rollout-summary is X-only and OpenAI-first, and healthcheck passed with zero failed checks.`
-- `Task 04 is blocked, not complete. Caddy config validates, but caddy.service cannot start while port 443 is already in use; production dry-run publish, secret scan, and smoke helper results are still needed. No live publish command was run.`
+- `Task 04 is blocked, not complete. The server uses an existing Docker Caddy on port 443; host caddy.service should stay out of that port. Docker Caddy host-gateway routing and sns.gilgop.cloud site config still need verification before smoke can pass. No live publish command was run.`
 - `A 2026-04-28 14:06 KST production shell access attempt found possible host routes but did not open a trusted server session; production verification remains unavailable from this Codex workspace.`
 - `Task 05 remains pending, not started. The 2026-04-28 13:51 KST recheck confirmed Task 03 and Task 04 production evidence is still unavailable, so no live publish command was run. A Task 05 approval handoff now records the evidence summary and explicit one-command approval boundary needed after the dry-run and smoke gates pass.`
 - `Task 06 remains pending, not started. A Task 06 observation handoff now records the post-live evidence fields, read-only log commands, next-decision values, and no-automatic-retry boundary needed after exactly one approved live attempt.`
