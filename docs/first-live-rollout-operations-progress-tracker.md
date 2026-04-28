@@ -27,10 +27,10 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `04_run_server_dry_run_publish_and_smoke_helper`
 - Active status: `blocked`
-- Last updated: `2026-04-28 13:37 KST`
+- Last updated: `2026-04-28 13:48 KST`
 - Base branch: `master`
 - Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Reconfirm Task 04 server blocker`
+- Latest task commit: `Add Task 04 server handoff`
 - Resume decision: `operator_requested_execution_from_vibe_prompt_while_task_04_server_execution_blocked`
 - Stop reason: `production_server_access_and_edge_smoke_context_not_available_locally`
 
@@ -132,6 +132,9 @@ Status values:
 - `2026-04-28 13:37 KST local access hint recheck` evidence: only `SSH_AUTH_SOCK` matched the deployment-related env-name scan, `ssh-add -l` reported no identities, and `~/.ssh/config` is absent.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the 2026-04-28 13:37 KST Task 04 blocker recheck tracker update`.
 - `git diff --check` evidence: `passed with no output after the 2026-04-28 13:37 KST Task 04 blocker recheck tracker update`.
+- `Task 04 server handoff block` evidence: added a redacted production-shell command bundle for rollout summary, healthcheck, dry-run publish, secret scan, and the checked-in smoke helper without printing edge credential values.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the Task 04 server handoff block`.
+- `git diff --check` evidence: `passed with no output after adding the Task 04 server handoff block`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -173,6 +176,7 @@ Status values:
 - `2026-04-28 11:52 KST` Added script tests for the X-only success path and non-X publisher failure path, and aligned README plus rollout docs with the stronger smoke-helper gate.
 - `2026-04-28 11:55 KST` Completed local verification for Task `04` smoke-helper hardening: focused script tests, broader CLI/scheduler/X/script tests, full pytest, secret scan, and diff whitespace checks passed. Actual server dry-run and smoke execution remain blocked on production access and edge credentials.
 - `2026-04-28 13:37 KST` Resumed from the operations vibe prompt while Task `04` was blocked, then rechecked local production path, DNS, non-interactive SSH, deployment-related env variable names, SSH agent identities, and local SSH config. The production server context is still unavailable, so no server dry-run, smoke check, or live publish command was run.
+- `2026-04-28 13:48 KST` Added a Task `04` server handoff block so the operator can capture dry-run and smoke evidence from the production shell without exposing secrets. This handoff intentionally excludes `--live` and does not change Task `04` status because it still requires external production access and edge credentials.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -241,6 +245,9 @@ Status values:
 - `2026-04-28 13:37 KST` `ssh-add -l` -> `blocked` `SSH agent has no identities`
 - `2026-04-28 13:37 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 13:37 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-28 13:48 KST` `task_04_server_side_dry_run_and_smoke_handoff` -> `not_run` `documented as a redacted production-shell command bundle because this workspace still lacks production server shell access and edge credentials`
+- `2026-04-28 13:48 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 13:48 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -257,7 +264,7 @@ Status values:
 
 ## Follow-up
 - `Resume Task 03 when a production server shell is available. Verify the presence of /opt/sns-content-engine/.env and /opt/sns-content-engine/config without printing secret values, then run ./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config and ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config from /opt/sns-content-engine.`
-- `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host, provide a reachable SSH host or IP for Task 03, load the needed SSH identity or agent, or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
+- `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host, provide a reachable SSH host or IP for Task 03, load the needed SSH identity or agent, export SNS_SMOKE_EDGE_USER and SNS_SMOKE_EDGE_PASSWORD in the server shell, or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
 
 ## Server Handoff For Task 03
 Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
@@ -270,6 +277,21 @@ printf 'config_dir_present=%s\n' "$([ -d /opt/sns-content-engine/config ] && ech
 git rev-parse --short HEAD
 ./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config
 ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+```
+
+## Server Handoff For Task 04
+Run these commands only inside the production server shell after Task 03 has passed. They record dry-run and smoke-check status without printing secret values. Do not add `--live` to any command in this block.
+
+```bash
+cd /opt/sns-content-engine
+printf 'edge_user_present=%s\n' "$([ -n "${SNS_SMOKE_EDGE_USER:-}" ] && echo yes || echo no)"
+printf 'edge_password_present=%s\n' "$([ -n "${SNS_SMOKE_EDGE_PASSWORD:-}" ] && echo yes || echo no)"
+git rev-parse --short HEAD
+./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+scripts/scan_secrets.sh check
+scripts/single_server_smoke_check.sh
 ```
 
 ## Completion Summary
