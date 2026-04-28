@@ -27,19 +27,20 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M2_server_dry_run_gate`
 - Current task: `03_verify_production_config_and_healthcheck`
 - Active status: `blocked`
-- Last updated: `2026-04-28 11:26 KST`
+- Last updated: `2026-04-28 11:40 KST`
 - Base branch: `master`
 - Active branch: `codex/task-03-production-healthcheck`
-- Latest task commit: `Reconfirm production healthcheck blocker`
+- Latest task commit: `rollout_summary_hardening_pending`
 - Resume decision: `task_03_started_after_completed_task_02`
 - Stop reason: `production_server_access_not_available_public_dns_returns_nxdomain_and_no_local_ssh_alias_reconfirmed`
 
 ## Scope For Current Task
 - Goal: `Confirm production config and env presence without exposing secrets, then run the server-side healthcheck.`
-- In scope: `redacted server env/config presence checks, production config path confirmation, and server-side healthcheck`
+- In scope: `redacted server env/config presence checks, production config path confirmation, rollout summary hardening, and server-side healthcheck`
 - Out of scope: `server dry-run publish, smoke checks, live publish commands, Threads live rollout, LinkedIn direct publish, and infrastructure redesign`
 - Dependencies: `completed Task 02 local launch gate, production server shell access, production env file, and production config directory`
 - Verification commands:
+  - `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
   - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
 
 ## Environment Notes
@@ -53,7 +54,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | --- | --- | --- | --- | --- | --- |
 | M1 | 01 | Confirm Rollout Inputs And Approval Boundary | done | 2026-04-26 20:38 KST | Confirmed current branch, X-only first-rollout docs, dry-run default behavior, and the separate explicit approval boundary for any future `--live` command |
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
-| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:25 KST | Blocked before server command execution because the current workspace has no production `/opt/sns-content-engine`, public `sns.gilgop.cloud` DNS checks still return NXDOMAIN, and no matching local SSH route is configured |
+| M2 | 03 | Verify Production Config And Healthcheck | blocked | 2026-04-28 11:36 KST | Added a repo-native redacted `rollout-summary` CLI for provider and X-only publisher evidence, but server command execution remains blocked because the current workspace has no production `/opt/sns-content-engine`, public `sns.gilgop.cloud` DNS checks still return NXDOMAIN, and no matching local SSH route is configured |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | pending | 2026-04-26 20:13 KST | Requires production services plus edge smoke credentials |
 | M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-26 20:13 KST | Must not run without explicit operator approval for the exact live step |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
@@ -70,7 +71,12 @@ Status values:
 - `app/cli.py` evidence: `scheduler publish-due` keeps `live=False` by default and calls `publish_due_jobs(..., dry_run=not live)`.
 - `app/scheduler/jobs.py` evidence: scheduler due-publish execution defaults to dry-run when no live executor or publisher resolver is supplied.
 - `app/cli.py` evidence: `healthcheck` resolves a readable `--config-dir`, prints key=value readiness lines, and exits non-zero when any check fails.
+- `app/cli.py` evidence: added read-only `rollout-summary` command for redacted provider route and publisher channel evidence before server healthcheck.
+- `app/operations.py` evidence: added redacted rollout config summary helpers; credential references are printed only when they look like env var names, otherwise the value is redacted.
+- `tests/test_cli.py` evidence: added focused coverage for X-only summary output, non-X publisher detection, and non-env-style credential reference redaction.
 - `docs/single-server-deployment-guide.md` evidence: Task 03 command shape is documented as `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`.
+- `docs/single-server-deployment-guide.md` evidence: first-rollout preflight now uses `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config` before healthcheck and dry-run checks.
+- `docs/first-live-rollout-operations-roadmap.md` and `docs/first-live-rollout-operations-execution-guide.md` evidence: Task 03 verification now includes `rollout-summary`.
 - `scripts/single_server_smoke_check.sh` evidence: the smoke helper reuses the same server-side healthcheck before dry-run publish checks.
 - `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint is available before Task 02 verification.
 - `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` evidence: `33 passed`
@@ -101,6 +107,14 @@ Status values:
 - `2026-04-28 11:25 KST SSH recheck` evidence: non-interactive SSH to `sns.gilgop.cloud` failed at hostname resolution, so no remote command ran.
 - `2026-04-28 11:25 KST local access hint recheck` evidence: only `SSH_AUTH_SOCK` matched the deployment-related env-name scan, `ssh-add -l` reported no identities, and no matching `~/.ssh/config` file exists.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after the 2026-04-28 Task 03 blocker recheck tracker update`
+- `./.venv/bin/python -m app.cli rollout-summary --config-dir config` evidence: `passed`; checked-in config reports OpenAI-first draft and metadata routes, publisher channels `ai_tools_daily:x` and `seo_tools_daily:x`, and `first_rollout_x_only=true` without printing credential values.
+- `./.venv/bin/pytest tests/test_cli.py -k 'rollout_summary or healthcheck or publish_due' -q` evidence: `12 passed, 29 deselected`.
+- `./.venv/bin/pytest tests/test_operations.py -q` evidence: `3 passed`.
+- `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` evidence: `33 passed` after adding `rollout-summary`.
+- `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q` evidence: `70 passed` after adding `rollout-summary`.
+- `./.venv/bin/pytest -q` evidence: `533 passed` after adding `rollout-summary`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding rollout-summary`.
+- `git diff --check` evidence: `passed with no output after adding rollout-summary`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -133,6 +147,10 @@ Status values:
 - `2026-04-28 11:25 KST` Rechecked the local production path, public DNS, and non-interactive SSH route. Task `03` remains blocked before server command execution because the production server context is still unavailable from this workspace.
 - `2026-04-28 11:25 KST` Rechecked local access hints. No deployment override env var name, SSH identity, or matching SSH config was available to reach the production server without new external input.
 - `2026-04-28 11:26 KST` Ran the checked-in secret scan after recording the Task `03` blocker recheck; it passed with no output.
+- `2026-04-28 11:36 KST` Added a repo-native `rollout-summary` CLI command so Task `03` provider-route and X-only publisher evidence no longer depends on a pasted Python handoff block.
+- `2026-04-28 11:36 KST` Verified the checked-in config with `rollout-summary`; it reports OpenAI-first draft and metadata generation, two X publisher channels, and `first_rollout_x_only=true` without reading or printing credential values.
+- `2026-04-28 11:36 KST` Task `03` remains blocked for actual production verification because the production server shell, env file, config directory, and reachable DNS or SSH route are still unavailable from this workspace.
+- `2026-04-28 11:40 KST` Completed local hardening verification for the `rollout-summary` addition: targeted Task `03` tests, full pytest, secret scan, and diff whitespace checks passed.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -178,6 +196,14 @@ Status values:
 - `2026-04-28 11:25 KST` `ssh-add -l` -> `blocked` `SSH agent has no identities`
 - `2026-04-28 11:25 KST` `rg -n "sns|gilgop|content-engine|sns-engine|/opt/sns-content-engine" ~/.ssh/config /etc/hosts` -> `blocked` `~/.ssh/config does not exist and no matching local route was found`
 - `2026-04-28 11:26 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:36 KST` `./.venv/bin/python -m app.cli rollout-summary --config-dir config` -> `passed` `OpenAI-first draft and metadata routes, two X publisher channels, and first_rollout_x_only=true`
+- `2026-04-28 11:36 KST` `./.venv/bin/pytest tests/test_cli.py -k 'rollout_summary or healthcheck or publish_due' -q` -> `passed` `12 passed, 29 deselected`
+- `2026-04-28 11:36 KST` `./.venv/bin/pytest tests/test_operations.py -q` -> `passed` `3 passed`
+- `2026-04-28 11:40 KST` `./.venv/bin/pytest tests/test_config.py tests/test_deploy_assets.py -q` -> `passed` `33 passed`
+- `2026-04-28 11:40 KST` `./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_x_publisher.py -q` -> `passed` `70 passed`
+- `2026-04-28 11:40 KST` `./.venv/bin/pytest -q` -> `passed` `533 passed`
+- `2026-04-28 11:40 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-28 11:40 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Who will provide or run the production server shell session needed for Task 03?`
@@ -192,7 +218,7 @@ Status values:
 - `No local SSH alias, hosts entry, deployment override env var name, or SSH agent identity is available to bridge the missing server context.`
 
 ## Follow-up
-- `Resume Task 03 when a production server shell is available. Verify the presence of /opt/sns-content-engine/.env and /opt/sns-content-engine/config without printing secret values, then run ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config from /opt/sns-content-engine.`
+- `Resume Task 03 when a production server shell is available. Verify the presence of /opt/sns-content-engine/.env and /opt/sns-content-engine/config without printing secret values, then run ./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config and ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config from /opt/sns-content-engine.`
 - `Before Task 04 edge smoke checks, make sure sns.gilgop.cloud resolves to the production host, provide a reachable SSH host or IP for Task 03, load the needed SSH identity or agent, or provide the intended SNS_SMOKE_PUBLIC_CONSOLE_URL override.`
 
 ## Server Handoff For Task 03
@@ -204,37 +230,9 @@ printf 'app_root_present=%s\n' "$([ -d /opt/sns-content-engine ] && echo yes || 
 printf 'env_file_present=%s\n' "$([ -f /opt/sns-content-engine/.env ] && echo yes || echo no)"
 printf 'config_dir_present=%s\n' "$([ -d /opt/sns-content-engine/config ] && echo yes || echo no)"
 git rev-parse --short HEAD
-./.venv/bin/python - <<'PY'
-from pathlib import Path
-from app.config import ConfigRegistry, load_providers_config
-
-config_dir = Path("/opt/sns-content-engine/config")
-providers = load_providers_config(config_dir / "providers.yaml")
-for step in ("draft_generate", "metadata_generate"):
-    routes = sorted(
-        [route for route in providers.routes if route.step == step and route.enabled],
-        key=lambda route: route.priority,
-    )
-    if not routes:
-        print(f"provider_route step={step} provider=none priority=none model=none")
-        continue
-    top = routes[0]
-    print(f"provider_route step={step} provider={top.provider} priority={top.priority} model={top.model or 'default'}")
-
-registry = ConfigRegistry.from_directory(config_dir)
-publisher_channels = []
-for account_key, account in sorted(registry.accounts.items()):
-    for channel_key, channel in sorted(account.channels.items()):
-        if channel.publisher is not None:
-            publisher_channels.append((account_key, channel_key, channel.publisher.credential_ref))
-
-print("publisher_channels=" + (",".join(f"{account}:{channel}" for account, channel, _ in publisher_channels) or "none"))
-print("first_rollout_x_only=" + ("yes" if publisher_channels and all(channel == "x" for _, channel, _ in publisher_channels) else "no"))
-for account, channel, credential_ref in publisher_channels:
-    print(f"publisher_ref account={account} channel={channel} credential_ref={credential_ref}")
-PY
+./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config
 ./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
 ```
 
 ## Completion Summary
-- `Task 03 remains blocked, not complete. The repository-side command surface was rechecked and remains aligned with the rollout plan, but the production healthcheck requires server access that is not available in this local workspace. The 2026-04-28 11:25 KST recheck confirmed the production app root is absent locally, sns.gilgop.cloud still returns NXDOMAIN, and local SSH or env hints do not reveal another route. No server-side command, smoke check, or live publish command was run.`
+- `Task 03 remains blocked, not complete. The repository-side command surface now includes a first-class redacted rollout-summary command for provider and X-only publisher evidence, but the production healthcheck still requires server access that is not available in this local workspace. The 2026-04-28 11:25 KST recheck confirmed the production app root is absent locally, sns.gilgop.cloud still returns NXDOMAIN, and local SSH or env hints do not reveal another route. No server-side command, smoke check, or live publish command was run.`

@@ -377,6 +377,7 @@ Confirm server-side config readiness without exposing secrets.
 - Missing credentials or config stop the rollout before live publish.
 
 ### Verification
+- `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
 - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
 
 ## Task 04: Run Server Dry-Run Publish And Smoke Helper

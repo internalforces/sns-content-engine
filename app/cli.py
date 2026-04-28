@@ -10,7 +10,12 @@ import typer
 from app import __version__
 from app.connectors.llm import DraftGenerationProviderError
 from app.env import load_project_env
-from app.operations import log_workflow_exception, log_workflow_result, run_healthcheck
+from app.operations import (
+    log_workflow_exception,
+    log_workflow_result,
+    run_healthcheck,
+    summarize_rollout_config,
+)
 from app.scheduler import build_scheduler_runtime, backfill_publish_jobs, publish_due_jobs, scheduler_discover
 from app.storage import DatabaseSchemaError, bootstrap_database, upgrade_database_schema
 from app.workflows.build_content_briefs import build_content_briefs
@@ -80,6 +85,32 @@ def healthcheck(
         typer.echo(line, err=not result.is_ok)
     if not result.is_ok:
         raise typer.Exit(code=1)
+
+
+@app.command("rollout-summary")
+def rollout_summary(
+    config_dir: Annotated[
+        Path,
+        typer.Option(
+            "--config-dir",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            readable=True,
+            resolve_path=True,
+            help="Directory containing accounts.yaml, prompts.yaml, sources.yaml, and optional providers.yaml.",
+        ),
+    ] = Path("config"),
+) -> None:
+    """Print a redacted first-rollout config summary."""
+
+    try:
+        summary = summarize_rollout_config(config_dir=config_dir)
+    except Exception as exc:
+        _exit_with_error(exc)
+
+    for line in summary.to_lines(component="cli"):
+        typer.echo(line)
 
 
 @app.command("discover")
