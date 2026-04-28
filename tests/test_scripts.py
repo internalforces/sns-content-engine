@@ -187,6 +187,7 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
         : "${ENGINE_CALL_LOG:?}"
         printf '%s\n' "$*" >> "$ENGINE_CALL_LOG"
 
+        if [[ "$1" == "rollout-summary" ]]; then printf 'event=rollout_config_summary component=cli status=ok provider_route_count=2 publisher_channel_count=2 first_rollout_x_only=true\n'; exit 0; fi
         if [[ "$1" == "healthcheck" ]]; then
           printf 'event=healthcheck component=cli status=ok check_count=3 failed_check_count=0\n'
           exit 0
@@ -225,23 +226,22 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
         check=False,
         env=env,
     )
-
     assert result.returncode == 0
     assert "smoke_check=service service=sns-web.service status=ok" in result.stdout
     assert "smoke_check=service service=sns-scheduler.service status=ok" in result.stdout
     assert "smoke_check=service service=caddy.service status=ok" in result.stdout
+    assert "smoke_check=rollout_summary status=ok" in result.stdout
     assert "smoke_check=healthcheck_cli status=ok" in result.stdout
     assert "smoke_check=loopback_health status=ok" in result.stdout
     assert "smoke_check=console_edge_gate status=ok" in result.stdout
     assert "smoke_check=console_authenticated status=ok" in result.stdout
     assert "smoke_check=publish_due_dry_run status=ok" in result.stdout
     assert "smoke_check=single_server_rollout status=ok" in result.stdout
-
     assert engine_call_log.read_text(encoding="utf-8").splitlines() == [
+        f"rollout-summary --config-dir {config_dir}",
         f"healthcheck --config-dir {config_dir} --database-url {database_url}",
         f"scheduler publish-due --config-dir {config_dir} --database-url {database_url}",
     ]
-
 
 def test_operations_smoke_cli_flow(tmp_path: Path) -> None:
     config_dir = _write_smoke_project_config(tmp_path)
@@ -559,6 +559,91 @@ def _seed_due_publish_job(database_url: str) -> None:
             )
     finally:
         engine.dispose()
+
+
+def test_single_server_smoke_script_stops_when_rollout_summary_is_not_x_only(
+    tmp_path: Path,
+) -> None:
+    fake_bin_dir = tmp_path / "bin"
+    fake_bin_dir.mkdir()
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    engine_call_log = tmp_path / "engine-call-log.txt"
+
+    _write_executable(
+        fake_bin_dir / "systemctl",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        if [[ "$1" == "is-active" && "$2" == "--quiet" ]]; then
+          exit 0
+        fi
+
+        echo "unexpected systemctl args: $*" >&2
+        exit 1
+        """,
+    )
+    _write_executable(
+        fake_bin_dir / "curl",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        echo "curl should not run when rollout-summary fails" >&2
+        exit 1
+        """,
+    )
+    _write_executable(
+        fake_bin_dir / "sns-engine",
+        """
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        : "${ENGINE_CALL_LOG:?}"
+        printf '%s\n' "$*" >> "$ENGINE_CALL_LOG"
+
+        if [[ "$1" == "rollout-summary" ]]; then
+          printf 'event=rollout_config_summary component=cli status=ok provider_route_count=2 publisher_channel_count=3 first_rollout_x_only=false\n'
+          printf 'event=rollout_config_summary component=cli status=ok account=ai_tools_daily channel=threads credential_ref=THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS credential_ref_env_style=true\n'
+          exit 0
+        fi
+
+        echo "unexpected sns-engine args: $*" >&2
+        exit 1
+        """,
+    )
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "ENGINE_CALL_LOG": str(engine_call_log),
+            "SNS_SMOKE_CONFIG_DIR": str(config_dir),
+            "SNS_SMOKE_SYSTEMCTL_BIN": str(fake_bin_dir / "systemctl"),
+            "SNS_SMOKE_CURL_BIN": str(fake_bin_dir / "curl"),
+            "SNS_SMOKE_ENGINE_BIN": str(fake_bin_dir / "sns-engine"),
+            "SNS_SMOKE_EDGE_USER": "operator",
+            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",  # pragma: allowlist secret
+        }
+    )
+
+    result = subprocess.run(
+        [str(PROJECT_ROOT / "scripts/single_server_smoke_check.sh")],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 1
+    assert "smoke_check=rollout_summary status=failed" in result.stderr
+    assert "first_rollout_x_only=false" in result.stderr
+    assert "channel=threads" in result.stderr
+    assert "smoke_check=publish_due_dry_run" not in result.stdout
+    assert engine_call_log.read_text(encoding="utf-8").splitlines() == [
+        f"rollout-summary --config-dir {config_dir}",
+    ]
 
 
 def _write_smoke_project_config(path: Path) -> Path:

@@ -283,6 +283,7 @@ The repository now includes `scripts/single_server_smoke_check.sh` for first-rol
 
 It checks:
 - `sns-web.service`, `sns-scheduler.service`, and `caddy.service` are active
+- `sns-engine rollout-summary` reports `first_rollout_x_only=true` for the chosen config directory
 - `sns-engine healthcheck` passes against the chosen config directory
 - the loopback-only `/health` route responds on `127.0.0.1:8000`
 - anonymous requests to `https://sns.gilgop.cloud/console/...` are rejected at the edge

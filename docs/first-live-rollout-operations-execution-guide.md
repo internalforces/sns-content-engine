@@ -394,9 +394,11 @@ Prove the production path behaves correctly in dry-run mode and the server deplo
 ### Expected result
 - Dry-run publish output is recorded.
 - Smoke helper status is recorded.
+- Smoke helper stops before dry-run publish if the config summary is not X-only.
 - Unexpected queue, channel, or payload shape blocks live publish.
 
 ### Verification
+- `./.venv/bin/pytest tests/test_scripts.py -q`
 - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config`
 - `scripts/single_server_smoke_check.sh`
 
