@@ -4,9 +4,9 @@
 # step. It is OPTIONAL: when absent the system falls back to environment-variable
 # auto-detection (OPENAI_API_KEY → OpenAI, ANTHROPIC_API_KEY → Anthropic, etc.).
 #
-# For the first live rollout, the checked-in default is OpenAI-first for draft
-# and metadata generation so the production story matches .env.production.example
-# and the single-server deployment guide.
+# The checked-in default is OpenAI-first for draft and metadata generation so the
+# production story matches .env.production.example and the single-server
+# deployment guide.
 #
 # Routes are tried in ascending priority order. If the first provider fails
 # (API error, timeout, etc.) the system automatically falls back to the next
@@ -28,7 +28,7 @@
 #   fake                 — No credentials needed (deterministic stub, for testing)
 
 routes:
-  # ── LLM: first-rollout default path ──────────────────────────────────────
+  # ── LLM: active country-news default path ────────────────────────────────
   - step: draft_generate
     provider: openai
     model: gpt-5.4-mini

@@ -1,0 +1,10 @@
+routes:
+  - step: draft_generate
+    provider: openai
+    model: gpt-5.4-mini
+    priority: 1
+
+  - step: metadata_generate
+    provider: openai
+    model: gpt-5.4-mini
+    priority: 1

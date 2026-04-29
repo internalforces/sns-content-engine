@@ -22,87 +22,124 @@ from app.config import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_registry_loads_sample_config_directory() -> None:
+def test_registry_loads_active_country_news_config_directory() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
 
-    ai_account = registry.get_account("ai_tools_daily")
-    ai_channel = ai_account.channels["x"]
-    ai_linkedin_channel = ai_account.channels["linkedin"]
-    ai_threads_channel = ai_account.channels["threads"]
-    seo_account = registry.get_account("seo_tools_daily")
-    seo_linkedin_channel = seo_account.channels["linkedin"]
-    seo_threads_channel = seo_account.channels["threads"]
+    korea_account = registry.get_account("korea_global_news")
+    korea_channel = korea_account.channels["x"]
+    korea_linkedin_channel = korea_account.channels["linkedin"]
+    korea_threads_channel = korea_account.channels["threads"]
+    japan_account = registry.get_account("japan_global_news")
+    japan_channel = japan_account.channels["x"]
+    japan_linkedin_channel = japan_account.channels["linkedin"]
+    japan_threads_channel = japan_account.channels["threads"]
+    korea_source = registry.get_source("korea_kbs_world_latest")
+    japan_source = registry.get_source("japan_japan_today_atom")
 
-    assert ai_account.topic == "AI workflows and guides"
-    assert ai_account.prompt_profile == "ai_tools_default"
-    assert list(registry.accounts) == ["ai_tools_daily", "seo_tools_daily"]
-    assert ai_account.landing.strategy == "source"
-    assert ai_account.landing.fallback_url is None
-    assert ai_account.landing.rules == ()
-    assert ai_account.landing.validation.require_live_url is False
-    assert ai_account.landing.validation.allowed_url_prefixes == ()
-    assert ai_account.matching.include_keywords == ("ai", "agent", "workflow", "automation", "guide")
-    assert ai_account.matching.exclude_keywords == (
-        "seo",
-        "backlink",
-        "search ranking",
-        "earnings",
-        "stock",
+    assert list(registry.accounts) == ["korea_global_news", "japan_global_news"]
+    assert korea_account.topic == "Korea news for global readers"
+    assert korea_account.prompt_profile == "global_country_news_explainer"
+    assert korea_account.landing.strategy == "source"
+    assert korea_account.landing.fallback_url is None
+    assert korea_account.landing.rules == ()
+    assert korea_account.landing.validation.require_live_url is False
+    assert korea_account.matching.include_keywords[:4] == (
+        "korea",
+        "korean",
+        "seoul",
+        "south korea",
     )
-    assert ai_account.matching.source_tags == ("ai", "automation", "workflow", "guide")
-    assert ai_account.matching.strict_topic_guard is True
-    assert ai_account.validation.profile == "standard"
-    assert ai_channel.schedule.cron == "0 9 * * *"
-    assert ai_channel.render.max_chars == 280
-    assert ai_channel.validation.max_links == 1
-    assert ai_channel.validation.banned_phrases == ()
-    assert ai_channel.validation.recent_duplicate_window_days == 7
-    assert ai_channel.publisher is not None
-    assert ai_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
-    assert ai_linkedin_channel.render.max_chars == 3000
-    assert ai_linkedin_channel.validation.recent_duplicate_window_days == 7
-    assert ai_linkedin_channel.publisher is None
-    assert ai_threads_channel.render.max_chars == 10000
-    assert ai_threads_channel.validation.recent_duplicate_window_days == 7
-    assert ai_threads_channel.publisher is None
+    assert korea_account.matching.exclude_keywords == ("coupon", "giveaway", "sponsored")
+    assert korea_account.matching.source_tags == (
+        "korea",
+        "south korea",
+        "politics",
+        "economy",
+        "culture",
+    )
+    assert korea_account.matching.strict_topic_guard is False
+    assert korea_account.validation.profile == "standard"
+    assert korea_channel.schedule.cron == "0 9 * * *"
+    assert korea_channel.render.max_chars == 280
+    assert korea_channel.validation.max_links == 1
+    assert korea_channel.validation.banned_phrases == ()
+    assert korea_channel.validation.recent_duplicate_window_days == 3
+    assert korea_channel.publisher is not None
+    assert korea_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
+    assert korea_linkedin_channel.render.max_chars == 3000
+    assert korea_linkedin_channel.validation.recent_duplicate_window_days == 3
+    assert korea_linkedin_channel.publisher is None
+    assert korea_threads_channel.render.max_chars == 10000
+    assert korea_threads_channel.validation.recent_duplicate_window_days == 3
+    assert korea_threads_channel.publisher is None
 
-    assert seo_account.topic == "SEO tools and search optimization"
-    assert seo_account.prompt_profile == "seo_tools_default"
-    assert seo_account.landing.strategy == "source"
-    assert seo_account.landing.fallback_url is None
-    assert seo_account.landing.rules == ()
-    assert seo_account.landing.validation.require_live_url is False
-    assert seo_linkedin_channel.render.max_chars == 3000
-    assert seo_linkedin_channel.publisher is None
-    assert seo_threads_channel.render.max_chars == 10000
-    assert seo_threads_channel.publisher is None
+    assert japan_account.topic == "Japan news for global readers"
+    assert japan_account.prompt_profile == "global_country_news_explainer"
+    assert japan_account.landing.strategy == "source"
+    assert japan_channel.schedule.cron == "30 9 * * *"
+    assert japan_channel.publisher is not None
+    assert japan_channel.publisher.credential_ref == "X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS"
+    assert japan_linkedin_channel.render.max_chars == 3000
+    assert japan_linkedin_channel.publisher is None
+    assert japan_threads_channel.render.max_chars == 10000
+    assert japan_threads_channel.publisher is None
 
-    assert registry.get_prompt_profile("ai_tools_default").system_template.startswith(
-        "You are the growth editor"
+    assert isinstance(korea_source, RssSourceConfig)
+    assert str(korea_source.url) == "https://world.kbs.co.kr/rss/rss_news.htm?lang=e"
+    assert korea_source.policy_mode == "restricted"
+    assert korea_source.allow_full_text_fetch is False
+    assert korea_source.allow_llm_rewrite is False
+    assert korea_source.require_attribution is True
+    assert korea_source.duplicate_window_days == 3
+
+    assert isinstance(japan_source, RssSourceConfig)
+    assert str(japan_source.url) == "https://japantoday.com/feed/atom"
+    assert japan_source.policy_mode == "restricted"
+    assert japan_source.allow_full_text_fetch is False
+    assert japan_source.allow_llm_rewrite is False
+    assert japan_source.require_attribution is True
+
+    assert registry.get_prompt_profile("global_country_news_explainer").system_template.startswith(
+        "You are the review-first social editor"
     )
-    assert registry.get_prompt_profile("seo_tools_default").system_template.startswith(
-        "You are the growth editor"
+    assert registry.get_source_set("korea_global_primary").sources == (
+        "korea_kbs_world_latest",
+        "korea_yonhap_english",
+        "korea_herald_all_news",
     )
-    assert registry.get_prompt_profile("all_domain_general_news_summary").system_template.startswith(
-        "You are the review-first editor"
+    assert registry.get_source_set("japan_global_primary").sources == (
+        "japan_japan_times_latest",
+        "japan_japan_today_atom",
     )
-    assert registry.get_prompt_profile("all_domain_factual_x_post").system_template.startswith(
-        "You are the review-first editor"
-    )
-    assert registry.get_prompt_profile(
-        "all_domain_attribution_first_short_post"
-    ).system_template.startswith("You are the attribution-first editor")
-    assert registry.get_source_set("ai_tools_primary").sources == ("ai_tools_manual",)
-    assert registry.get_source_set("seo_tools_primary").sources == ("seo_tools_manual",)
 
 
 def test_source_landing_strategy_allows_missing_fallback_url() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
 
-    account = registry.get_account("ai_tools_daily")
+    account = registry.get_account("korea_global_news")
 
     assert account.landing.strategy == "source"
     assert account.landing.fallback_url is None
+
+
+def test_registry_loads_global_country_news_phase1_config_directory() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/global_country_news")
+
+    assert list(registry.accounts) == ["korea_global_news", "japan_global_news"]
+    assert registry.get_account("korea_global_news").source_sets == ("korea_global_primary",)
+    assert registry.get_account("japan_global_news").source_sets == ("japan_global_primary",)
+    assert registry.get_source_set("korea_global_primary").sources == (
+        "korea_kbs_world_latest",
+        "korea_yonhap_english",
+        "korea_herald_all_news",
+    )
+    assert registry.get_source_set("japan_global_primary").sources == (
+        "japan_japan_times_latest",
+        "japan_japan_today_atom",
+    )
+    assert registry.get_prompt_profile("global_country_news_explainer").user_template.endswith(
+        "Use the original article URL: {{ landing_url }}."
+    )
 
 
 def test_source_landing_strategy_rejects_static_rules(tmp_path: Path) -> None:
@@ -286,7 +323,7 @@ def test_registry_loads_finance_local_example_config_directory() -> None:
 
 def test_registry_is_deeply_immutable() -> None:
     registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config")
-    account = registry.get_account("ai_tools_daily")
+    account = registry.get_account("korea_global_news")
 
     assert isinstance(account.source_sets, tuple)
     assert isinstance(account.landing.rules, tuple)
