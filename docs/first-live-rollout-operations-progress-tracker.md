@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
 - Active status: `blocked`
-- Last updated: `2026-04-29 14:45 KST`
+- Last updated: `2026-04-29 15:05 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Block Task 05 pending live approval`
-- Resume decision: `task_05_selected_after_task_04_production_pass`
-- Stop reason: `waiting_for_task_05_production_revision_dry_run_scope_and_explicit_live_approval`
+- Latest task commit: `Record Task 05 execution request blocker`
+- Resume decision: `operator_requested_task_05_execution_without_exact_live_approval`
+- Stop reason: `task_05_execution_request_is_not_exact_live_approval_and_final_dry_run_scope_is_still_needed`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -58,6 +58,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Approval status: `not_approved`
 - Live command status: `not_run`
 - Required approval wording: `explicitly approve one X live publish using /opt/sns-content-engine/config before running the exact --live command`
+- Latest operator request: `Task 05 execution was requested at 2026-04-29 15:05 KST, but it did not explicitly approve one X live publish using /opt/sns-content-engine/config`
 
 ## Roadmap Status
 
@@ -67,7 +68,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
-| M3 | 05 | Execute One Approved X Live Publish | blocked | 2026-04-29 14:45 KST | Waiting for deployed revision, final dry-run due-job scope, and explicit one-command live approval; no `--live` command has run |
+| M3 | 05 | Execute One Approved X Live Publish | blocked | 2026-04-29 15:05 KST | Operator requested Task 05 execution, but exact live approval and final dry-run due-job scope are still missing; no `--live` command has run |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
 Status values:
@@ -180,6 +181,9 @@ Status values:
 - `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint still reports `sns-content-engine 0.1.0` before the Task `05` tracker update.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 approval blocker`.
 - `git diff --check` evidence: `passed with no output after recording the Task 05 approval blocker`.
+- `2026-04-29 15:05 KST Task 05 operator request` evidence: operator requested Task `05` execution, but the active thread still lacks exact approval for one X live publish using `/opt/sns-content-engine/config`; live command remains `not_run`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the 2026-04-29 15:05 KST Task 05 execution request blocker`.
+- `git diff --check` evidence: `passed with no output after recording the 2026-04-29 15:05 KST Task 05 execution request blocker`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -235,6 +239,7 @@ Status values:
 - `2026-04-29 14:44 KST` Started Task `05` on branch `codex/task-05-live-publish` after reading the operations prompt, roadmap, execution guide, and progress tracker. The task is blocked rather than executed because the active thread does not contain explicit approval for the exact live command.
 - `2026-04-29 14:44 KST` Prepared the Task `05` approval gate summary from recorded Task `03` and Task `04` evidence. Before approval can be requested safely, the operator still needs to provide or restate the deployed git revision and the most recent dry-run due-job count, channel, and account scope.
 - `2026-04-29 14:45 KST` Verified the docs-only Task `05` tracker update with the checked-in secret scan and diff whitespace check. No server command, smoke check, or live publish command was run.
+- `2026-04-29 15:05 KST` Received an operator request to execute Task `05`. Treated it as insufficient for the live side effect because it does not explicitly approve one X live publish using `/opt/sns-content-engine/config`, and the final dry-run due-job scope is still not recorded.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -347,6 +352,8 @@ Status values:
 - `2026-04-29 14:44 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
 - `2026-04-29 14:45 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 14:45 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:05 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:05 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Which deployed Git revision should be treated as the production baseline before running the server-side healthcheck?`
