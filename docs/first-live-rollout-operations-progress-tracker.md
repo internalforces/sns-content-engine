@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
 - Active status: `blocked`
-- Last updated: `2026-04-29 15:50 KST`
+- Last updated: `2026-04-29 15:56 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Record Task 05 readonly database blocker`
-- Resume decision: `operator_attempted_to_approve_and_schedule_draft_10`
-- Stop reason: `production_sqlite_database_is_readonly_for_cli_write_path`
+- Latest task commit: `Record Task 05 dry-run approval gate`
+- Resume decision: `operator_fixed_db_write_path_and_scheduled_draft_10`
+- Stop reason: `waiting_for_explicit_task_05_live_approval`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -55,8 +55,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Known passed gates: `Task 03 production presence, rollout-summary, and healthcheck passed; Task 04 smoke helper and production secret scan passed`
 - Known rollout scope: `rollout-summary reported first_rollout_x_only=true with publisher channels ai_tools_daily:x and seo_tools_daily:x`
 - Production revision: `ceef2c8`
-- Latest dry-run scope: `processed due jobs: 0 (dry_run=0, failed=0, skipped=0); dry_run_scope empty`
-- Still needed before requesting live approval: `one due X publish job with account and channel scope visible in dry-run output`
+- Latest dry-run scope: `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); publish_job_id=1 account_key=ai_tools_daily channel=x attempt_count=0 external_post_id=dry-run:1`
+- Still needed before running live: `explicit operator approval for exactly one X live publish using /opt/sns-content-engine/config`
 - Approval status: `not_approved`
 - Live command status: `not_run`
 - Required approval wording: `explicitly approve one X live publish using /opt/sns-content-engine/config before running the exact --live command`
@@ -70,7 +70,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
-| M3 | 05 | Execute One Approved X Live Publish | blocked | 2026-04-29 15:09 KST | Production revision, rollout-summary, and healthcheck passed, but dry-run found zero due jobs; no `--live` command has run |
+| M3 | 05 | Execute One Approved X Live Publish | blocked | 2026-04-29 15:56 KST | Draft `10` is approved and scheduled; dry-run found exactly one X due job; waiting for explicit live approval; no `--live` command has run |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
 Status values:
@@ -199,6 +199,12 @@ Status values:
 - `2026-04-29 15:50 KST Task 05 live command` evidence: `not_run`; approval and scheduling did not complete, so no due X publish job was created.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the readonly database blocker`.
 - `git diff --check` evidence: `passed with no output after recording the readonly database blocker`.
+- `2026-04-29 15:56 KST Task 05 draft approval` evidence: operator reported `approved draft 10 as operator`.
+- `2026-04-29 15:56 KST Task 05 draft scheduling` evidence: operator reported `scheduled draft 10 as publish job 1 for 2026-04-29T06:55:48+00:00 as operator`.
+- `2026-04-29 15:56 KST Task 05 dry-run evidence` evidence: dry-run emitted `publish_job_id=1`, `account_key=ai_tools_daily`, `channel=x`, `attempt_count=0`, `external_post_id=dry-run:1`, and `processed due jobs: 1 (dry_run=1, failed=0, skipped=0)`.
+- `2026-04-29 15:56 KST Task 05 live command` evidence: `not_run`; the final remaining gate is explicit approval for one X live publish using `/opt/sns-content-engine/config`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -258,6 +264,7 @@ Status values:
 - `2026-04-29 15:09 KST` Recorded operator-provided Task `05` production evidence. The server is on revision `ceef2c8`, rollout-summary and healthcheck are healthy, but dry-run found zero due jobs and no account/channel scope, so Task `05` remains blocked and no `--live` command should run.
 - `2026-04-29 15:13 KST` Confirmed the collection restart must happen inside the production server context. The local workspace cannot access `/opt/sns-content-engine/config`; added a server-side collection handoff below that starts with `run-local` and stops at pending review.
 - `2026-04-29 15:50 KST` Recorded the production write blocker from the draft `10` approval attempt. The DB is readable enough for healthcheck and review listing, but not writable for the current CLI user or SQLite directory state; fix file and directory ownership or permissions before retrying approval.
+- `2026-04-29 15:56 KST` Recorded operator-provided recovery evidence: draft `10` was approved, scheduled as publish job `1`, and dry-run found exactly one due X job for `ai_tools_daily/x` with no failures or skips. Task `05` is ready for the explicit live approval gate, but no live command has run.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -383,15 +390,20 @@ Status values:
 - `2026-04-29 15:50 KST` `./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator` -> `blocked` `draft 10 remained pending_review because approval failed`
 - `2026-04-29 15:50 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 15:50 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator` -> `passed` `approved draft 10 as operator`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator` -> `passed` `scheduled draft 10 as publish job 1 for 2026-04-29T06:55:48+00:00 as operator`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config` -> `passed` `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); account_key=ai_tools_daily; channel=x`
+- `2026-04-29 15:56 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:56 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
-- `Should the operator create, approve, or schedule one intended X publish job, then rerun the Task 05 dry-run gate before considering live approval?`
+- `Should the operator explicitly approve exactly one X live publish using /opt/sns-content-engine/config for publish_job_id=1 account_key=ai_tools_daily channel=x?`
 
 ## Blockers
-- `Task 05 is blocked because the production SQLite database or parent data directory is not writable by the CLI write path. Do not run any --live command until draft approval, scheduling, and dry-run succeed with exactly one intended X due job.`
+- `Task 05 is blocked only on explicit one-command live approval. Do not run any --live command until the operator approves exactly one X live publish using /opt/sns-content-engine/config for publish_job_id=1 account_key=ai_tools_daily channel=x.`
 
 ## Follow-up
-- `Fix production SQLite file and data-directory write permissions for the same service account used by web and scheduler, then retry approving and scheduling draft 10 before rerunning dry-run.`
+- `If the operator approves, run exactly one live publish command, then stop for Task 06 observation. If approval is not given, leave publish_job_id=1 scheduled and do not run --live.`
 
 ## Server Handoff For Readonly SQLite Blocker
 Run this block inside the production server shell to inspect the effective user, DB URL, file ownership, and write access without printing secrets:
