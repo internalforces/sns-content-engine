@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.config import AccountConfig
+from app.config import ConfigRegistry
 from app.domain import AccountMatchCandidate, SourceItemCandidate, select_top_account_candidates
 from app.services import AccountMatcher
 from app.services.topic_matching import topic_keywords
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_matcher_selects_expected_top_account_for_ai_finance_and_seo_items() -> None:
@@ -151,6 +156,31 @@ def test_matcher_ignores_audience_words_from_account_topic() -> None:
     assert generic_candidate.score == 0
     assert japan_candidate.eligible is True
     assert japan_candidate.topic_keyword_hits == ("japan",)
+
+
+def test_country_news_matching_keeps_korea_domestic_source_tags_without_international_noise() -> None:
+    registry = ConfigRegistry.from_directory(PROJECT_ROOT / "config/global_country_news")
+    account = registry.get_account("korea_global_news")
+    matcher = AccountMatcher({"korea_global_news": account})
+
+    domestic_item = _build_candidate(
+        title="Court upholds sentence in public-interest case",
+        summary="The ruling is pending further review.",
+        source_tags=("domestic",),
+    )
+    international_item = _build_candidate(
+        title="UAE to withdraw from OPEC May 1",
+        summary="Energy ministers are watching the move.",
+        source_tags=("international",),
+    )
+
+    domestic_candidate = matcher.match_source_item(domestic_item)[0]
+    international_candidate = matcher.match_source_item(international_item)[0]
+
+    assert domestic_candidate.eligible is True
+    assert domestic_candidate.source_tag_hits == ("domestic",)
+    assert international_candidate.eligible is False
+    assert international_candidate.score == 0
 
 
 def test_top_candidate_selector_returns_all_tied_eligible_candidates() -> None:

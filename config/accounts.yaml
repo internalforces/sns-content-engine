@@ -14,7 +14,8 @@ accounts:
         - south korea
         - north korea
         - national assembly
-        - president
+        - korean president
+        - presidential office
         - won
         - diplomacy
         - economy
@@ -26,8 +27,11 @@ accounts:
       source_tags:
         - korea
         - south korea
+        - domestic
+        - inter korea
         - politics
         - economy
+        - science
         - culture
       strict_topic_guard: false
     validation:
