@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
 - Active status: `blocked`
-- Last updated: `2026-04-29 15:56 KST`
+- Last updated: `2026-04-29 16:03 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Record Task 05 dry-run approval gate`
-- Resume decision: `operator_fixed_db_write_path_and_scheduled_draft_10`
-- Stop reason: `waiting_for_explicit_task_05_live_approval`
+- Latest task commit: `Record Task 05 database-open failure`
+- Resume decision: `operator_reported_publish_due_database_open_failure`
+- Stop reason: `publish_due_failed_before_database_open_and_live_intent_needs_reconfirmation`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -205,6 +205,10 @@ Status values:
 - `2026-04-29 15:56 KST Task 05 live command` evidence: `not_run`; the final remaining gate is explicit approval for one X live publish using `/opt/sns-content-engine/config`.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
 - `git diff --check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
+- `2026-04-29 16:03 KST Task 05 publish_due failure` evidence: operator reported `event=workflow component=cli status=failed workflow=publish_due` with `sqlite3.OperationalError: unable to open database file`; the command did not produce published, failed, dry-run, or skipped counts.
+- `2026-04-29 16:03 KST Task 05 live command` evidence: `unknown/not_confirmed`; the reported failure does not state whether `--live` was passed, and no external publish evidence was provided.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the database-open failure`.
+- `git diff --check` evidence: `passed with no output after recording the database-open failure`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -265,6 +269,7 @@ Status values:
 - `2026-04-29 15:13 KST` Confirmed the collection restart must happen inside the production server context. The local workspace cannot access `/opt/sns-content-engine/config`; added a server-side collection handoff below that starts with `run-local` and stops at pending review.
 - `2026-04-29 15:50 KST` Recorded the production write blocker from the draft `10` approval attempt. The DB is readable enough for healthcheck and review listing, but not writable for the current CLI user or SQLite directory state; fix file and directory ownership or permissions before retrying approval.
 - `2026-04-29 15:56 KST` Recorded operator-provided recovery evidence: draft `10` was approved, scheduled as publish job `1`, and dry-run found exactly one due X job for `ai_tools_daily/x` with no failures or skips. Task `05` is ready for the explicit live approval gate, but no live command has run.
+- `2026-04-29 16:03 KST` Recorded an operator-provided `publish_due` database-open failure. Treat the next publish attempt as blocked until the server command is rerun from `/opt/sns-content-engine` with the explicit production `--database-url`, and until live intent is explicitly reconfirmed if the failed command included `--live`.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -395,15 +400,45 @@ Status values:
 - `2026-04-29 15:56 KST` `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config` -> `passed` `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); account_key=ai_tools_daily; channel=x`
 - `2026-04-29 15:56 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 15:56 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:03 KST` `./.venv/bin/sns-engine scheduler publish-due ...` -> `blocked` `operator-reported failure before DB open: sqlite3.OperationalError unable to open database file; exact flags not confirmed`
+- `2026-04-29 16:03 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:03 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
-- `Should the operator explicitly approve exactly one X live publish using /opt/sns-content-engine/config for publish_job_id=1 account_key=ai_tools_daily channel=x?`
+- `Was the 2026-04-29 16:03 KST failed publish_due command run with --live, or was it a dry-run recheck?`
+- `Should the operator explicitly approve exactly one X live publish using /opt/sns-content-engine/config and explicit database_url sqlite:////opt/sns-content-engine/data/sns_content_engine.db for publish_job_id=1 account_key=ai_tools_daily channel=x?`
 
 ## Blockers
-- `Task 05 is blocked only on explicit one-command live approval. Do not run any --live command until the operator approves exactly one X live publish using /opt/sns-content-engine/config for publish_job_id=1 account_key=ai_tools_daily channel=x.`
+- `Task 05 is blocked because the latest publish_due attempt could not open the SQLite database file. Do not run or retry --live until the command is run from the production app root with an explicit production database URL, and the operator reconfirms one-command live approval if needed.`
 
 ## Follow-up
-- `If the operator approves, run exactly one live publish command, then stop for Task 06 observation. If approval is not given, leave publish_job_id=1 scheduled and do not run --live.`
+- `Rerun healthcheck and dry-run with explicit --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db from /opt/sns-content-engine, then request or reconfirm explicit live approval before any --live retry.`
+
+## Server Handoff For Database Open Failure
+Run these commands inside the production server shell to remove cwd and relative-DB ambiguity. This block is dry-run only and does not live-publish:
+
+```bash
+cd /opt/sns-content-engine
+pwd
+ls -ld /opt/sns-content-engine/data
+ls -l /opt/sns-content-engine/data/sns_content_engine.db*
+./.venv/bin/sns-engine healthcheck \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db
+./.venv/bin/sns-engine scheduler publish-due \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db
+```
+
+Only after the dry-run again reports exactly one due X job should a live retry be considered, and only after explicit approval for that exact command:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine scheduler publish-due \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db \
+  --live
+```
 
 ## Server Handoff For Readonly SQLite Blocker
 Run this block inside the production server shell to inspect the effective user, DB URL, file ownership, and write access without printing secrets:
