@@ -47,6 +47,13 @@ High-signal tests:
 
 ## Task Guidance
 
+### Attribution Generation
+- Start here after the Korea X live smoke evidence from 2026-04-29.
+- The observed failure was useful: `review schedule` rejected draft `199` with `required_attribution_missing` until an operator edited another draft to include `Source: koreaherald.com`.
+- Keep the validation gate intact; improve generation so restricted-source drafts naturally mention a source candidate such as source name or hostname.
+- Preserve the required article/source URL and X character limit.
+- Verify that a fresh restricted-source Korea X draft can be approved and scheduled without manual attribution edits.
+
 ### Source Health
 - Run discovery and inspect source item counts, failures, duplicate patterns, and feed quality.
 - Prune feeds that return non-article content, stale items, or excessive duplicates.
@@ -69,6 +76,7 @@ High-signal tests:
 
 ## Progress Tracking Rules
 Update the tracker when:
+- attribution-generation behavior changes or a schedule gate failure is analyzed
 - source health observations are made
 - prompts or config are changed
 - tests run
@@ -85,7 +93,7 @@ Read:
 - docs/global-country-news-phase-1-5-quality-hardening-progress-tracker.md
 
 Inspect the Phase 1 config and generated drafts before editing.
-Choose the smallest unfinished task.
+Choose the smallest unfinished task. If the 2026-04-29 Korea X smoke evidence has not been addressed, start with attribution generation hardening.
 Preserve manual review, dry-run-first publishing, and independent channel drafts.
 Do not add blog or funnel behavior in this phase.
 ```

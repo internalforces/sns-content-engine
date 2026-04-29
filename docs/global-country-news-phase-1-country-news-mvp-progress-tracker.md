@@ -12,15 +12,15 @@ When an autonomous agent works from `docs/global-country-news-phase-1-country-ne
 - `docs/global-country-news-phase-0-rollout-pause-source-cleanup-progress-tracker.md`
 
 ## Current Status
-- Current milestone: `M2_reviewable_drafts`
-- Current task: `05_production_dry_run_handoff`
-- Active status: `blocked`
-- Last updated: `2026-04-29 18:10 KST`
+- Current milestone: `M3_controlled_live_smoke`
+- Current task: `phase_1_korea_x_live_smoke_closeout`
+- Active status: `done`
+- Last updated: `2026-04-29 19:48 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `pending`
-- Resume decision: `local_phase1_gate_verified`
-- Stop reason: `production_placeholder_audit_and_cleanup_approval_required_before_live`
+- Resume decision: `start_phase_1_5_attribution_generation_hardening_before_repeated_operation`
+- Stop reason: `korea_x_isolated_db_live_smoke_succeeded; japan_live_smoke_and_repeated_operation_pending`
 
 ## Scope For Current Task
 - Goal: `Create and locally verify a placeholder-free Korea/Japan RSS config for korea_global_news and japan_global_news.`
@@ -37,7 +37,7 @@ When an autonomous agent works from `docs/global-country-news-phase-1-country-ne
 
 ## Environment Notes
 - Required services status: `network_required_for_rss_discovery`
-- Env or fixture status: `draft provider env needed for production-quality generation; fake provider may be used for local shape tests if no provider is configured`
+- Env or fixture status: `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS verified present on production and used for the controlled Korea X smoke post`
 - Existing unrelated failures: `none recorded for this phase`
 
 ## Roadmap Status
@@ -47,9 +47,9 @@ When an autonomous agent works from `docs/global-country-news-phase-1-country-ne
 | M1 | 02 | Add Korea And Japan RSS Sources | done | 2026-04-29 18:10 KST | Active sources use KBS World, Yonhap English, Korea Herald, Japan Times, and Japan Today RSS; Korea.net, The Japan News, and NHK Radio remain pruned until they return connector-clean feeds |
 | M1 | 03 | Add Global Reader Prompt Profile | done | 2026-04-29 18:10 KST | Added `global_country_news_explainer` with attribution and original URL requirements |
 | M2 | 04 | Generate Reviewable Drafts Locally | done | 2026-04-29 18:10 KST | Local review-only `run-local` succeeded with 1,494 pending draft variants from real RSS URLs |
-| M2 | 05 | Production Dry-Run Handoff | blocked | 2026-04-29 18:10 KST | Wait for production placeholder audit/cleanup decision before any approval, scheduling, dry-run handoff, or live command |
-| M3 | 06 | Controlled Korea X Live Publish | pending | 2026-04-29 16:50 KST | One Korea X post after explicit approval |
-| M3 | 07 | Controlled Japan X Live Publish | pending | 2026-04-29 16:50 KST | One Japan X post after explicit approval |
+| M2 | 05 | Production Dry-Run Handoff | done | 2026-04-29 19:42 KST | Isolated production DB dry-run processed exactly one due Korea X job with no state changes |
+| M3 | 06 | Controlled Korea X Live Publish | done | 2026-04-29 19:45 KST | One Korea X post published through `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS`; external_post_id `2049439510929580197` |
+| M3 | 07 | Controlled Japan X Live Publish | pending | 2026-04-29 19:48 KST | Defer until attribution generation hardening and explicit Japan credential/operator approval |
 
 Status values:
 - `pending`
@@ -84,6 +84,14 @@ Status values:
 - `2026-04-29 18:07 KST` Tightened country matching after initial review output showed Japan Times all-feed items could include off-country global stories; matching now requires country signals instead of source-host hits.
 - `2026-04-29 18:10 KST` Local `run-local` succeeded against `data/global_country_news_phase1.db`: 231 discovered, 226 saved, 5 duplicates, 166 briefs, 1,494 draft variants, 0 failures, all restricted-policy skips intentional.
 - `2026-04-29 18:20 KST` Updated the one-account X verification path so `korea_global_news/x` reuses the already provisioned `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS` bundle; `japan_global_news/x` keeps its country-news credential ref.
+- `2026-04-29 19:20 KST` Production `rollout-summary` confirmed two X publisher channels and `first_rollout_x_only=true`: Korea X uses `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS`, Japan X uses `X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS`.
+- `2026-04-29 19:30 KST` Production healthcheck passed for `config/global_country_news` against the production SQLite DB after fixing service-account DB directory ownership.
+- `2026-04-29 19:42 KST` Phase 0 production cleanup gate passed: no pending, scheduled/publishing, or approved placeholder-backed reuse candidates remain; one already published placeholder job is preserved as historical evidence.
+- `2026-04-29 19:42 KST` Isolated production verification DB `global_country_news_verify_20260429103002.db` was initialized and `run-local` succeeded: 232 discovered, 227 saved, 5 duplicates, 170 briefs, 1,530 draft variants, 0 failures.
+- `2026-04-29 19:42 KST` First selected Korea X draft `199` correctly failed schedule validation with `required_attribution_missing`, proving the restricted-source attribution gate blocks scheduling until explicit source attribution is present.
+- `2026-04-29 19:43 KST` Edited pending Korea X draft `200` to include `Source: koreaherald.com` and the real Korea Herald URL, then approved and scheduled it in the isolated verification DB.
+- `2026-04-29 19:43 KST` Dry-run `publish-due` processed exactly one due job for `korea_global_news/x`, `publish_job_id=1`, with `dry_run=true` and no state changes.
+- `2026-04-29 19:45 KST` Controlled live smoke published exactly one Korea X post through the configured X publisher: `external_post_id=2049439510929580197`, `published_count=1`, `failed_count=0`, `dry_run=false`.
 
 ## Test Log
 - `2026-04-29 18:01 KST` `rg -n 'example\\.com|example\\.org|example\\.net' config data` -> `passed` `no active config/data placeholder URLs after removing legacy manual CSV files`
@@ -98,21 +106,28 @@ Status values:
 - `2026-04-29 18:05 KST` `./.venv/bin/pytest tests/test_operations.py tests/test_cli.py -q` -> `passed` `46 passed in 1.29s`
 - `2026-04-29 18:05 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 18:05 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 19:30 KST` production `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config/global_country_news --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db` -> `passed` `check_count=3 failed_check_count=0`
+- `2026-04-29 19:42 KST` production isolated `./.venv/bin/sns-engine run-local --config-dir /opt/sns-content-engine/config/global_country_news --database-url sqlite:////opt/sns-content-engine/data/global_country_news_verify_20260429103002.db` -> `passed` `status=succeeded; discovered=232; saved=227; briefs=170; drafts=1530; failures=0`
+- `2026-04-29 19:42 KST` isolated `review schedule` for draft `199` -> `expected_failed` `required_attribution_missing; mention korea_herald_all_news, koreaherald.com`
+- `2026-04-29 19:43 KST` isolated `review edit/approve/schedule` for draft `200` -> `passed` `Source: koreaherald.com attribution added and publish_job_id=1 scheduled`
+- `2026-04-29 19:43 KST` isolated `scheduler publish-due` -> `passed` `dry_run=true; processed_count=1; failed_count=0; skipped_count=0`
+- `2026-04-29 19:45 KST` isolated `scheduler publish-due --live` -> `passed` `status=published; external_post_id=2049439510929580197; published_count=1; failed_count=0`
 
 ## Open Questions
-- `Production cleanup path is still undecided: fresh DB baseline, reject/cancel stale records, or targeted exclusion must wait for read-only production audit evidence, backup, and explicit operator approval.`
-- `The active default config now mirrors config/global_country_news/; production can deploy either path, but must not approve, schedule, dry-run, or live publish until Phase 0 production DB audit is clean or cleanup is approved and completed.`
+- `Should repeated Korea country-news publishing continue on the existing aitoo1news account via X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS, or move later to a dedicated Korea credential bundle?`
+- `Should Japan live smoke wait for X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS confirmation and attribution-generation hardening?`
+- `The active default config now mirrors config/global_country_news/; decide whether production recurring runs should use the mirrored directory or the root config path.`
 - `Korea.net, The Japan News, and NHK World Radio can be reconsidered after source-specific connector behavior is fixed or alternate feed URLs are approved.`
 
 ## Blockers
-- `Production placeholder scan and DB inspection have not been executed in this local workspace.`
-- `Production DB cleanup method has no approval yet; no mutation command was added or run.`
-- `No country-news approval, scheduling, dry-run handoff, or live publish should start until production placeholder state is clean.`
+- `none_for_korea_x_controlled_live_smoke`
+- `Japan X live smoke remains pending explicit credential/operator approval.`
+- `Repeated operation should wait for Phase 1.5 attribution-generation hardening so operators do not need to manually add source attribution for routine schedules.`
 
 ## Follow-up
-- `Run the Phase 0 read-only production audit bundle on the server and capture DB findings.`
-- `After backup and explicit operator approval, choose and execute the production cleanup path for any placeholder-backed records.`
-- `Only after cleanup passes, run production healthcheck and review-only run-local before preparing the one-job X dry-run handoff.`
+- `Start Phase 1.5 Task 00: make generated restricted-source drafts include explicit source attribution such as source name or hostname before schedule validation.`
+- `After attribution generation hardening, run a fresh isolated DB run-local, approve/schedule one Korea X draft without manual source edits if possible, then dry-run.`
+- `Decide whether to proceed to Japan X live smoke or first tune source quality/cadence from the Phase 1.5 plan.`
 
 ## Completion Summary
-- `Local Phase 1 config and reviewable-draft gates are complete: active config and config/global_country_news/ now use real Korea/Japan RSS sources, no placeholder URLs remain under config data, healthcheck passes, and review-only run-local created 1,494 pending draft variants without live publishing. Production cleanup remains the blocking gate.`
+- `Phase 1 Korea X controlled smoke is complete: active config and config/global_country_news/ use real Korea/Japan RSS sources, production placeholder reuse risk was cleaned up, isolated production run-local created reviewable real-source drafts, dry-run processed exactly one Korea X job, and the live smoke published one post to https://x.com/aitoo1news with external_post_id 2049439510929580197. Japan live smoke and repeated operation remain pending Phase 1.5 hardening and explicit approval.`

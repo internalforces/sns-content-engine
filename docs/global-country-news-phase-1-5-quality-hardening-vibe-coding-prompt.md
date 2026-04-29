@@ -21,6 +21,7 @@ Use it when you want an autonomous coding agent to improve source quality, dupli
   - operator reviewing daily drafts
   - autonomous agent tightening config, prompts, validation, and docs
 - Core workflow to improve:
+  - required source attribution generation for restricted-source drafts
   - source prioritization and pruning
   - duplicate and near-duplicate avoidance
   - sensitive topic guardrails
@@ -39,6 +40,13 @@ The repository already has:
 - pipeline run and failure history
 - dry-run and manual review gates
 
+Most recent Phase 1 evidence:
+- Production placeholder cleanup gate passed with no pending/scheduled/approved placeholder reuse candidates.
+- Isolated production `run-local` created Korea/Japan reviewable drafts.
+- The first Korea X schedule attempt failed as intended with `required_attribution_missing`.
+- A manually edited Korea X draft with `Source: koreaherald.com` passed approve/schedule/dry-run.
+- One controlled live X smoke post succeeded via `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS`, external_post_id `2049439510929580197`.
+
 Important files and patterns:
 - Config: `config/global_country_news/`
 - Prompting: `app/services/x_draft_generator.py`, `app/services/prompt_renderer.py`
@@ -48,6 +56,7 @@ Important files and patterns:
 
 ## Product Intent And Quality Bar
 The desired implementation should:
+- make required source attribution appear naturally in restricted-source X drafts before scheduling
 - reduce low-value or repetitive news drafts
 - keep attribution clear and source names visible
 - make sensitive topic review cues obvious
@@ -62,6 +71,7 @@ The agent should preserve:
 - no blog/funnel behavior
 
 The agent should avoid:
+- weakening the existing attribution validation gate
 - hiding sensitive topics by silently dropping everything
 - overfitting to one newspaper's wording
 - adding a heavy ranking subsystem before simple config rules are exhausted
@@ -103,7 +113,8 @@ Read:
 - docs/global-country-news-phase-1-5-quality-hardening-execution-guide.md
 - docs/global-country-news-phase-1-5-quality-hardening-progress-tracker.md
 
-Improve source quality, duplicate control, sensitive topic review cues, and cadence for the Korea/Japan global news MVP.
+Improve source attribution generation, source quality, duplicate control, sensitive topic review cues, and cadence for the Korea/Japan global news MVP.
+Start with attribution generation hardening if it is still unfinished, because the first Korea X smoke required a manual source-attribution edit before scheduling.
 Do not add blog publishing or X funnel behavior.
 Do not weaken manual review or dry-run-first publishing.
 ```
