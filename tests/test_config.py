@@ -53,8 +53,11 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert korea_account.matching.source_tags == (
         "korea",
         "south korea",
+        "domestic",
+        "inter korea",
         "politics",
         "economy",
+        "science",
         "culture",
     )
     assert korea_account.matching.strict_topic_guard is False

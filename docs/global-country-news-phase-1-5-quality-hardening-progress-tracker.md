@@ -12,21 +12,21 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 - `docs/global-country-news-phase-1-country-news-mvp-progress-tracker.md`
 
 ## Current Status
-- Current milestone: `M1_source_quality`
-- Current task: `02_category_and_matching_tuning`
-- Active status: `in_progress`
-- Last updated: `2026-04-29 22:43 KST`
+- Current milestone: `M2_draft_safety_and_cadence`
+- Current task: `03_sensitive_topic_guardrails`
+- Active status: `pending`
+- Last updated: `2026-04-29 23:15 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `pending`
-- Resume decision: `continue_category_coverage_review_after_source_health_baseline`
-- Stop reason: `task_01_done_task_02_matching_false_positive_fix_started`
+- Resume decision: `continue_sensitive_topic_guardrails_after_category_tuning`
+- Stop reason: `task_02_done`
 
 ## Scope For Current Task
-- Goal: `Continue source-quality hardening by reducing low-value matches while preserving broad Korea/Japan coverage.`
-- In scope: `source health observations, source priority notes, account matching keyword tuning, weak topic-only match reduction, focused regression tests`
+- Goal: `Make sensitive politics, security, legal, disaster, health, and finance topics visibly safer for review-led country-news drafts.`
+- In scope: `sensitivity prompt guidance review, high-risk validation cues, focused regression tests, operator-facing notes`
 - Out of scope: `blog publishing, channel funnel, live publish automation`
-- Dependencies: `Phase 1 config, Task 00 attribution generation hardening, 2026-04-29 live RSS discovery evidence`
+- Dependencies: `Phase 1 config, Task 00 attribution generation hardening, Task 02 matching coverage baseline`
 - Verification commands:
   - `./.venv/bin/python -m app.cli discover --config-dir config/global_country_news`
   - `./.venv/bin/pytest tests/test_account_matching.py tests/test_config.py -q`
@@ -44,8 +44,8 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 | --- | --- | --- | --- | --- | --- |
 | M0 | 00 | Attribution Generation Hardening | done | 2026-04-29 20:09 KST | X generation now preserves/appends compact `Source: ...` attribution for `require_attribution=true` drafts while keeping the required URL and character limit |
 | M1 | 01 | Source Health And Priority Review | done | 2026-04-29 22:41 KST | Live discovery found all 5 RSS sources healthy; priority and monitoring notes recorded in `config/global_country_news/sources.yaml` |
-| M1 | 02 | Category And Matching Tuning | in_progress | 2026-04-29 22:43 KST | Started by removing audience-word topic matches and narrowing Korea `president` matching to Korea-specific phrases; focused and broader regression checks passed |
-| M2 | 03 | Sensitive Topic Guardrails | pending | 2026-04-29 16:50 KST | Politics, security, legal, disaster, health, finance |
+| M1 | 02 | Category And Matching Tuning | done | 2026-04-29 23:14 KST | Weak topic-only matches remain at 0; KBS `domestic`, `science`, and `inter korea` tags now preserve Korean society/legal/science/inter-Korean coverage without enabling broad `international` noise |
+| M2 | 03 | Sensitive Topic Guardrails | pending | 2026-04-29 23:14 KST | Politics, security, legal, disaster, health, finance |
 | M2 | 04 | Cadence And Workload Tuning | pending | 2026-04-29 16:50 KST | Tune backlog and schedules for human review |
 | M2 | 05 | Operator Quality Checklist | pending | 2026-04-29 16:50 KST | Review checklist before live publishing |
 
@@ -59,10 +59,14 @@ Status values:
 - `.secrets.baseline`
 - `app/services/x_draft_generator.py`
 - `app/services/topic_matching.py`
+- `config/accounts.yaml`
 - `config/global_country_news/accounts.yaml`
+- `config/prompts.yaml`
 - `config/global_country_news/prompts.yaml`
+- `config/sources.yaml`
 - `config/global_country_news/sources.yaml`
 - `tests/test_account_matching.py`
+- `tests/test_config.py`
 - `tests/test_x_draft_generator.py`
 - `docs/global-country-news-phase-1-5-quality-hardening-progress-tracker.md`
 
@@ -76,6 +80,13 @@ Status values:
 | `japan_japan_today_atom` | `secondary_with_matching` | 30 current items, no failures, Atom categories unavailable and world/sports items mixed in | Keep; rely on matching and review sampling |
 
 No source was disabled in this pass because all feeds were live and reusable with review-led matching. Pruning remains open if repeated runs show persistent low-value drafts.
+
+## Category Coverage Decisions
+| Decision | 2026-04-29 evidence | Rationale |
+| --- | --- | --- |
+| Keep broad country include keywords but avoid generic `president` | Earlier Task 02 pass removed weak audience/topic matches and narrowed Korea president matching to Korea-specific phrases | Reduces false positives from broad feeds while preserving country-specific political coverage |
+| Add Korea source-tag matches for `domestic`, `science`, and `inter korea` | Live discovery showed KBS domestic/legal and science/inter-Korean stories were no-match despite being country-relevant; KBS matched count moved from 25 to 29 while no-match fell from 5 to 1 | These tags come from the primary KBS Korea feed and improve society/legal/science coverage without relying on newspaper-specific wording |
+| Keep `international` out of Korea source tags | KBS no-match examples included non-Korea international stories such as OPEC coverage | Avoids flooding Korea review queues with general world news |
 
 ## Progress Log
 - `2026-04-29 16:50 KST` Initialized Phase 1.5 planning documents from the country-news quality hardening plan.
@@ -95,6 +106,8 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-29 22:41 KST` Started Task 02 matching tuning based on source-health evidence: audience words from account topics no longer become topic keywords, and Korea `president` matching was narrowed to Korea-specific phrases.
 - `2026-04-29 22:41 KST` Rechecked matching after tuning: Korea eligible counts are Herald 38, KBS 25, Yonhap 87; Japan eligible counts are Japan Times 11 and Japan Today 9; weak topic-only matches dropped to 0.
 - `2026-04-29 22:42 KST` Refreshed `.secrets.baseline` after test line-number changes; final secret scan passed.
+- `2026-04-29 23:14 KST` Completed Task 02 category coverage review: added KBS-backed Korea `domestic`, `science`, and `inter korea` source tags while keeping broad `international` excluded; active root `config/` now mirrors `config/global_country_news/` again for the attribution prompt and source notes.
+- `2026-04-29 23:14 KST` Rechecked live discovery matching after category tuning: 232 candidates, 0 failures; KBS matched 29/no-match 1, Yonhap 87/no-match 5, Korea Herald 38/no-match 12, Japan Times 11/no-match 19, Japan Today 9/no-match 21.
 
 ## Test Log
 - `2026-04-29 19:42 KST` production isolated `run-local` -> `passed` `status=succeeded; drafts=1530; failures=0`
@@ -121,6 +134,10 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-29 22:43 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py tests/test_account_matching.py tests/test_config.py -q` -> `passed` `126 passed`
 - `2026-04-29 22:43 KST` `scripts/scan_secrets.sh check` -> `passed`
 - `2026-04-29 22:43 KST` `git diff --check` -> `passed`
+- `2026-04-29 23:14 KST` `./.venv/bin/python -m app.cli discover --config-dir config/global_country_news` -> `passed` `232 candidates; 0 failures`
+- `2026-04-29 23:14 KST` `./.venv/bin/pytest tests/test_account_matching.py tests/test_config.py -q` -> `passed` `36 passed`
+- `2026-04-29 23:14 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py tests/test_account_matching.py tests/test_config.py -q` -> `passed` `127 passed`
+- `2026-04-29 23:15 KST` `scripts/scan_secrets.sh refresh-baseline`, `scripts/scan_secrets.sh check`, and `git diff --check` -> `passed`
 
 ## Open Questions
 - `Which sources generate useful unique items after several production runs?`
@@ -130,9 +147,9 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `none_for_task_02_start`
 
 ## Follow-up
-- `Continue Task 02 with category coverage review before Japan live smoke or recurring production runs.`
+- `Start Task 03 sensitive topic guardrails before Japan live smoke or recurring production runs.`
 - `Use the isolated partial Japan draft set and the 2026-04-29 discovery sample as initial review evidence, but run a clean full quality DB pipeline when the external draft provider is responsive.`
 - `Run the no-edit approve/schedule/dry-run check on a fresh Korea X draft once the next full isolated run completes.`
 
 ## Completion Summary
-- `Task 00 is complete. Restricted-source X generation now retains a source attribution candidate by default, keeps the required URL, fits the X character budget, and passed no-edit approve/schedule/dry-run verification on an isolated Japan X draft. Task 01 is complete for the first live RSS pass: all five sources were healthy, priority/monitoring notes were recorded, and no source was disabled.`
+- `Task 00 is complete. Restricted-source X generation now retains a source attribution candidate by default, keeps the required URL, fits the X character budget, and passed no-edit approve/schedule/dry-run verification on an isolated Japan X draft. Task 01 is complete for the first live RSS pass: all five sources were healthy, priority/monitoring notes were recorded, and no source was disabled. Task 02 is complete for the first category pass: weak topic-only matches remain removed, Korea primary-source domestic/science/inter-Korean coverage is restored, broad international noise remains excluded, and root config mirrors the explicit country-news config again.`

@@ -15,5 +15,10 @@ profiles:
       Shape it for this reader context: {{ channel_reader_focus }}
       Explain the concrete development, the global relevance, and the local context without adding unsupported claims.
       {% if sensitivity_is_high_risk %}This is a high-risk {{ sensitivity_domain | replace("_", " ") }} topic. {{ sensitivity_guidance }}{% endif %}
-      {% if require_attribution %}Attribution is required. Mention {{ source_name or source_url or "the source" }} naturally in the post.{% else %}Mention {{ source_name or source_url or "the source" }} when it improves clarity or trust.{% endif %}
+      {% set source_label = source_attribution or source_name or source_hostname or "the source" %}
+      {% if require_attribution %}
+      {% if channel == "x" %}Attribution is required. End the post with Source: {{ source_label }} before the URL.{% else %}Attribution is required. Include a compact cue like "Source: {{ source_label }}" in the post.{% endif %}
+      {% else %}
+      Mention {{ source_label }} when it improves clarity or trust.
+      {% endif %}
       Use the original article URL: {{ landing_url }}.
