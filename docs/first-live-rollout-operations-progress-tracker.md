@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
 - Active status: `blocked`
-- Last updated: `2026-04-29 15:09 KST`
+- Last updated: `2026-04-29 15:13 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Record Task 05 zero due jobs blocker`
-- Resume decision: `operator_provided_task_05_revision_healthcheck_and_dry_run_scope`
-- Stop reason: `task_05_dry_run_found_zero_due_jobs_so_live_publish_is_not_actionable`
+- Latest task commit: `Record Task 05 collection restart handoff`
+- Resume decision: `operator_requested_collection_after_zero_due_jobs`
+- Stop reason: `production_collection_must_run_on_server_context_not_local_workspace`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -191,6 +191,10 @@ Status values:
 - `2026-04-29 15:09 KST Task 05 live command` evidence: `not_run`; the dry-run gate has zero due jobs, so running `--live` would not perform the intended first X publish event.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 zero-due-jobs blocker`.
 - `git diff --check` evidence: `passed with no output after recording the Task 05 zero-due-jobs blocker`.
+- `2026-04-29 15:13 KST collection restart request` evidence: operator inferred the production DB was initialized during deploy and requested restarting from collection; local `/opt/sns-content-engine`, `/opt/sns-content-engine/config`, and `/opt/sns-content-engine/.env` are absent in this workspace.
+- `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` evidence: `blocked locally`; Typer rejected the missing config directory, so no production collection, DB write, draft generation, approval, scheduling, dry-run, or live command ran from this workspace.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the collection restart handoff`.
+- `git diff --check` evidence: `passed with no output after adding the collection restart handoff`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -248,6 +252,7 @@ Status values:
 - `2026-04-29 14:45 KST` Verified the docs-only Task `05` tracker update with the checked-in secret scan and diff whitespace check. No server command, smoke check, or live publish command was run.
 - `2026-04-29 15:05 KST` Received an operator request to execute Task `05`. Treated it as insufficient for the live side effect because it does not explicitly approve one X live publish using `/opt/sns-content-engine/config`, and the final dry-run due-job scope is still not recorded.
 - `2026-04-29 15:09 KST` Recorded operator-provided Task `05` production evidence. The server is on revision `ceef2c8`, rollout-summary and healthcheck are healthy, but dry-run found zero due jobs and no account/channel scope, so Task `05` remains blocked and no `--live` command should run.
+- `2026-04-29 15:13 KST` Confirmed the collection restart must happen inside the production server context. The local workspace cannot access `/opt/sns-content-engine/config`; added a server-side collection handoff below that starts with `run-local` and stops at pending review.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -364,6 +369,11 @@ Status values:
 - `2026-04-29 15:05 KST` `git diff --check` -> `passed` `no output; exit code 0`
 - `2026-04-29 15:09 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 15:09 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:13 KST` `ls -ld /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` -> `blocked` `all three paths are absent in the local workspace`
+- `2026-04-29 15:13 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-29 15:13 KST` `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` -> `blocked` `local workspace does not have the production config directory`
+- `2026-04-29 15:13 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:13 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Should the operator create, approve, or schedule one intended X publish job, then rerun the Task 05 dry-run gate before considering live approval?`
@@ -373,6 +383,29 @@ Status values:
 
 ## Follow-up
 - `Create, approve, or schedule one operator-intended X publish job, rerun dry-run, confirm exactly one due job and account/channel scope, then request explicit approval before running exactly one --live command.`
+
+## Server Handoff For Collection Restart
+Run this block only inside the production server shell. It repopulates the initialized DB from configured sources, generates drafts, and stops at manual review. It does not approve, schedule, or live-publish anything.
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine run-local --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine history runs --limit 3
+./.venv/bin/sns-engine history failures --limit 10
+./.venv/bin/sns-engine review list
+```
+
+After reviewing the listed drafts, pick one intended `channel: x` draft and approve plus schedule it for a due time:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine review approve DRAFT_ID --config-dir /opt/sns-content-engine/config --reviewer operator
+./.venv/bin/sns-engine review schedule DRAFT_ID --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+```
+
+Proceed toward live approval only if the final dry-run reports exactly one due job, `failed=0`, `skipped=0`, and `channel=x` for the intended account. Do not run `--live` from this handoff block.
 
 ## Server Handoff For Task 03
 Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
