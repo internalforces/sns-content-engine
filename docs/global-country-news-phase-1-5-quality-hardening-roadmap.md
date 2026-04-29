@@ -22,6 +22,7 @@ Harden the Phase 1 country news MVP so repeated operation:
 - Channel config has duplicate windows and schedule settings.
 
 ### Current Limitations Relevant To The New Goal
+- The controlled Korea X smoke showed generated drafts can omit explicit source attribution even when source policy requires it; validation blocks scheduling, but operators should not need routine manual edits.
 - Broad RSS feeds can produce repetitive wire coverage.
 - Some categories may be overrepresented.
 - Sensitive topics need clearer review guidance.
@@ -48,7 +49,7 @@ Harden the Phase 1 country news MVP so repeated operation:
 - backlog target and schedule tuning
 
 ### Review Safety Layer
-1. Drafts keep source attribution.
+1. Generated restricted-source drafts include explicit source attribution before review scheduling.
 2. Sensitive topic prompts add caution and context.
 3. Reviewers can see why a draft exists and what to verify.
 4. No automatic live escalation is introduced.
@@ -81,6 +82,24 @@ Harden the Phase 1 country news MVP so repeated operation:
 ## Implementation Roadmap
 
 ## Phase 1.5: Quality Hardening
+
+### Task 00: Attribution Generation Hardening
+- Goal: make restricted-source drafts include source attribution by default so the existing scheduling gate passes without routine operator edits.
+- Actions:
+  - inspect the failed Korea X schedule case that required `Source: koreaherald.com`
+  - update prompt/generator behavior so required attribution candidates are visible in generated draft text
+  - keep URL and max-character validation intact
+  - add tests that prove generated/sanitized X drafts retain source attribution when `require_attribution` is true
+- Dependencies:
+  - Phase 1 Korea X dry-run/live smoke evidence
+- Verification commands:
+  - `./.venv/bin/pytest tests/test_x_draft_generator.py tests/test_draft_validation.py tests/test_review_queue_workflow.py -q`
+  - `./.venv/bin/python -m app.cli run-local --config-dir config/global_country_news --database-url sqlite:///data/global_country_news_quality.db`
+  - `git diff --check`
+- Risk or rollback note:
+  - attribution text must not push X drafts over 280 characters or remove the required source URL
+- Done when:
+  - a fresh Korea X restricted-source draft can be approved and scheduled without manual source-attribution edits
 
 ### Task 01: Source Health And Priority Review
 - Goal: decide which Korea/Japan feeds are primary, secondary, or disabled.
@@ -163,11 +182,12 @@ Harden the Phase 1 country news MVP so repeated operation:
   - operator can review drafts consistently before live runs
 
 ## Suggested Execution Order
-1. Task 01: Source Health And Priority Review
-2. Task 02: Category And Matching Tuning
-3. Task 03: Sensitive Topic Guardrails
-4. Task 04: Cadence And Workload Tuning
-5. Task 05: Operator Quality Checklist
+1. Task 00: Attribution Generation Hardening
+2. Task 01: Source Health And Priority Review
+3. Task 02: Category And Matching Tuning
+4. Task 03: Sensitive Topic Guardrails
+5. Task 04: Cadence And Workload Tuning
+6. Task 05: Operator Quality Checklist
 
 ## Initial Milestone Recommendation
-Start with source health. It is the smallest useful step after Phase 1 and prevents prompt work from compensating for weak inputs.
+Start with attribution generation hardening because the first controlled Korea X schedule was correctly blocked until an operator manually added source attribution. After that, continue with source health so prompt work does not compensate for weak inputs.
