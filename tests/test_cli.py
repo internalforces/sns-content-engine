@@ -170,6 +170,45 @@ def test_healthcheck_command_reports_placeholder_config_not_ready(tmp_path: Path
     assert "sources.ai_tools_rss.url (example.com)" in result.output
 
 
+def test_healthcheck_command_reports_placeholder_manual_csv_not_ready(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    _write_file(
+        tmp_path / "manual.csv",
+        """
+        external_id,url,title
+        manual-1,https://example.com/manual/one,Placeholder manual source
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_manual:
+            type: manual_csv
+            path: manual.csv
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_manual
+        """,
+    )
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'healthcheck-placeholder-csv.db'}"
+    init_result = runner.invoke(app, ["db", "init", "--database-url", database_url])
+
+    assert init_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["healthcheck", "--config-dir", str(tmp_path), "--database-url", database_url],
+    )
+
+    assert result.exit_code == 1
+    assert "event=healthcheck component=cli status=failed check=config_readiness" in result.output
+    assert "placeholder URLs detected" in result.output
+    assert "sources.ai_tools_manual.csv.row_2.url (example.com)" in result.output
+
+
 def test_db_init_command_bootstraps_the_database(tmp_path: Path) -> None:
     database_path = tmp_path / "cli.db"
     database_url = f"sqlite+pysqlite:///{database_path}"

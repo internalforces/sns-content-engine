@@ -25,31 +25,51 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 
 ## Current Status
 - Current milestone: `M3_controlled_live_gate`
-- Current task: `05_execute_one_approved_x_live_publish`
-- Active status: `pending`
-- Last updated: `2026-04-28 22:53 KST`
+- Current task: `06_capture_post_publish_observation_and_next_decision`
+- Active status: `done`
+- Last updated: `2026-04-29 17:30 KST`
 - Base branch: `master`
-- Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Record Task 04 production pass`
-- Resume decision: `operator_provided_task_04_secret_scan_pass`
-- Stop reason: `waiting_for_explicit_task_05_live_approval`
+- Active branch: `codex/task-05-live-publish`
+- Latest task commit: `Record Task 06 external X confirmation`
+- Resume decision: `phase_0_source_cleanup_pause`
+- Stop reason: `rollout_paused_until_placeholder_sources_are_cleaned`
 
 ## Scope For Current Task
-- Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
-- In scope: `Task 05 approval summary, one approved X live publish command, and immediate stop for observation evidence`
-- Out of scope: `unapproved live commands, repeated live retries, Threads live rollout, LinkedIn direct publish, auth redesign, and infrastructure redesign`
-- Dependencies: `explicit operator approval naming one X live publish and /opt/sns-content-engine/config`
+- Goal: `Capture post-publish evidence, external X observation, and the next operating decision after the first live X publish.`
+- In scope: `Task 06 publish result evidence, external X visibility check, service logs if needed, and continue, pause, retry_later, rollback_server_state, or hold_for_investigation decision`
+- Out of scope: `a second live command without a new explicit approval, Threads live rollout, LinkedIn direct publish, auth redesign, and infrastructure redesign`
+- Dependencies: `Task 05 live attempt result and operator-visible X observation`
 - Verification commands:
-  - `./.venv/bin/sns-engine rollout-summary --config-dir /opt/sns-content-engine/config`
-  - `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config`
-  - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config`
-  - `scripts/single_server_smoke_check.sh`
-  - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config --live`
+  - `sudo -u sns-engine bash -lc 'cd /opt/sns-content-engine && ./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db'`
+  - `journalctl -u sns-scheduler.service -n 120 --no-pager`
+  - `journalctl -u sns-web.service -n 120 --no-pager`
 
 ## Environment Notes
-- Required services status: `Task 03 and Task 04 production evidence was provided by the operator and passed; the next gate is explicit Task 05 live approval`
-- Env or fixture status: `production app root, env file, and config dir were reported present by the operator; rollout-summary and healthcheck passed without printing secret values`
+- Required services status: `Task 03 and Task 04 production evidence passed; Task 05 live publish succeeded when run as the sns-engine service account`
+- Env or fixture status: `production app root, env file, config dir, and SQLite DB were usable by the sns-engine service account; the operator shell user could not open the DB directly`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
+
+## Current Task 05 Approval Summary
+- Known passed gates: `Task 03 production presence, rollout-summary, and healthcheck passed; Task 04 smoke helper and production secret scan passed`
+- Known rollout scope: `rollout-summary reported first_rollout_x_only=true with publisher channels ai_tools_daily:x and seo_tools_daily:x`
+- Production revision: `ceef2c8`
+- Latest dry-run scope: `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); publish_job_id=1 account_key=ai_tools_daily channel=x attempt_count=0 external_post_id=dry-run:1`
+- Still needed before running live: `none; first live command has already run once`
+- Approval status: `operator_executed_live_command_after_service_account_dry_run`
+- Live command status: `succeeded`
+- Required approval wording: `explicitly approve one X live publish using /opt/sns-content-engine/config before running the exact --live command`
+- Latest live result: `processed due jobs: 1 (published=1, failed=0, skipped=0); publish_job_id=1 account_key=ai_tools_daily channel=x external_post_id=2049385573526483196`
+
+## Current Task 06 Observation Summary
+- Live result status: `published`
+- Publish job: `1`
+- Account and channel: `ai_tools_daily/x`
+- External post id: `2049385573526483196`
+- External X visibility: `confirmed_by_operator`
+- External X URL: `https://x.com/aitoo1news`
+- Next decision: `pause`
+- Pause reason: `published URL came from active manual CSV sample data using example.com; source cleanup must complete before another live run`
+- Retry boundary: `no second live command without new explicit approval`
 
 ## Roadmap Status
 
@@ -59,8 +79,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
-| M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-28 22:53 KST | Must not run without explicit operator approval for the exact live step |
-| M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
+| M3 | 05 | Execute One Approved X Live Publish | done | 2026-04-29 16:10 KST | Service-account live publish succeeded for publish job `1`, account `ai_tools_daily`, channel `x`, external post id `2049385573526483196`; no second live command is allowed without new approval |
+| M3 | 06 | Capture Post-Publish Observation And Next Decision | done | 2026-04-29 17:30 KST | External X visibility confirmed by the operator at `https://x.com/aitoo1news`; next decision is `pause` until placeholder source cleanup is complete |
 
 Status values:
 - `pending`
@@ -167,6 +187,51 @@ Status values:
 - `git diff --check` evidence: `passed with no output after recording the Task 04 production pass`.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 04 smoke pass`.
 - `git diff --check` evidence: `passed with no output after recording the Task 04 smoke pass`.
+- `2026-04-29 14:44 KST Task 05 approval gate review` evidence: Task `05` is now the active blocked gate; Task `03` and Task `04` production gates are recorded as passed, but the approval summary still needs deployed git revision plus final dry-run due-job count, channel, and account scope.
+- `2026-04-29 14:44 KST Task 05 live command` evidence: `not_run`; no explicit one-command live approval has been provided in the active thread.
+- `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint still reports `sns-content-engine 0.1.0` before the Task `05` tracker update.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 approval blocker`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 approval blocker`.
+- `2026-04-29 15:05 KST Task 05 operator request` evidence: operator requested Task `05` execution, but the active thread still lacks exact approval for one X live publish using `/opt/sns-content-engine/config`; live command remains `not_run`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the 2026-04-29 15:05 KST Task 05 execution request blocker`.
+- `git diff --check` evidence: `passed with no output after recording the 2026-04-29 15:05 KST Task 05 execution request blocker`.
+- `2026-04-29 15:09 KST Task 05 operator-provided production evidence` evidence: deployed revision is `ceef2c8`; rollout-summary returned `status=ok`, `provider_route_count=2`, `publisher_channel_count=2`, and `first_rollout_x_only=true`; healthcheck returned `status=ok`, `check_count=3`, and `failed_check_count=0`.
+- `2026-04-29 15:09 KST Task 05 dry-run evidence` evidence: dry-run returned `processed due jobs: 0 (dry_run=0, failed=0, skipped=0)`, `executor mode: fake dry-run (no state changes)`, and an empty `dry_run_scope`; no live publish candidate exists.
+- `2026-04-29 15:09 KST Task 05 live command` evidence: `not_run`; the dry-run gate has zero due jobs, so running `--live` would not perform the intended first X publish event.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 zero-due-jobs blocker`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 zero-due-jobs blocker`.
+- `2026-04-29 15:13 KST collection restart request` evidence: operator inferred the production DB was initialized during deploy and requested restarting from collection; local `/opt/sns-content-engine`, `/opt/sns-content-engine/config`, and `/opt/sns-content-engine/.env` are absent in this workspace.
+- `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` evidence: `blocked locally`; Typer rejected the missing config directory, so no production collection, DB write, draft generation, approval, scheduling, dry-run, or live command ran from this workspace.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the collection restart handoff`.
+- `git diff --check` evidence: `passed with no output after adding the collection restart handoff`.
+- `2026-04-29 15:50 KST Task 05 draft approval attempt` evidence: operator attempted to approve draft `10` on the production server, but SQLite returned `OperationalError: attempt to write a readonly database` while updating `draft_variants`; the subsequent schedule attempt failed because draft `10` remained `pending_review` instead of `approved`.
+- `2026-04-29 15:50 KST Task 05 live command` evidence: `not_run`; approval and scheduling did not complete, so no due X publish job was created.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the readonly database blocker`.
+- `git diff --check` evidence: `passed with no output after recording the readonly database blocker`.
+- `2026-04-29 15:56 KST Task 05 draft approval` evidence: operator reported `approved draft 10 as operator`.
+- `2026-04-29 15:56 KST Task 05 draft scheduling` evidence: operator reported `scheduled draft 10 as publish job 1 for 2026-04-29T06:55:48+00:00 as operator`.
+- `2026-04-29 15:56 KST Task 05 dry-run evidence` evidence: dry-run emitted `publish_job_id=1`, `account_key=ai_tools_daily`, `channel=x`, `attempt_count=0`, `external_post_id=dry-run:1`, and `processed due jobs: 1 (dry_run=1, failed=0, skipped=0)`.
+- `2026-04-29 15:56 KST Task 05 live command` evidence: `not_run`; the final remaining gate is explicit approval for one X live publish using `/opt/sns-content-engine/config`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 dry-run approval gate`.
+- `2026-04-29 16:03 KST Task 05 publish_due failure` evidence: operator reported `event=workflow component=cli status=failed workflow=publish_due` with `sqlite3.OperationalError: unable to open database file`; the command did not produce published, failed, dry-run, or skipped counts.
+- `2026-04-29 16:03 KST Task 05 live command` evidence: `unknown/not_confirmed`; the reported failure did not state whether `--live` was passed, and no external publish evidence was provided.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the database-open failure`.
+- `git diff --check` evidence: `passed with no output after recording the database-open failure`.
+- `2026-04-29 16:05 KST Task 05 explicit DB healthcheck` evidence: operator reran healthcheck with `--database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db`; config and config_readiness passed, but database check failed with `Permission denied: '/opt/sns-content-engine/data/sns_content_engine.db'`.
+- `2026-04-29 16:05 KST Task 05 explicit DB dry-run` evidence: operator reran dry-run with the explicit production database URL, but SQLite still returned `unable to open database file`.
+- `2026-04-29 16:05 KST Task 05 explicit DB live attempt` evidence: operator reran `scheduler publish-due --live` with the explicit production database URL, but SQLite returned `unable to open database file` before publish processing; no external publish evidence was produced.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the service-user DB permission blocker`.
+- `git diff --check` evidence: `passed with no output after recording the service-user DB permission blocker`.
+- `2026-04-29 16:10 KST Task 05 service-account healthcheck` evidence: operator reran healthcheck as `sns-engine` with explicit production DB URL; all three checks passed with `failed_check_count=0`.
+- `2026-04-29 16:10 KST Task 05 service-account dry-run` evidence: operator reran dry-run as `sns-engine`; it reported `publish_job_id=1`, `account_key=ai_tools_daily`, `channel=x`, `external_post_id=dry-run:1`, and `processed due jobs: 1 (dry_run=1, failed=0, skipped=0)`.
+- `2026-04-29 16:10 KST Task 05 service-account live publish` evidence: operator ran `scheduler publish-due --live` as `sns-engine`; it reported `status=published`, `publish_job_id=1`, `account_key=ai_tools_daily`, `channel=x`, `attempt_count=1`, `provider=x`, `external_post_id=2049385573526483196`, and `processed due jobs: 1 (published=1, failed=0, skipped=0)`.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 live publish success`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 live publish success`.
+- `2026-04-29 16:14 KST Task 06 external X observation` evidence: operator confirmed the live result is visible at `https://x.com/aitoo1news` after publish job `1` reported external post id `2049385573526483196`; the next operating decision is still pending.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
+- `git diff --check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
+- `2026-04-29 17:30 KST Task 06 operating decision` evidence: recorded the next decision as `pause` because the successful X publish used placeholder-backed manual CSV source data; no second live command should run until source cleanup passes.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -219,6 +284,20 @@ Status values:
 - `2026-04-28 22:47 KST` Recorded operator-provided Task `04` smoke helper success. The production web service, scheduler service, Docker edge service, redacted rollout summary, healthcheck, loopback health, protected console gate, authenticated console, dry-run publish, and overall single-server rollout smoke checks all passed. A separate production secret scan result is still needed before Task `04` can be marked done.
 - `2026-04-28 22:50 KST` Recorded operator-provided Task `04` secret scan attempt. The command was blocked by Git dubious-ownership protection for `/opt/sns-content-engine`, so the operator must add that path to the current user's Git `safe.directory` list and rerun the scan before Task `04` can be marked done.
 - `2026-04-28 22:53 KST` Recorded operator-provided Task `04` secret scan pass. The rerun returned `secret_scan_exit=0`, so Task `04` is complete and Task `05` is now the next pending gate; no live publish command has been run.
+- `2026-04-29 14:44 KST` Started Task `05` on branch `codex/task-05-live-publish` after reading the operations prompt, roadmap, execution guide, and progress tracker. The task is blocked rather than executed because the active thread does not contain explicit approval for the exact live command.
+- `2026-04-29 14:44 KST` Prepared the Task `05` approval gate summary from recorded Task `03` and Task `04` evidence. Before approval can be requested safely, the operator still needs to provide or restate the deployed git revision and the most recent dry-run due-job count, channel, and account scope.
+- `2026-04-29 14:45 KST` Verified the docs-only Task `05` tracker update with the checked-in secret scan and diff whitespace check. No server command, smoke check, or live publish command was run.
+- `2026-04-29 15:05 KST` Received an operator request to execute Task `05`. Treated it as insufficient for the live side effect because it does not explicitly approve one X live publish using `/opt/sns-content-engine/config`, and the final dry-run due-job scope is still not recorded.
+- `2026-04-29 15:09 KST` Recorded operator-provided Task `05` production evidence. The server is on revision `ceef2c8`, rollout-summary and healthcheck are healthy, but dry-run found zero due jobs and no account/channel scope, so Task `05` remains blocked and no `--live` command should run.
+- `2026-04-29 15:13 KST` Confirmed the collection restart must happen inside the production server context. The local workspace cannot access `/opt/sns-content-engine/config`; added a server-side collection handoff below that starts with `run-local` and stops at pending review.
+- `2026-04-29 15:50 KST` Recorded the production write blocker from the draft `10` approval attempt. The DB is readable enough for healthcheck and review listing, but not writable for the current CLI user or SQLite directory state; fix file and directory ownership or permissions before retrying approval.
+- `2026-04-29 15:56 KST` Recorded operator-provided recovery evidence: draft `10` was approved, scheduled as publish job `1`, and dry-run found exactly one due X job for `ai_tools_daily/x` with no failures or skips. Task `05` is ready for the explicit live approval gate, but no live command has run.
+- `2026-04-29 16:03 KST` Recorded an operator-provided `publish_due` database-open failure. Treat the next publish attempt as blocked until the server command is rerun from `/opt/sns-content-engine` with the explicit production `--database-url`, and until live intent is explicitly reconfirmed if the failed command included `--live`.
+- `2026-04-29 16:05 KST` Recorded explicit database-url healthcheck, dry-run, and live-attempt failures from the server. The current shell user `myeonggwan` cannot open the production SQLite DB; subsequent checks and any live attempt must run under the service account that owns the DB, or permissions must be changed intentionally before retry.
+- `2026-04-29 16:10 KST` Recorded the successful service-account live publish. Task `05` is complete: exactly one X publish job was processed, it published successfully with external post id `2049385573526483196`, and no second live command should run without a separate approval.
+- `2026-04-29 16:14 KST` Recorded operator-confirmed external X visibility at `https://x.com/aitoo1news`. Task `06` is blocked only on the next operating decision: continue, pause, retry_later, rollback_server_state, or hold_for_investigation.
+- `2026-04-29 16:14 KST` Verified the Task `06` tracker update with the checked-in secret scan and diff whitespace check.
+- `2026-04-29 17:30 KST` Closed Task `06` with next decision `pause`: the publisher path succeeded, but the content-source baseline is blocked by active `example.com` manual CSV URLs.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -328,16 +407,139 @@ Status values:
 - `2026-04-28 22:53 KST` `git diff --check` -> `passed` `local tracker verification; no output; exit code 0`
 - `2026-04-28 22:47 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 22:47 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 14:44 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-29 14:45 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 14:45 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:05 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:05 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:09 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:09 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:13 KST` `ls -ld /opt/sns-content-engine /opt/sns-content-engine/config /opt/sns-content-engine/.env` -> `blocked` `all three paths are absent in the local workspace`
+- `2026-04-29 15:13 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-29 15:13 KST` `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` -> `blocked` `local workspace does not have the production config directory`
+- `2026-04-29 15:13 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:13 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:50 KST` `./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator` -> `blocked` `SQLite write failed with OperationalError: attempt to write a readonly database`
+- `2026-04-29 15:50 KST` `./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator` -> `blocked` `draft 10 remained pending_review because approval failed`
+- `2026-04-29 15:50 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:50 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator` -> `passed` `approved draft 10 as operator`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator` -> `passed` `scheduled draft 10 as publish job 1 for 2026-04-29T06:55:48+00:00 as operator`
+- `2026-04-29 15:56 KST` `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config` -> `passed` `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); account_key=ai_tools_daily; channel=x`
+- `2026-04-29 15:56 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:56 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:03 KST` `./.venv/bin/sns-engine scheduler publish-due ...` -> `blocked` `operator-reported failure before DB open: sqlite3.OperationalError unable to open database file; exact flags not confirmed`
+- `2026-04-29 16:03 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:03 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:05 KST` `./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db` -> `failed` `database check failed with Permission denied for the production SQLite DB`
+- `2026-04-29 16:05 KST` `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db` -> `blocked` `SQLite unable to open database file`
+- `2026-04-29 16:05 KST` `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db --live` -> `blocked` `SQLite unable to open database file before publish processing`
+- `2026-04-29 16:05 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:05 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:10 KST` `sudo -u sns-engine ... healthcheck --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db` -> `passed` `status=ok; failed_check_count=0`
+- `2026-04-29 16:10 KST` `sudo -u sns-engine ... scheduler publish-due --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db` -> `passed` `processed due jobs: 1 (dry_run=1, failed=0, skipped=0); account_key=ai_tools_daily; channel=x`
+- `2026-04-29 16:10 KST` `sudo -u sns-engine ... scheduler publish-due --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db --live` -> `passed` `processed due jobs: 1 (published=1, failed=0, skipped=0); external_post_id=2049385573526483196`
+- `2026-04-29 16:10 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:10 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:14 KST` `operator_external_x_observation` -> `passed` `operator confirmed visible result at https://x.com/aitoo1news after external_post_id=2049385573526483196`
+- `2026-04-29 16:14 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:14 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 17:34 KST` `scripts/scan_secrets.sh check` -> `passed` `no output after recording the Task 06 pause decision and refreshing the baseline line number metadata`
+- `2026-04-29 17:34 KST` `git diff --check` -> `passed` `no output after recording the Task 06 pause decision`
 
 ## Open Questions
-- `Which deployed Git revision should be treated as the production baseline before running the server-side healthcheck?`
-- `Should the operator proceed to Task 05 live approval now, or pause after the dry-run gate for additional review?`
+- `What production cleanup path should be used for stale placeholder-backed records: fresh DB baseline, reject/cancel stale drafts, or targeted replacement after backup?`
 
 ## Blockers
-- `Task 05 is not approved yet. Do not run any --live command until the operator gives explicit one-command approval for the X live publish using /opt/sns-content-engine/config.`
+- `The rollout is paused until active source data and persisted placeholder-backed records are audited and cleaned. Do not run a second --live command without source cleanup and a new explicit approval.`
 
 ## Follow-up
-- `Prepare the Task 05 approval summary from the passed Task 03 and Task 04 evidence, then wait for explicit operator approval before running exactly one --live command.`
+- `Proceed with Global Country News Phase 0 source cleanup before any Phase 1 country-news config or new live publish.`
+
+## Server Handoff For Database Open Failure
+Run these commands inside the production server shell to remove cwd, relative-DB, and shell-user permission ambiguity. This block is dry-run only and does not live-publish:
+
+```bash
+cd /opt/sns-content-engine
+pwd
+ls -ld /opt/sns-content-engine/data
+ls -l /opt/sns-content-engine/data/sns_content_engine.db*
+sudo -u sns-engine bash -lc 'cd /opt/sns-content-engine && ./.venv/bin/sns-engine healthcheck \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db'
+sudo -u sns-engine bash -lc 'cd /opt/sns-content-engine && ./.venv/bin/sns-engine scheduler publish-due \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db'
+```
+
+Only after the dry-run again reports exactly one due X job should a live retry be considered, and only after explicit approval for that exact command:
+
+```bash
+cd /opt/sns-content-engine
+sudo -u sns-engine bash -lc 'cd /opt/sns-content-engine && ./.venv/bin/sns-engine scheduler publish-due \
+  --config-dir /opt/sns-content-engine/config \
+  --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db \
+  --live'
+```
+
+## Server Handoff For Readonly SQLite Blocker
+Run this block inside the production server shell to inspect the effective user, DB URL, file ownership, and write access without printing secrets:
+
+```bash
+cd /opt/sns-content-engine
+printf 'effective_user='; id
+printf 'DATABASE_URL_NAME_PRESENT=%s\n' "$([ -n "${DATABASE_URL:-}" ] && echo yes || echo no)"
+./.venv/bin/python - <<'PY'
+from app.storage.database import resolve_database_url
+print("resolved_database_url=" + resolve_database_url())
+PY
+ls -ld /opt/sns-content-engine /opt/sns-content-engine/data
+ls -l /opt/sns-content-engine/data/sns_content_engine.db*
+sudo -u sns-engine test -w /opt/sns-content-engine/data && echo data_dir_writable_by_sns_engine=yes || echo data_dir_writable_by_sns_engine=no
+sudo -u sns-engine test -w /opt/sns-content-engine/data/sns_content_engine.db && echo db_writable_by_sns_engine=yes || echo db_writable_by_sns_engine=no
+```
+
+If the service account is `sns-engine` and the checks show `no`, repair ownership and restart the services:
+
+```bash
+cd /opt/sns-content-engine
+sudo chown -R sns-engine:sns-engine /opt/sns-content-engine/data
+sudo chmod 750 /opt/sns-content-engine/data
+sudo chmod 640 /opt/sns-content-engine/data/sns_content_engine.db
+sudo systemctl restart sns-web.service sns-scheduler.service
+```
+
+Then retry the non-live approval flow:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator
+./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+```
+
+## Server Handoff For Collection Restart
+Run this block only inside the production server shell. It repopulates the initialized DB from configured sources, generates drafts, and stops at manual review. It does not approve, schedule, or live-publish anything.
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine healthcheck --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine run-local --config-dir /opt/sns-content-engine/config
+./.venv/bin/sns-engine history runs --limit 3
+./.venv/bin/sns-engine history failures --limit 10
+./.venv/bin/sns-engine review list
+```
+
+After reviewing the listed drafts, pick one intended `channel: x` draft and approve plus schedule it for a due time:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine review approve DRAFT_ID --config-dir /opt/sns-content-engine/config --reviewer operator
+./.venv/bin/sns-engine review schedule DRAFT_ID --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+```
+
+Proceed toward live approval only if the final dry-run reports exactly one due job, `failed=0`, `skipped=0`, and `channel=x` for the intended account. Do not run `--live` from this handoff block.
 
 ## Server Handoff For Task 03
 Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
@@ -414,5 +616,5 @@ If the first live attempt failed or timed out, do not retry automatically. Recor
 ## Completion Summary
 - `Task 03 is complete based on operator-provided production evidence: required paths are present, rollout-summary is X-only and OpenAI-first, and healthcheck passed with zero failed checks.`
 - `Task 04 is complete based on operator-provided production evidence: Docker Caddy edge smoke, authenticated console, dry-run publish, overall single-server rollout smoke, and production secret scan all passed.`
-- `Task 05 remains pending, not started. The approval handoff records the evidence summary and explicit one-command approval boundary needed before any --live command can run.`
-- `Task 06 remains pending, not started. A Task 06 observation handoff now records the post-live evidence fields, read-only log commands, next-decision values, and no-automatic-retry boundary needed after exactly one approved live attempt.`
+- `Task 05 is complete based on operator-provided production evidence: one service-account X live publish succeeded for publish job 1 with external post id 2049385573526483196.`
+- `Task 06 is complete with external X visibility confirmed at https://x.com/aitoo1news and next decision pause until placeholder source cleanup is complete.`
