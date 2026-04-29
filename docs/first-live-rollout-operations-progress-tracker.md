@@ -27,12 +27,12 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
 - Active status: `blocked`
-- Last updated: `2026-04-29 15:13 KST`
+- Last updated: `2026-04-29 15:50 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Record Task 05 collection restart handoff`
-- Resume decision: `operator_requested_collection_after_zero_due_jobs`
-- Stop reason: `production_collection_must_run_on_server_context_not_local_workspace`
+- Latest task commit: `Record Task 05 readonly database blocker`
+- Resume decision: `operator_attempted_to_approve_and_schedule_draft_10`
+- Stop reason: `production_sqlite_database_is_readonly_for_cli_write_path`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -195,6 +195,10 @@ Status values:
 - `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` evidence: `blocked locally`; Typer rejected the missing config directory, so no production collection, DB write, draft generation, approval, scheduling, dry-run, or live command ran from this workspace.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after adding the collection restart handoff`.
 - `git diff --check` evidence: `passed with no output after adding the collection restart handoff`.
+- `2026-04-29 15:50 KST Task 05 draft approval attempt` evidence: operator attempted to approve draft `10` on the production server, but SQLite returned `OperationalError: attempt to write a readonly database` while updating `draft_variants`; the subsequent schedule attempt failed because draft `10` remained `pending_review` instead of `approved`.
+- `2026-04-29 15:50 KST Task 05 live command` evidence: `not_run`; approval and scheduling did not complete, so no due X publish job was created.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the readonly database blocker`.
+- `git diff --check` evidence: `passed with no output after recording the readonly database blocker`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -253,6 +257,7 @@ Status values:
 - `2026-04-29 15:05 KST` Received an operator request to execute Task `05`. Treated it as insufficient for the live side effect because it does not explicitly approve one X live publish using `/opt/sns-content-engine/config`, and the final dry-run due-job scope is still not recorded.
 - `2026-04-29 15:09 KST` Recorded operator-provided Task `05` production evidence. The server is on revision `ceef2c8`, rollout-summary and healthcheck are healthy, but dry-run found zero due jobs and no account/channel scope, so Task `05` remains blocked and no `--live` command should run.
 - `2026-04-29 15:13 KST` Confirmed the collection restart must happen inside the production server context. The local workspace cannot access `/opt/sns-content-engine/config`; added a server-side collection handoff below that starts with `run-local` and stops at pending review.
+- `2026-04-29 15:50 KST` Recorded the production write blocker from the draft `10` approval attempt. The DB is readable enough for healthcheck and review listing, but not writable for the current CLI user or SQLite directory state; fix file and directory ownership or permissions before retrying approval.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -374,15 +379,55 @@ Status values:
 - `2026-04-29 15:13 KST` `./.venv/bin/python -m app.cli run-local --config-dir /opt/sns-content-engine/config` -> `blocked` `local workspace does not have the production config directory`
 - `2026-04-29 15:13 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 15:13 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:50 KST` `./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator` -> `blocked` `SQLite write failed with OperationalError: attempt to write a readonly database`
+- `2026-04-29 15:50 KST` `./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator` -> `blocked` `draft 10 remained pending_review because approval failed`
+- `2026-04-29 15:50 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 15:50 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Should the operator create, approve, or schedule one intended X publish job, then rerun the Task 05 dry-run gate before considering live approval?`
 
 ## Blockers
-- `Task 05 is blocked because the latest production dry-run found zero due jobs. Do not run any --live command until exactly one intended X due job appears in dry-run output and the operator gives explicit approval for one X live publish using /opt/sns-content-engine/config.`
+- `Task 05 is blocked because the production SQLite database or parent data directory is not writable by the CLI write path. Do not run any --live command until draft approval, scheduling, and dry-run succeed with exactly one intended X due job.`
 
 ## Follow-up
-- `Create, approve, or schedule one operator-intended X publish job, rerun dry-run, confirm exactly one due job and account/channel scope, then request explicit approval before running exactly one --live command.`
+- `Fix production SQLite file and data-directory write permissions for the same service account used by web and scheduler, then retry approving and scheduling draft 10 before rerunning dry-run.`
+
+## Server Handoff For Readonly SQLite Blocker
+Run this block inside the production server shell to inspect the effective user, DB URL, file ownership, and write access without printing secrets:
+
+```bash
+cd /opt/sns-content-engine
+printf 'effective_user='; id
+printf 'DATABASE_URL_NAME_PRESENT=%s\n' "$([ -n "${DATABASE_URL:-}" ] && echo yes || echo no)"
+./.venv/bin/python - <<'PY'
+from app.storage.database import resolve_database_url
+print("resolved_database_url=" + resolve_database_url())
+PY
+ls -ld /opt/sns-content-engine /opt/sns-content-engine/data
+ls -l /opt/sns-content-engine/data/sns_content_engine.db*
+sudo -u sns-engine test -w /opt/sns-content-engine/data && echo data_dir_writable_by_sns_engine=yes || echo data_dir_writable_by_sns_engine=no
+sudo -u sns-engine test -w /opt/sns-content-engine/data/sns_content_engine.db && echo db_writable_by_sns_engine=yes || echo db_writable_by_sns_engine=no
+```
+
+If the service account is `sns-engine` and the checks show `no`, repair ownership and restart the services:
+
+```bash
+cd /opt/sns-content-engine
+sudo chown -R sns-engine:sns-engine /opt/sns-content-engine/data
+sudo chmod 750 /opt/sns-content-engine/data
+sudo chmod 640 /opt/sns-content-engine/data/sns_content_engine.db
+sudo systemctl restart sns-web.service sns-scheduler.service
+```
+
+Then retry the non-live approval flow:
+
+```bash
+cd /opt/sns-content-engine
+./.venv/bin/sns-engine review approve 10 --config-dir /opt/sns-content-engine/config --reviewer operator
+./.venv/bin/sns-engine review schedule 10 --config-dir /opt/sns-content-engine/config --scheduled-for "$(date -u -Iseconds)" --reviewer operator
+./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config
+```
 
 ## Server Handoff For Collection Restart
 Run this block only inside the production server shell. It repopulates the initialized DB from configured sources, generates drafts, and stops at manual review. It does not approve, schedule, or live-publish anything.
