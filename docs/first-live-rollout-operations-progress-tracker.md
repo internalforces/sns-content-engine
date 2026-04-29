@@ -26,13 +26,13 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `06_capture_post_publish_observation_and_next_decision`
-- Active status: `pending`
-- Last updated: `2026-04-29 16:10 KST`
+- Active status: `blocked`
+- Last updated: `2026-04-29 16:14 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
-- Latest task commit: `Record Task 05 live publish success`
-- Resume decision: `operator_reran_task_05_as_sns_engine_service_account`
-- Stop reason: `waiting_for_task_06_external_x_observation_and_next_decision`
+- Latest task commit: `Record Task 06 external X confirmation`
+- Resume decision: `operator_confirmed_external_x_visibility`
+- Stop reason: `waiting_for_task_06_next_operating_decision`
 
 ## Scope For Current Task
 - Goal: `Capture post-publish evidence, external X observation, and the next operating decision after the first live X publish.`
@@ -65,7 +65,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - Publish job: `1`
 - Account and channel: `ai_tools_daily/x`
 - External post id: `2049385573526483196`
-- External X visibility: `pending_operator_confirmation`
+- External X visibility: `confirmed_by_operator`
+- External X URL: `https://x.com/aitoo1news`
 - Next decision: `pending`
 - Retry boundary: `no second live command without new explicit approval`
 
@@ -78,7 +79,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
 | M3 | 05 | Execute One Approved X Live Publish | done | 2026-04-29 16:10 KST | Service-account live publish succeeded for publish job `1`, account `ai_tools_daily`, channel `x`, external post id `2049385573526483196`; no second live command is allowed without new approval |
-| M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-29 16:10 KST | Waiting for operator-visible X confirmation and continue, pause, retry_later, rollback_server_state, or hold_for_investigation decision |
+| M3 | 06 | Capture Post-Publish Observation And Next Decision | blocked | 2026-04-29 16:14 KST | External X visibility confirmed by the operator at `https://x.com/aitoo1news`; waiting for continue, pause, retry_later, rollback_server_state, or hold_for_investigation decision |
 
 Status values:
 - `pending`
@@ -226,6 +227,9 @@ Status values:
 - `2026-04-29 16:10 KST Task 05 service-account live publish` evidence: operator ran `scheduler publish-due --live` as `sns-engine`; it reported `status=published`, `publish_job_id=1`, `account_key=ai_tools_daily`, `channel=x`, `attempt_count=1`, `provider=x`, `external_post_id=2049385573526483196`, and `processed due jobs: 1 (published=1, failed=0, skipped=0)`.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 live publish success`.
 - `git diff --check` evidence: `passed with no output after recording the Task 05 live publish success`.
+- `2026-04-29 16:14 KST Task 06 external X observation` evidence: operator confirmed the live result is visible at `https://x.com/aitoo1news` after publish job `1` reported external post id `2049385573526483196`; the next operating decision is still pending.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
+- `git diff --check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -289,6 +293,8 @@ Status values:
 - `2026-04-29 16:03 KST` Recorded an operator-provided `publish_due` database-open failure. Treat the next publish attempt as blocked until the server command is rerun from `/opt/sns-content-engine` with the explicit production `--database-url`, and until live intent is explicitly reconfirmed if the failed command included `--live`.
 - `2026-04-29 16:05 KST` Recorded explicit database-url healthcheck, dry-run, and live-attempt failures from the server. The current shell user `myeonggwan` cannot open the production SQLite DB; subsequent checks and any live attempt must run under the service account that owns the DB, or permissions must be changed intentionally before retry.
 - `2026-04-29 16:10 KST` Recorded the successful service-account live publish. Task `05` is complete: exactly one X publish job was processed, it published successfully with external post id `2049385573526483196`, and no second live command should run without a separate approval.
+- `2026-04-29 16:14 KST` Recorded operator-confirmed external X visibility at `https://x.com/aitoo1news`. Task `06` is blocked only on the next operating decision: continue, pause, retry_later, rollback_server_state, or hold_for_investigation.
+- `2026-04-29 16:14 KST` Verified the Task `06` tracker update with the checked-in secret scan and diff whitespace check.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -432,16 +438,18 @@ Status values:
 - `2026-04-29 16:10 KST` `sudo -u sns-engine ... scheduler publish-due --database-url sqlite:////opt/sns-content-engine/data/sns_content_engine.db --live` -> `passed` `processed due jobs: 1 (published=1, failed=0, skipped=0); external_post_id=2049385573526483196`
 - `2026-04-29 16:10 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 16:10 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:14 KST` `operator_external_x_observation` -> `passed` `operator confirmed visible result at https://x.com/aitoo1news after external_post_id=2049385573526483196`
+- `2026-04-29 16:14 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 16:14 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
-- `Can the operator confirm the external X post is visible for external_post_id=2049385573526483196 and provide the post URL if available?`
 - `Should the next operating decision be continue, pause, retry_later, rollback_server_state, or hold_for_investigation?`
 
 ## Blockers
-- `Task 06 is waiting for external X visibility confirmation and the next operating decision. Do not run a second --live command without a new explicit approval.`
+- `Task 06 is waiting for the next operating decision. Do not run a second --live command without a new explicit approval.`
 
 ## Follow-up
-- `Confirm the X post for external_post_id=2049385573526483196, record the URL when available, inspect logs only if needed, and choose continue, pause, retry_later, rollback_server_state, or hold_for_investigation.`
+- `Choose continue, pause, retry_later, rollback_server_state, or hold_for_investigation now that the X result is externally visible.`
 
 ## Server Handoff For Database Open Failure
 Run these commands inside the production server shell to remove cwd, relative-DB, and shell-user permission ambiguity. This block is dry-run only and does not live-publish:
@@ -603,5 +611,5 @@ If the first live attempt failed or timed out, do not retry automatically. Recor
 ## Completion Summary
 - `Task 03 is complete based on operator-provided production evidence: required paths are present, rollout-summary is X-only and OpenAI-first, and healthcheck passed with zero failed checks.`
 - `Task 04 is complete based on operator-provided production evidence: Docker Caddy edge smoke, authenticated console, dry-run publish, overall single-server rollout smoke, and production secret scan all passed.`
-- `Task 05 remains pending, not started. The approval handoff records the evidence summary and explicit one-command approval boundary needed before any --live command can run.`
-- `Task 06 remains pending, not started. A Task 06 observation handoff now records the post-live evidence fields, read-only log commands, next-decision values, and no-automatic-retry boundary needed after exactly one approved live attempt.`
+- `Task 05 is complete based on operator-provided production evidence: one service-account X live publish succeeded for publish job 1 with external post id 2049385573526483196.`
+- `Task 06 has external X visibility confirmed at https://x.com/aitoo1news and is blocked only on the next operating decision.`
