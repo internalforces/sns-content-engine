@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import sqlite3
@@ -15,7 +16,13 @@ from urllib.parse import urlparse
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, make_url
 
-from app.config import ConfigRegistry, RssSourceConfig, SitemapSourceConfig, load_providers_config
+from app.config import (
+    ConfigRegistry,
+    ManualCsvSourceConfig,
+    RssSourceConfig,
+    SitemapSourceConfig,
+    load_providers_config,
+)
 from app.storage import ensure_database_schema_is_current, resolve_database_url
 
 _OPERATIONS_LOGGER_NAME = "sns_engine.operations"
@@ -604,14 +611,70 @@ def _collect_placeholder_url_fields(registry: ConfigRegistry) -> tuple[str, ...]
             )
 
     for source_key, source in registry.sources.items():
+        for index, prefix in enumerate(source.include_url_prefixes):
+            _append_placeholder_url_field(
+                placeholder_fields,
+                field_path=f"sources.{source_key}.include_url_prefixes.{index}",
+                url_value=str(prefix),
+            )
         if isinstance(source, (RssSourceConfig, SitemapSourceConfig)):
             _append_placeholder_url_field(
                 placeholder_fields,
                 field_path=f"sources.{source_key}.url",
                 url_value=str(source.url),
             )
+        if isinstance(source, ManualCsvSourceConfig):
+            placeholder_fields.extend(
+                _collect_manual_csv_placeholder_url_fields(
+                    source_key=source_key,
+                    csv_path=source.path,
+                )
+            )
 
     return tuple(placeholder_fields)
+
+
+def _collect_manual_csv_placeholder_url_fields(
+    *,
+    source_key: str,
+    csv_path: Path,
+) -> tuple[str, ...]:
+    placeholder_fields: list[str] = []
+
+    try:
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames is None:
+                return tuple()
+
+            for row_number, row in enumerate(reader, start=2):
+                url_value = _lookup_manual_csv_url(row)
+                if url_value is None:
+                    continue
+                _append_placeholder_url_field(
+                    placeholder_fields,
+                    field_path=f"sources.{source_key}.csv.row_{row_number}.url",
+                    url_value=url_value,
+                )
+    except (csv.Error, OSError, UnicodeDecodeError):
+        return tuple()
+
+    return tuple(placeholder_fields)
+
+
+def _lookup_manual_csv_url(row: dict[str | None, str | None]) -> str | None:
+    normalized_row: dict[str, str | None] = {}
+    for key, value in row.items():
+        if key is None:
+            continue
+        normalized_key = key.strip().lower()
+        normalized_row[normalized_key] = value.strip() if value is not None else None
+
+    for key in ("url", "source_url", "link"):
+        value = normalized_row.get(key)
+        if value:
+            return value
+    return None
 
 
 def _append_placeholder_url_field(

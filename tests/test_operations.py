@@ -54,6 +54,40 @@ def test_run_healthcheck_flags_placeholder_urls_in_working_config(tmp_path: Path
     assert "sources.ai_tools_rss.url (example.com)" in readiness_check.message
 
 
+def test_run_healthcheck_flags_placeholder_urls_in_manual_csv(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    _write_file(
+        tmp_path / "manual.csv",
+        """
+        external_id,url,title
+        manual-1,https://example.com/manual/one,Placeholder manual source
+        """,
+    )
+    _write_file(
+        tmp_path / "sources.yaml",
+        """
+        sources:
+          ai_tools_manual:
+            type: manual_csv
+            path: manual.csv
+
+        source_sets:
+          ai_tools_primary:
+            sources:
+              - ai_tools_manual
+        """,
+    )
+    database_url = _initialize_database(tmp_path / "placeholder-manual-csv.db")
+
+    result = run_healthcheck(config_dir=tmp_path, database_url=database_url)
+
+    assert result.status == "failed"
+    readiness_check = next(check for check in result.checks if check.name == "config_readiness")
+    assert readiness_check.status == "failed"
+    assert "placeholder URLs detected" in readiness_check.message
+    assert "sources.ai_tools_manual.csv.row_2.url (example.com)" in readiness_check.message
+
+
 def _initialize_database(path: Path) -> str:
     database_url = f"sqlite+pysqlite:///{path}"
     engine = create_database_engine(database_url)

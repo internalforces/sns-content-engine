@@ -26,13 +26,13 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `06_capture_post_publish_observation_and_next_decision`
-- Active status: `blocked`
-- Last updated: `2026-04-29 16:14 KST`
+- Active status: `done`
+- Last updated: `2026-04-29 17:30 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `Record Task 06 external X confirmation`
-- Resume decision: `operator_confirmed_external_x_visibility`
-- Stop reason: `waiting_for_task_06_next_operating_decision`
+- Resume decision: `phase_0_source_cleanup_pause`
+- Stop reason: `rollout_paused_until_placeholder_sources_are_cleaned`
 
 ## Scope For Current Task
 - Goal: `Capture post-publish evidence, external X observation, and the next operating decision after the first live X publish.`
@@ -67,7 +67,8 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 - External post id: `2049385573526483196`
 - External X visibility: `confirmed_by_operator`
 - External X URL: `https://x.com/aitoo1news`
-- Next decision: `pending`
+- Next decision: `pause`
+- Pause reason: `published URL came from active manual CSV sample data using example.com; source cleanup must complete before another live run`
 - Retry boundary: `no second live command without new explicit approval`
 
 ## Roadmap Status
@@ -79,7 +80,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
 | M3 | 05 | Execute One Approved X Live Publish | done | 2026-04-29 16:10 KST | Service-account live publish succeeded for publish job `1`, account `ai_tools_daily`, channel `x`, external post id `2049385573526483196`; no second live command is allowed without new approval |
-| M3 | 06 | Capture Post-Publish Observation And Next Decision | blocked | 2026-04-29 16:14 KST | External X visibility confirmed by the operator at `https://x.com/aitoo1news`; waiting for continue, pause, retry_later, rollback_server_state, or hold_for_investigation decision |
+| M3 | 06 | Capture Post-Publish Observation And Next Decision | done | 2026-04-29 17:30 KST | External X visibility confirmed by the operator at `https://x.com/aitoo1news`; next decision is `pause` until placeholder source cleanup is complete |
 
 Status values:
 - `pending`
@@ -230,6 +231,7 @@ Status values:
 - `2026-04-29 16:14 KST Task 06 external X observation` evidence: operator confirmed the live result is visible at `https://x.com/aitoo1news` after publish job `1` reported external post id `2049385573526483196`; the next operating decision is still pending.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
 - `git diff --check` evidence: `passed with no output after recording the Task 06 external X confirmation`.
+- `2026-04-29 17:30 KST Task 06 operating decision` evidence: recorded the next decision as `pause` because the successful X publish used placeholder-backed manual CSV source data; no second live command should run until source cleanup passes.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -295,6 +297,7 @@ Status values:
 - `2026-04-29 16:10 KST` Recorded the successful service-account live publish. Task `05` is complete: exactly one X publish job was processed, it published successfully with external post id `2049385573526483196`, and no second live command should run without a separate approval.
 - `2026-04-29 16:14 KST` Recorded operator-confirmed external X visibility at `https://x.com/aitoo1news`. Task `06` is blocked only on the next operating decision: continue, pause, retry_later, rollback_server_state, or hold_for_investigation.
 - `2026-04-29 16:14 KST` Verified the Task `06` tracker update with the checked-in secret scan and diff whitespace check.
+- `2026-04-29 17:30 KST` Closed Task `06` with next decision `pause`: the publisher path succeeded, but the content-source baseline is blocked by active `example.com` manual CSV URLs.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -441,15 +444,17 @@ Status values:
 - `2026-04-29 16:14 KST` `operator_external_x_observation` -> `passed` `operator confirmed visible result at https://x.com/aitoo1news after external_post_id=2049385573526483196`
 - `2026-04-29 16:14 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-29 16:14 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 17:34 KST` `scripts/scan_secrets.sh check` -> `passed` `no output after recording the Task 06 pause decision and refreshing the baseline line number metadata`
+- `2026-04-29 17:34 KST` `git diff --check` -> `passed` `no output after recording the Task 06 pause decision`
 
 ## Open Questions
-- `Should the next operating decision be continue, pause, retry_later, rollback_server_state, or hold_for_investigation?`
+- `What production cleanup path should be used for stale placeholder-backed records: fresh DB baseline, reject/cancel stale drafts, or targeted replacement after backup?`
 
 ## Blockers
-- `Task 06 is waiting for the next operating decision. Do not run a second --live command without a new explicit approval.`
+- `The rollout is paused until active source data and persisted placeholder-backed records are audited and cleaned. Do not run a second --live command without source cleanup and a new explicit approval.`
 
 ## Follow-up
-- `Choose continue, pause, retry_later, rollback_server_state, or hold_for_investigation now that the X result is externally visible.`
+- `Proceed with Global Country News Phase 0 source cleanup before any Phase 1 country-news config or new live publish.`
 
 ## Server Handoff For Database Open Failure
 Run these commands inside the production server shell to remove cwd, relative-DB, and shell-user permission ambiguity. This block is dry-run only and does not live-publish:
@@ -612,4 +617,4 @@ If the first live attempt failed or timed out, do not retry automatically. Recor
 - `Task 03 is complete based on operator-provided production evidence: required paths are present, rollout-summary is X-only and OpenAI-first, and healthcheck passed with zero failed checks.`
 - `Task 04 is complete based on operator-provided production evidence: Docker Caddy edge smoke, authenticated console, dry-run publish, overall single-server rollout smoke, and production secret scan all passed.`
 - `Task 05 is complete based on operator-provided production evidence: one service-account X live publish succeeded for publish job 1 with external post id 2049385573526483196.`
-- `Task 06 has external X visibility confirmed at https://x.com/aitoo1news and is blocked only on the next operating decision.`
+- `Task 06 is complete with external X visibility confirmed at https://x.com/aitoo1news and next decision pause until placeholder source cleanup is complete.`
