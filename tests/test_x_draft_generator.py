@@ -120,7 +120,7 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
     generator = XDraftGenerator(provider)
 
     variants = generator.generate(
-        content_brief=_build_content_brief(),
+        content_brief=_build_content_brief(require_attribution=True),
         account_key="ai_tools_daily",
         account=_build_account_config(max_chars=120),
         prompt_profile=PromptProfileConfig(
@@ -137,8 +137,8 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
     )
 
     assert variants == (
-        "First X draft https://example.com/articles/1",
-        "Second X draft https://example.com/articles/1",
+        "First X draft Source: Finance Feed https://example.com/articles/1",
+        "Second X draft Source: Finance Feed https://example.com/articles/1",
     )
     assert provider.request is not None
     assert (
@@ -154,6 +154,88 @@ def test_x_draft_generator_renders_prompt_context_before_calling_provider() -> N
     assert "Do not give investment advice" in provider.request.system_prompt
     assert "Avoid language that sounds like financial advice." in provider.request.user_prompt
     assert provider.request.max_chars == 120
+
+
+def test_x_draft_generator_adds_required_source_attribution_to_x_variants() -> None:
+    provider = _CapturingProvider(
+        (
+            "First X draft https://example.com/articles/1",
+            "Second X draft https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(require_attribution=True),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=120),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert variants == (
+        "First X draft Source: Finance Feed https://example.com/articles/1",
+        "Second X draft Source: Finance Feed https://example.com/articles/1",
+    )
+    assert all(variant.count("https://example.com/articles/1") == 1 for variant in variants)
+    assert all(len(variant) <= 120 for variant in variants)
+
+
+def test_x_draft_generator_preserves_required_attribution_when_shortening_x_variants() -> None:
+    long_context = " ".join(["Korea policy update for global readers"] * 8)
+    provider = _CapturingProvider(
+        (
+            f"{long_context} https://example.com/articles/1",
+            f"Second angle: {long_context} https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(require_attribution=True),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=110),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert len(variants) == 2
+    assert all("Source: Finance Feed" in variant for variant in variants)
+    assert all(variant.count("https://example.com/articles/1") == 1 for variant in variants)
+    assert all(variant.endswith("https://example.com/articles/1") for variant in variants)
+    assert all(len(variant) <= 110 for variant in variants)
+
+
+def test_x_draft_generator_deduplicates_existing_attribution_when_shortening_x_variants() -> None:
+    long_context = " ".join(["Japan wage policy update for global readers"] * 8)
+    provider = _CapturingProvider(
+        (
+            f"According to Source: Finance Feed, {long_context} https://example.com/articles/1",
+            f"Per Finance Feed, second angle: {long_context} https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(require_attribution=True),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=120),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert all(variant.count("Source: Finance Feed") == 1 for variant in variants)
+    assert all(variant.count("https://example.com/articles/1") == 1 for variant in variants)
+    assert all(len(variant) <= 120 for variant in variants)
 
 
 def test_x_draft_generator_includes_domain_sensitivity_context_for_high_risk_topics() -> None:
@@ -597,6 +679,7 @@ def _build_content_brief(
     summary: str = "A concise guide for operators.",
     landing_url: str = "https://gilgop.cloud/ai-tools",
     tags: tuple[str, ...] = ("ai", "automation"),
+    require_attribution: bool = False,
 ) -> ContentBrief:
     source_item = SourceItem(
         id=1,
@@ -606,7 +689,7 @@ def _build_content_brief(
         title=title,
         summary=summary,
         policy_mode=SourcePolicyMode.RESTRICTED,
-        require_attribution=True,
+        require_attribution=require_attribution,
     )
     source_item.article_enrichment = ArticleEnrichment(
         source_item_id=1,

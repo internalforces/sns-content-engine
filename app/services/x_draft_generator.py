@@ -6,10 +6,12 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from app.config import AccountConfig, PromptProfileConfig
 from app.connectors.llm import DraftGenerationProvider, DraftGenerationRequest
 from app.services.prompt_renderer import PromptRenderer, build_domain_sensitivity
+from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls
 from app.storage import ContentBrief, SourcePolicyMode
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -49,6 +51,14 @@ class DraftProvenanceSnapshot:
     article_url: str | None
     published_at: datetime | None
     policy_mode: SourcePolicyMode | None
+
+
+@dataclass(frozen=True, slots=True)
+class RequiredSourceAttribution:
+    """Compact attribution that generated restricted-source drafts must retain."""
+
+    label: str
+    candidates: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +113,7 @@ class XDraftGenerator:
             max_chars=channel_config.render.max_chars,
             draft_link_url=draft_link_url,
         )
+        required_attribution = _build_required_source_attribution(content_brief)
         rendered_prompt = self._prompt_renderer.render(
             prompt_profile,
             context=render_context,
@@ -130,7 +141,11 @@ class XDraftGenerator:
         )
         variants = self._llm_provider.generate_variants(request)
         try:
-            return _validate_variants(variants, request=request)
+            return _validate_variants(
+                variants,
+                request=request,
+                required_attribution=required_attribution,
+            )
         except DraftGenerationError as error:
             if channel not in _STRUCTURED_CHANNELS:
                 raise
@@ -140,7 +155,11 @@ class XDraftGenerator:
                 failure_message=str(error),
             )
             retry_variants = self._llm_provider.generate_variants(retry_request)
-            return _validate_variants(retry_variants, request=retry_request)
+            return _validate_variants(
+                retry_variants,
+                request=retry_request,
+                required_attribution=required_attribution,
+            )
 
 
 def _build_render_context(
@@ -153,6 +172,7 @@ def _build_render_context(
     draft_link_url: str,
 ) -> Mapping[str, object]:
     provenance = build_draft_provenance_snapshot(content_brief)
+    source_attribution = _build_source_attribution_label(provenance)
     sensitivity = build_domain_sensitivity(
         title=content_brief.title,
         summary=content_brief.summary,
@@ -177,6 +197,8 @@ def _build_render_context(
         "article_url": provenance.article_url,
         "original_source_url": provenance.source_url,
         "source_name": provenance.source_name,
+        "source_hostname": _source_hostname(provenance),
+        "source_attribution": source_attribution,
         "article_summary": _article_summary(content_brief),
         "policy_mode": provenance.policy_mode.value if provenance.policy_mode is not None else None,
         "require_attribution": _require_attribution(content_brief),
@@ -426,10 +448,80 @@ def _require_attribution(content_brief: ContentBrief) -> bool:
     return source_item.require_attribution
 
 
+def _build_required_source_attribution(
+    content_brief: ContentBrief,
+) -> RequiredSourceAttribution | None:
+    if not _require_attribution(content_brief):
+        return None
+
+    provenance = build_draft_provenance_snapshot(content_brief)
+    label = _build_source_attribution_label(provenance)
+    candidates = _build_source_attribution_candidates(provenance)
+    if label is None or not candidates:
+        return None
+
+    return RequiredSourceAttribution(label=label, candidates=candidates)
+
+
+def _build_source_attribution_label(provenance: DraftProvenanceSnapshot) -> str | None:
+    source_name = _clean_attribution_candidate(provenance.source_name)
+    hostname = _source_hostname(provenance)
+
+    if source_name and _looks_like_human_source_name(source_name) and len(source_name) <= 36:
+        return source_name
+
+    return hostname or source_name
+
+
+def _build_source_attribution_candidates(
+    provenance: DraftProvenanceSnapshot,
+) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for candidate in (
+        provenance.source_name,
+        _extract_hostname(provenance.article_url),
+        _extract_hostname(provenance.source_url),
+        _build_source_attribution_label(provenance),
+    ):
+        cleaned = _clean_attribution_candidate(candidate)
+        if cleaned:
+            candidates.append(cleaned)
+
+    return tuple(dict.fromkeys(candidates))
+
+
+def _clean_attribution_candidate(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = _normalize_body(value)
+    return cleaned or None
+
+
+def _looks_like_human_source_name(value: str) -> bool:
+    return not ("_" in value and " " not in value)
+
+
+def _source_hostname(provenance: DraftProvenanceSnapshot) -> str | None:
+    return _extract_hostname(provenance.article_url) or _extract_hostname(provenance.source_url)
+
+
+def _extract_hostname(url: str | None) -> str | None:
+    if not url:
+        return None
+
+    parsed = urlsplit(url)
+    hostname = parsed.hostname.casefold() if parsed.hostname else ""
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname or None
+
+
 def _validate_variants(
     variants: tuple[str, ...],
     *,
     request: DraftGenerationRequest,
+    required_attribution: RequiredSourceAttribution | None = None,
 ) -> tuple[str, ...]:
     if len(variants) != request.variant_count:
         raise DraftGenerationError(
@@ -446,10 +538,11 @@ def _validate_variants(
         if _channel_uses_compaction(request.channel):
             if request.landing_url not in normalized:
                 raise DraftGenerationError(f"variant {index} is missing the landing URL")
-            normalized = _coerce_variant_to_fit(
+            normalized = _coerce_x_variant_to_fit(
                 normalized,
                 landing_url=request.landing_url,
                 max_chars=request.max_chars,
+                required_attribution=required_attribution,
             )
         elif request.channel in _STRUCTURED_CHANNELS:
             normalized = _coerce_structured_variant_to_fit(
@@ -496,6 +589,25 @@ def _normalize_variant_body(value: str, *, channel: str) -> str:
     return _LINE_BREAK_RE.sub("\n\n", "\n".join(normalized_lines)).strip()
 
 
+def _coerce_x_variant_to_fit(
+    value: str,
+    *,
+    landing_url: str,
+    max_chars: int,
+    required_attribution: RequiredSourceAttribution | None,
+) -> str:
+    normalized = _normalize_body(value)
+    if required_attribution is not None:
+        return _coerce_x_variant_with_required_attribution(
+            normalized,
+            landing_url=landing_url,
+            max_chars=max_chars,
+            required_attribution=required_attribution,
+        )
+
+    return _coerce_variant_to_fit(normalized, landing_url=landing_url, max_chars=max_chars)
+
+
 def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> str:
     normalized = _normalize_body(value)
     if len(normalized) <= max_chars:
@@ -507,6 +619,94 @@ def _coerce_variant_to_fit(value: str, *, landing_url: str, max_chars: int) -> s
         max_chars=max_chars,
     )
     return _normalize_body(shortened)
+
+
+def _coerce_x_variant_with_required_attribution(
+    value: str,
+    *,
+    landing_url: str,
+    max_chars: int,
+    required_attribution: RequiredSourceAttribution,
+) -> str:
+    attribution_text = _format_source_attribution(required_attribution.label)
+    if _contains_source_attribution(value, required_attribution):
+        if len(value) <= max_chars:
+            return value
+        supporting_text = _strip_attribution_cues(
+            value.replace(landing_url, " "),
+            required_attribution=required_attribution,
+        )
+    else:
+        supporting_text = value.replace(landing_url, " ")
+
+    return _fit_text_with_attribution_and_url(
+        text=supporting_text,
+        attribution_text=attribution_text,
+        landing_url=landing_url,
+        max_chars=max_chars,
+    )
+
+
+def _contains_source_attribution(
+    value: str,
+    required_attribution: RequiredSourceAttribution,
+) -> bool:
+    normalized_text = normalize_match_text(strip_urls(value))
+    return any(
+        contains_phrase(candidate, normalized_text)
+        for candidate in required_attribution.candidates
+    )
+
+
+def _format_source_attribution(label: str) -> str:
+    return f"Source: {label}"
+
+
+def _strip_attribution_cues(
+    value: str,
+    *,
+    required_attribution: RequiredSourceAttribution,
+) -> str:
+    cleaned = value
+    labels = (required_attribution.label, *required_attribution.candidates)
+
+    for label in dict.fromkeys(labels):
+        escaped_label = re.escape(label)
+        for pattern in (
+            rf"\b(?:according to|per|via|from)\s+Source:\s*{escaped_label}\b\.?",
+            rf"\bSource:\s*{escaped_label}\b\.?",
+            rf"\b(?:according to|per|via|from)\s+{escaped_label}\b\.?",
+        ):
+            cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    return _normalize_body(cleaned)
+
+
+def _fit_text_with_attribution_and_url(
+    *,
+    text: str,
+    attribution_text: str,
+    landing_url: str,
+    max_chars: int,
+) -> str:
+    suffix = f"{attribution_text} {landing_url}"
+    available = max_chars - len(suffix)
+    if available < 0:
+        return suffix
+
+    normalized_text = _normalize_body(text)
+    if not normalized_text:
+        return suffix
+
+    supporting_limit = max(available - 1, 0)
+    if supporting_limit == 0:
+        return suffix
+
+    shortened_text = _shorten_text(normalized_text, limit=supporting_limit)
+    if not shortened_text:
+        return suffix
+
+    return f"{shortened_text} {suffix}".strip()
 
 
 def _coerce_structured_variant_to_fit(

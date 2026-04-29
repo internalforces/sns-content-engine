@@ -12,25 +12,25 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 - `docs/global-country-news-phase-1-country-news-mvp-progress-tracker.md`
 
 ## Current Status
-- Current milestone: `M0_smoke_followup`
-- Current task: `00_attribution_generation_hardening`
-- Active status: `pending`
-- Last updated: `2026-04-29 19:48 KST`
+- Current milestone: `M1_source_quality`
+- Current task: `02_category_and_matching_tuning`
+- Active status: `in_progress`
+- Last updated: `2026-04-29 22:43 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `pending`
-- Resume decision: `start_attribution_generation_hardening`
-- Stop reason: `phase_1_korea_x_live_smoke_succeeded_but_manual_attribution_edit_was_required`
+- Resume decision: `continue_category_coverage_review_after_source_health_baseline`
+- Stop reason: `task_01_done_task_02_matching_false_positive_fix_started`
 
 ## Scope For Current Task
-- Goal: `Harden restricted-source draft generation so source attribution is present before scheduling without routine manual edits.`
-- In scope: `attribution prompt/generator behavior, X max-char preservation, required URL preservation, validation tests, isolated DB dry-run evidence`
+- Goal: `Continue source-quality hardening by reducing low-value matches while preserving broad Korea/Japan coverage.`
+- In scope: `source health observations, source priority notes, account matching keyword tuning, weak topic-only match reduction, focused regression tests`
 - Out of scope: `blog publishing, channel funnel, live publish automation`
-- Dependencies: `Phase 1 config, production cleanup gate, Korea X live smoke evidence`
+- Dependencies: `Phase 1 config, Task 00 attribution generation hardening, 2026-04-29 live RSS discovery evidence`
 - Verification commands:
-  - `./.venv/bin/pytest tests/test_x_draft_generator.py tests/test_draft_validation.py tests/test_review_queue_workflow.py -q`
-  - `./.venv/bin/python -m app.cli run-local --config-dir config/global_country_news --database-url sqlite:///data/global_country_news_quality.db`
-  - `./.venv/bin/python -m app.cli review list --database-url sqlite:///data/global_country_news_quality.db`
+  - `./.venv/bin/python -m app.cli discover --config-dir config/global_country_news`
+  - `./.venv/bin/pytest tests/test_account_matching.py tests/test_config.py -q`
+  - `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py tests/test_account_matching.py tests/test_config.py -q`
   - `scripts/scan_secrets.sh check`
   - `git diff --check`
 
@@ -42,9 +42,9 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 ## Roadmap Status
 | Milestone | Task | Name | Status | Last update | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M0 | 00 | Attribution Generation Hardening | pending | 2026-04-29 19:48 KST | First Korea X schedule gate required a manual `Source: koreaherald.com` edit; generation should include required attribution by default |
-| M1 | 01 | Source Health And Priority Review | pending | 2026-04-29 19:48 KST | Start after attribution generation no longer forces routine manual edits |
-| M1 | 02 | Category And Matching Tuning | pending | 2026-04-29 16:50 KST | Keep broad country coverage balanced |
+| M0 | 00 | Attribution Generation Hardening | done | 2026-04-29 20:09 KST | X generation now preserves/appends compact `Source: ...` attribution for `require_attribution=true` drafts while keeping the required URL and character limit |
+| M1 | 01 | Source Health And Priority Review | done | 2026-04-29 22:41 KST | Live discovery found all 5 RSS sources healthy; priority and monitoring notes recorded in `config/global_country_news/sources.yaml` |
+| M1 | 02 | Category And Matching Tuning | in_progress | 2026-04-29 22:43 KST | Started by removing audience-word topic matches and narrowing Korea `president` matching to Korea-specific phrases; focused and broader regression checks passed |
 | M2 | 03 | Sensitive Topic Guardrails | pending | 2026-04-29 16:50 KST | Politics, security, legal, disaster, health, finance |
 | M2 | 04 | Cadence And Workload Tuning | pending | 2026-04-29 16:50 KST | Tune backlog and schedules for human review |
 | M2 | 05 | Operator Quality Checklist | pending | 2026-04-29 16:50 KST | Review checklist before live publishing |
@@ -56,10 +56,26 @@ Status values:
 - `done`
 
 ## Changed Files For Active Task
-- `docs/global-country-news-phase-1-5-quality-hardening-roadmap.md`
-- `docs/global-country-news-phase-1-5-quality-hardening-execution-guide.md`
-- `docs/global-country-news-phase-1-5-quality-hardening-vibe-coding-prompt.md`
+- `.secrets.baseline`
+- `app/services/x_draft_generator.py`
+- `app/services/topic_matching.py`
+- `config/global_country_news/accounts.yaml`
+- `config/global_country_news/prompts.yaml`
+- `config/global_country_news/sources.yaml`
+- `tests/test_account_matching.py`
+- `tests/test_x_draft_generator.py`
 - `docs/global-country-news-phase-1-5-quality-hardening-progress-tracker.md`
+
+## Source Health Decisions
+| Source | Decision | 2026-04-29 evidence | Follow-up |
+| --- | --- | --- | --- |
+| `korea_kbs_world_latest` | `primary` | 30 current items, useful politics/economy/domestic tags, no failures | Keep; use as high-signal Korea baseline |
+| `korea_yonhap_english` | `secondary_wire` | 92 current items, no failures, some repeated summary/title groups and overlap with Korea Herald | Keep but monitor volume and duplicate-heavy wire updates |
+| `korea_herald_all_news` | `primary_secondary` | 50 current all-news items, no failures, useful business/culture/public-interest coverage, title overlap with Yonhap | Keep; watch overlap before scheduling |
+| `japan_japan_times_latest` | `primary_with_matching` | 30 current items, no failures, useful tags but includes world/sports coverage | Keep; rely on matching to retain Japan-specific stories |
+| `japan_japan_today_atom` | `secondary_with_matching` | 30 current items, no failures, Atom categories unavailable and world/sports items mixed in | Keep; rely on matching and review sampling |
+
+No source was disabled in this pass because all feeds were live and reusable with review-led matching. Pruning remains open if repeated runs show persistent low-value drafts.
 
 ## Progress Log
 - `2026-04-29 16:50 KST` Initialized Phase 1.5 planning documents from the country-news quality hardening plan.
@@ -68,6 +84,17 @@ Status values:
 - `2026-04-29 19:43 KST` Korea X draft `200` passed after an operator edit added `Source: koreaherald.com` plus the real Korea Herald URL; dry-run processed exactly one due job.
 - `2026-04-29 19:45 KST` Controlled Korea X live smoke succeeded through `X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS`, external_post_id `2049439510929580197`.
 - `2026-04-29 19:48 KST` Reframed Phase 1.5 first task to attribution generation hardening before broader source quality and cadence work.
+- `2026-04-29 20:00 KST` Implemented restricted-source X attribution post-processing in `XDraftGenerator`; generated X drafts now append or preserve a compact `Source: ...` cue before the required article URL when `require_attribution=true`.
+- `2026-04-29 20:00 KST` Updated the global country news prompt to explicitly reserve X attribution room before the URL.
+- `2026-04-29 20:06 KST` Initialized isolated quality DB and started `run-local`; full run was stopped after extended external-provider wait, but partial draft generation produced 123 Japan review drafts with required X source attribution present.
+- `2026-04-29 20:07 KST` Verified no-edit review flow on isolated draft `1`: approve passed, schedule passed, and dry-run `publish-due` processed exactly one X job.
+- `2026-04-29 20:09 KST` Tightened overlong X compaction so existing attribution cues are deduplicated before appending the canonical source cue.
+- `2026-04-29 20:09 KST` Refreshed `.secrets.baseline`; diff only moved the existing `tests/test_x_draft_generator.py` finding line number and generated timestamp after test insertions.
+- `2026-04-29 22:39 KST` Ran live source discovery for Task 01: 232 candidates from 5 RSS sources, 0 failures; counts were KBS 30, Yonhap 92, Korea Herald 50, Japan Times 30, Japan Today 30.
+- `2026-04-29 22:40 KST` Classified all five sources as keepable, with KBS and Japan Times as primary baselines, Yonhap and Japan Today as volume/broad-feed sources needing review-led monitoring, and Korea Herald as useful but overlap-prone.
+- `2026-04-29 22:41 KST` Started Task 02 matching tuning based on source-health evidence: audience words from account topics no longer become topic keywords, and Korea `president` matching was narrowed to Korea-specific phrases.
+- `2026-04-29 22:41 KST` Rechecked matching after tuning: Korea eligible counts are Herald 38, KBS 25, Yonhap 87; Japan eligible counts are Japan Times 11 and Japan Today 9; weak topic-only matches dropped to 0.
+- `2026-04-29 22:42 KST` Refreshed `.secrets.baseline` after test line-number changes; final secret scan passed.
 
 ## Test Log
 - `2026-04-29 19:42 KST` production isolated `run-local` -> `passed` `status=succeeded; drafts=1530; failures=0`
@@ -75,20 +102,37 @@ Status values:
 - `2026-04-29 19:43 KST` isolated `review edit/approve/schedule` for draft `200` -> `passed` `manual Source attribution allowed scheduling`
 - `2026-04-29 19:43 KST` isolated `scheduler publish-due` -> `passed` `dry_run=true; processed_count=1`
 - `2026-04-29 19:45 KST` isolated `scheduler publish-due --live` -> `passed` `published_count=1; external_post_id=2049439510929580197`
+- `2026-04-29 20:00 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-29 20:00 KST` `./.venv/bin/pytest tests/test_x_draft_generator.py -q` -> `passed` `20 passed`
+- `2026-04-29 20:01 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py -q` -> `passed` `71 passed`
+- `2026-04-29 20:02 KST` `./.venv/bin/python -m app.cli db init --database-url sqlite:///data/global_country_news_quality.db` -> `passed`
+- `2026-04-29 20:06 KST` `./.venv/bin/python -m app.cli run-local --config-dir config/global_country_news --database-url sqlite:///data/global_country_news_quality.db` -> `interrupted_after_external_wait` `partial output: 123 pending Japan drafts; pipeline_runs row remained running with zero counters`
+- `2026-04-29 20:06 KST` `./.venv/bin/python -m app.cli review list --database-url sqlite:///data/global_country_news_quality.db` -> `passed` `pending drafts: 123`
+- `2026-04-29 20:07 KST` `review approve 1`, `review schedule 1`, `scheduler publish-due` on isolated DB -> `passed` `dry_run=true; processed_count=1; no body edit`
+- `2026-04-29 20:08 KST` `./.venv/bin/pytest tests/test_generate_drafts_workflow.py tests/test_run_local_pipeline_workflow.py -q` -> `passed` `17 passed`
+- `2026-04-29 20:08 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_generate_drafts_workflow.py tests/test_run_local_pipeline_workflow.py -q` -> `passed` `89 passed`
+- `2026-04-29 20:09 KST` `scripts/scan_secrets.sh check` -> `passed` after `scripts/scan_secrets.sh refresh-baseline`
+- `2026-04-29 20:09 KST` `git diff --check` -> `passed`
+- `2026-04-29 20:10 KST` final rerun of `pytest` focused workflow set, `scripts/scan_secrets.sh check`, and `git diff --check` -> `passed`
+- `2026-04-29 20:11 KST` `./.venv/bin/pytest tests/test_x_draft_generator.py tests/test_prompt_renderer.py -q`, `scripts/scan_secrets.sh check`, and `git diff --check` -> `passed`
+- `2026-04-29 22:39 KST` `./.venv/bin/python -m app.cli discover --config-dir config/global_country_news` -> `passed` `232 candidates; 0 failures`
+- `2026-04-29 22:42 KST` `./.venv/bin/pytest tests/test_account_matching.py tests/test_config.py -q` -> `passed` `35 passed`
+- `2026-04-29 22:42 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py -q` -> `passed` `72 passed`
+- `2026-04-29 22:43 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py tests/test_account_matching.py tests/test_config.py -q` -> `passed` `126 passed`
+- `2026-04-29 22:43 KST` `scripts/scan_secrets.sh check` -> `passed`
+- `2026-04-29 22:43 KST` `git diff --check` -> `passed`
 
 ## Open Questions
-- `Should attribution formatting be "Source: hostname", source display name, or a compact phrase that varies by channel?`
-- `Should generated X drafts always reserve character budget for attribution when require_attribution is true?`
 - `Which sources generate useful unique items after several production runs?`
 - `What daily draft volume can the operator review comfortably?`
 
 ## Blockers
-- `none_for_task_00_start`
+- `none_for_task_02_start`
 
 ## Follow-up
-- `Implement Task 00 by updating prompt/generator behavior and tests so restricted-source X drafts preserve URL, fit 280 characters, and include an attribution candidate without manual edits.`
-- `After Task 00, run a fresh isolated DB run-local and attempt approve/schedule/dry-run for one Korea X draft without manual body editing.`
-- `Then continue Task 01 source health and priority review before Japan live smoke or recurring production runs.`
+- `Continue Task 02 with category coverage review before Japan live smoke or recurring production runs.`
+- `Use the isolated partial Japan draft set and the 2026-04-29 discovery sample as initial review evidence, but run a clean full quality DB pipeline when the external draft provider is responsive.`
+- `Run the no-edit approve/schedule/dry-run check on a fresh Korea X draft once the next full isolated run completes.`
 
 ## Completion Summary
-- `Phase 1.5 is ready to start from attribution generation hardening. The Korea X live smoke succeeded, but the first schedule attempt showed generated restricted-source drafts may still require manual attribution edits.`
+- `Task 00 is complete. Restricted-source X generation now retains a source attribution candidate by default, keeps the required URL, fits the X character budget, and passed no-edit approve/schedule/dry-run verification on an isolated Japan X draft. Task 01 is complete for the first live RSS pass: all five sources were healthy, priority/monitoring notes were recorded, and no source was disabled.`

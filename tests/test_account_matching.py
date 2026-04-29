@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.config import AccountConfig
 from app.domain import AccountMatchCandidate, SourceItemCandidate, select_top_account_candidates
 from app.services import AccountMatcher
+from app.services.topic_matching import topic_keywords
 
 
 def test_matcher_selects_expected_top_account_for_ai_finance_and_seo_items() -> None:
@@ -122,6 +123,34 @@ def test_matcher_normalizes_configured_source_tags_before_matching() -> None:
 
     assert candidate.eligible is True
     assert candidate.source_tag_hits == ("ai tools", "openai api")
+
+
+def test_matcher_ignores_audience_words_from_account_topic() -> None:
+    matcher = AccountMatcher(
+        {
+            "japan_global_news": _build_account(
+                topic="Japan news for global readers",
+            )
+        }
+    )
+
+    generic_item = _build_candidate(
+        title="World Cup cash boost draws global broadcast interest",
+        summary="Readers can expect more funding around the tournament.",
+    )
+    japan_item = _build_candidate(
+        title="Japan wage policy update reaches employers",
+        summary="Officials in Tokyo are watching sustained pay hikes.",
+    )
+
+    generic_candidate = matcher.match_source_item(generic_item)[0]
+    japan_candidate = matcher.match_source_item(japan_item)[0]
+
+    assert topic_keywords("Japan news for global readers") == ("japan",)
+    assert generic_candidate.eligible is False
+    assert generic_candidate.score == 0
+    assert japan_candidate.eligible is True
+    assert japan_candidate.topic_keyword_hits == ("japan",)
 
 
 def test_top_candidate_selector_returns_all_tied_eligible_candidates() -> None:
