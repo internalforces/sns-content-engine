@@ -26,13 +26,13 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 ## Current Status
 - Current milestone: `M3_controlled_live_gate`
 - Current task: `05_execute_one_approved_x_live_publish`
-- Active status: `pending`
-- Last updated: `2026-04-28 22:53 KST`
+- Active status: `blocked`
+- Last updated: `2026-04-29 14:45 KST`
 - Base branch: `master`
-- Active branch: `codex/task-04-smoke-rollout-summary`
-- Latest task commit: `Record Task 04 production pass`
-- Resume decision: `operator_provided_task_04_secret_scan_pass`
-- Stop reason: `waiting_for_explicit_task_05_live_approval`
+- Active branch: `codex/task-05-live-publish`
+- Latest task commit: `Block Task 05 pending live approval`
+- Resume decision: `task_05_selected_after_task_04_production_pass`
+- Stop reason: `waiting_for_task_05_production_revision_dry_run_scope_and_explicit_live_approval`
 
 ## Scope For Current Task
 - Goal: `Run at most one X live publish only after explicit operator approval for the exact production command.`
@@ -47,9 +47,17 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
   - `./.venv/bin/sns-engine scheduler publish-due --config-dir /opt/sns-content-engine/config --live`
 
 ## Environment Notes
-- Required services status: `Task 03 and Task 04 production evidence was provided by the operator and passed; the next gate is explicit Task 05 live approval`
+- Required services status: `Task 03 and Task 04 production evidence was provided by the operator and passed; Task 05 is blocked until the final approval summary inputs and explicit live approval are provided`
 - Env or fixture status: `production app root, env file, and config dir were reported present by the operator; rollout-summary and healthcheck passed without printing secret values`
 - Existing unrelated failures: `none currently recorded after Task 02 verification; local CLI version still works`
+
+## Current Task 05 Approval Summary
+- Known passed gates: `Task 03 production presence, rollout-summary, and healthcheck passed; Task 04 smoke helper and production secret scan passed`
+- Known rollout scope: `rollout-summary reported first_rollout_x_only=true with publisher channels ai_tools_daily:x and seo_tools_daily:x`
+- Still needed before requesting live approval: `deployed git revision and the most recent dry-run publish due-job count, channel, and account scope`
+- Approval status: `not_approved`
+- Live command status: `not_run`
+- Required approval wording: `explicitly approve one X live publish using /opt/sns-content-engine/config before running the exact --live command`
 
 ## Roadmap Status
 
@@ -59,7 +67,7 @@ If `Current task` is already marked `in_progress` or `blocked`, resume or resolv
 | M1 | 02 | Run Local Regression And Secret Gates | done | 2026-04-27 22:29 KST | Targeted tests, full pytest, and secret scan passed before any server-side checks |
 | M2 | 03 | Verify Production Config And Healthcheck | done | 2026-04-28 20:19 KST | Operator-provided server evidence shows app root, env file, and config dir present; `rollout-summary` returned `status=ok` with `first_rollout_x_only=true`; `healthcheck` returned `failed_check_count=0` |
 | M2 | 04 | Run Server Dry-Run Publish And Smoke Helper | done | 2026-04-28 22:53 KST | Operator-provided smoke helper output passed all checks, including dry-run publish; production `scripts/scan_secrets.sh check` passed with `secret_scan_exit=0` after the Git safe-directory fix |
-| M3 | 05 | Execute One Approved X Live Publish | pending | 2026-04-28 22:53 KST | Must not run without explicit operator approval for the exact live step |
+| M3 | 05 | Execute One Approved X Live Publish | blocked | 2026-04-29 14:45 KST | Waiting for deployed revision, final dry-run due-job scope, and explicit one-command live approval; no `--live` command has run |
 | M3 | 06 | Capture Post-Publish Observation And Next Decision | pending | 2026-04-26 20:13 KST | Record publish evidence, external observation, and continue, pause, retry, or follow-up decision |
 
 Status values:
@@ -167,6 +175,11 @@ Status values:
 - `git diff --check` evidence: `passed with no output after recording the Task 04 production pass`.
 - `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 04 smoke pass`.
 - `git diff --check` evidence: `passed with no output after recording the Task 04 smoke pass`.
+- `2026-04-29 14:44 KST Task 05 approval gate review` evidence: Task `05` is now the active blocked gate; Task `03` and Task `04` production gates are recorded as passed, but the approval summary still needs deployed git revision plus final dry-run due-job count, channel, and account scope.
+- `2026-04-29 14:44 KST Task 05 live command` evidence: `not_run`; no explicit one-command live approval has been provided in the active thread.
+- `./.venv/bin/python -m app.cli version` evidence: local CLI entrypoint still reports `sns-content-engine 0.1.0` before the Task `05` tracker update.
+- `scripts/scan_secrets.sh check` evidence: `passed with no output after recording the Task 05 approval blocker`.
+- `git diff --check` evidence: `passed with no output after recording the Task 05 approval blocker`.
 
 ## Progress Log
 - `2026-04-26 20:13 KST` Initialized the `first-live-rollout-operations` document set from the initiative templates after confirming the prior readiness roadmap is complete and the next real work is operational preflight plus controlled X live rollout.
@@ -219,6 +232,9 @@ Status values:
 - `2026-04-28 22:47 KST` Recorded operator-provided Task `04` smoke helper success. The production web service, scheduler service, Docker edge service, redacted rollout summary, healthcheck, loopback health, protected console gate, authenticated console, dry-run publish, and overall single-server rollout smoke checks all passed. A separate production secret scan result is still needed before Task `04` can be marked done.
 - `2026-04-28 22:50 KST` Recorded operator-provided Task `04` secret scan attempt. The command was blocked by Git dubious-ownership protection for `/opt/sns-content-engine`, so the operator must add that path to the current user's Git `safe.directory` list and rerun the scan before Task `04` can be marked done.
 - `2026-04-28 22:53 KST` Recorded operator-provided Task `04` secret scan pass. The rerun returned `secret_scan_exit=0`, so Task `04` is complete and Task `05` is now the next pending gate; no live publish command has been run.
+- `2026-04-29 14:44 KST` Started Task `05` on branch `codex/task-05-live-publish` after reading the operations prompt, roadmap, execution guide, and progress tracker. The task is blocked rather than executed because the active thread does not contain explicit approval for the exact live command.
+- `2026-04-29 14:44 KST` Prepared the Task `05` approval gate summary from recorded Task `03` and Task `04` evidence. Before approval can be requested safely, the operator still needs to provide or restate the deployed git revision and the most recent dry-run due-job count, channel, and account scope.
+- `2026-04-29 14:45 KST` Verified the docs-only Task `05` tracker update with the checked-in secret scan and diff whitespace check. No server command, smoke check, or live publish command was run.
 
 ## Test Log
 - `2026-04-26 20:13 KST` `not_run` -> `docs_only_initialization` `No runtime tests were required to create the future operations document set.`
@@ -328,16 +344,20 @@ Status values:
 - `2026-04-28 22:53 KST` `git diff --check` -> `passed` `local tracker verification; no output; exit code 0`
 - `2026-04-28 22:47 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
 - `2026-04-28 22:47 KST` `git diff --check` -> `passed` `no output; exit code 0`
+- `2026-04-29 14:44 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-04-29 14:45 KST` `scripts/scan_secrets.sh check` -> `passed` `no output; exit code 0`
+- `2026-04-29 14:45 KST` `git diff --check` -> `passed` `no output; exit code 0`
 
 ## Open Questions
 - `Which deployed Git revision should be treated as the production baseline before running the server-side healthcheck?`
-- `Should the operator proceed to Task 05 live approval now, or pause after the dry-run gate for additional review?`
+- `What did the most recent production dry-run publish report for due-job count, channel, and account scope?`
+- `Should the operator explicitly approve exactly one X live publish using /opt/sns-content-engine/config after reviewing the final approval summary?`
 
 ## Blockers
-- `Task 05 is not approved yet. Do not run any --live command until the operator gives explicit one-command approval for the X live publish using /opt/sns-content-engine/config.`
+- `Task 05 is blocked on deployed git revision, final dry-run due-job scope, and explicit one-command approval. Do not run any --live command until the operator gives explicit approval for one X live publish using /opt/sns-content-engine/config.`
 
 ## Follow-up
-- `Prepare the Task 05 approval summary from the passed Task 03 and Task 04 evidence, then wait for explicit operator approval before running exactly one --live command.`
+- `Collect the deployed git revision and most recent dry-run due-job count, channel, and account scope from the production server, then request explicit approval before running exactly one --live command.`
 
 ## Server Handoff For Task 03
 Run these commands only inside the production server shell. They record presence, status, and revision without printing secret values:
