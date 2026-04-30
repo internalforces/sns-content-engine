@@ -6,7 +6,7 @@ sources:
     allow_full_text_fetch: false
     allow_llm_rewrite: false
     require_attribution: true
-    duplicate_window_days: 3
+    duplicate_window_days: 7
     notes: "Phase 1.5 primary Korea source. 2026-04-29 discovery returned 30 current items with useful politics/economy/domestic tags and no failures. Use RSS metadata and original article URLs only."
 
   korea_yonhap_english:
@@ -16,7 +16,7 @@ sources:
     allow_full_text_fetch: false
     allow_llm_rewrite: false
     require_attribution: true
-    duplicate_window_days: 3
+    duplicate_window_days: 7
     notes: "Phase 1.5 secondary Korea wire source. 2026-04-29 discovery returned 92 current items and no failures; monitor volume, repeated summary entries, and overlap with Korea Herald before review. Use RSS metadata and original article URLs only."
 
   korea_herald_all_news:
@@ -26,7 +26,7 @@ sources:
     allow_full_text_fetch: false
     allow_llm_rewrite: false
     require_attribution: true
-    duplicate_window_days: 3
+    duplicate_window_days: 7
     notes: "Phase 1.5 primary/secondary Korea source for business, culture, and public-interest stories. 2026-04-29 discovery returned 50 current all-news items and no failures; monitor title overlap with Yonhap. Use RSS metadata and original article URLs only."
 
   japan_japan_times_latest:
@@ -36,7 +36,7 @@ sources:
     allow_full_text_fetch: false
     allow_llm_rewrite: false
     require_attribution: true
-    duplicate_window_days: 3
+    duplicate_window_days: 7
     notes: "Phase 1.5 primary Japan source with useful category tags, but the feed also carries world and sports coverage. 2026-04-29 discovery returned 30 current items and no failures; rely on account matching to keep Japan-specific items. Use RSS metadata and original article URLs only."
 
   japan_japan_today_atom:
@@ -46,7 +46,7 @@ sources:
     allow_full_text_fetch: false
     allow_llm_rewrite: false
     require_attribution: true
-    duplicate_window_days: 3
+    duplicate_window_days: 7
     notes: "Phase 1.5 secondary Japan source. 2026-04-29 discovery returned 30 current items and no failures, but Atom categories are not exposed for matching and world/sports items are mixed in. Use RSS metadata and original article URLs only."
 
 source_sets:

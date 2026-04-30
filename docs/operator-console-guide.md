@@ -81,6 +81,16 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 6. If the approved draft is `linkedin`, or `threads` still shows manual upload guidance, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
 7. Use `Scheduler` only for discovery, backfill, and due scheduled jobs after confirming the current live-publish queue.
 
+## Country news cadence baseline
+
+The Phase 1.5 Korea/Japan country-news config is tuned for review-led operation, not volume:
+
+- Korea X keeps at most one future scheduled job, anchored at `09:00 UTC` with a 60-minute window and 15-minute deterministic jitter.
+- Japan X keeps at most one future scheduled job, anchored at `09:30 UTC` with the same window and jitter.
+- X schedules require a 720-minute same account/channel gap, so accidental backlog increases still avoid crowded same-day posting.
+- Source ingestion and draft validation use 7-day duplicate windows to reduce repeated wire coverage and identical social drafts.
+- LinkedIn and Threads remain manual handoff channels unless a separate live rollout intentionally configures a resolvable publisher.
+
 ## Manual handoff flow for LinkedIn and manual-fallback Threads
 
 1. Approval creates an explicit publish-job record automatically for LinkedIn, and for Threads only when that account does not currently resolve a live publisher from `publisher.credential_ref`.
