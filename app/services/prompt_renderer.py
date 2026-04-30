@@ -72,31 +72,89 @@ _DOMAIN_SENSITIVITY_RULES: tuple[_DomainSensitivityRule, ...] = (
         ),
     ),
     _DomainSensitivityRule(
-        domain="finance",
+        domain="security",
         keywords=(
-            "finance",
-            "financial",
-            "market",
-            "markets",
-            "stock",
-            "stocks",
-            "investing",
-            "investor",
-            "investors",
-            "earnings",
-            "economy",
-            "inflation",
-            "interest rates",
-            "price target",
-            "ipo",
-            "crypto",
+            "security",
+            "national security",
+            "defense",
+            "military",
+            "missile",
+            "nuclear",
+            "troops",
+            "army",
+            "navy",
+            "air force",
+            "cyberattack",
+            "cybersecurity",
+            "espionage",
+            "sanctions",
+            "border",
+            "war",
+            "conflict",
         ),
         prompt_guidance=(
-            "Avoid investment advice, directional calls, and overstated certainty about prices, "
-            "returns, or market impact."
+            "Avoid operational speculation, unverified attribution, or escalation language beyond "
+            "what officials or the source directly state."
         ),
         review_note=(
-            "Finance coverage should stay factual, attributed, and free of buy or sell language."
+            "Security coverage should verify attribution, official sourcing, and whether fast-moving facts are still provisional."
+        ),
+    ),
+    _DomainSensitivityRule(
+        domain="legal",
+        keywords=(
+            "legal",
+            "law",
+            "court",
+            "supreme court",
+            "constitutional court",
+            "ruling",
+            "lawsuit",
+            "trial",
+            "prosecutor",
+            "prosecutors",
+            "indictment",
+            "investigation",
+            "charges",
+            "conviction",
+            "arrest",
+            "suspect",
+            "police",
+            "crime",
+        ),
+        prompt_guidance=(
+            "Preserve legal status and attribution; avoid implying guilt, motive, or final outcomes "
+            "unless the source clearly establishes them."
+        ),
+        review_note=(
+            "Legal coverage should preserve alleged/charged/ruled distinctions and avoid unsupported blame."
+        ),
+    ),
+    _DomainSensitivityRule(
+        domain="disaster",
+        keywords=(
+            "disaster",
+            "disasters",
+            "earthquake",
+            "flood",
+            "wildfire",
+            "hurricane",
+            "storm",
+            "explosion",
+            "evacuation",
+            "casualties",
+            "death toll",
+            "injured",
+            "emergency",
+            "rescue",
+            "accident",
+        ),
+        prompt_guidance=(
+            "Avoid graphic detail, unverified blame, or precise casualty claims unless the source "
+            "clearly supports them."
+        ),
+        review_note=(
+            "Disaster coverage should stay restrained, attributed, and careful with casualty counts and evolving facts."
         ),
     ),
     _DomainSensitivityRule(
@@ -128,30 +186,56 @@ _DOMAIN_SENSITIVITY_RULES: tuple[_DomainSensitivityRule, ...] = (
         ),
     ),
     _DomainSensitivityRule(
-        domain="crime_or_disaster",
+        domain="finance",
         keywords=(
-            "crime",
-            "police",
-            "arrest",
-            "suspect",
-            "shooting",
-            "murder",
-            "disaster",
-            "disasters",
-            "earthquake",
-            "flood",
-            "wildfire",
-            "hurricane",
-            "storm",
-            "explosion",
-            "evacuation",
+            "finance",
+            "financial",
+            "market",
+            "markets",
+            "stock",
+            "stocks",
+            "investing",
+            "investor",
+            "investors",
+            "earnings",
+            "economy",
+            "inflation",
+            "interest rates",
+            "price target",
+            "ipo",
+            "crypto",
         ),
         prompt_guidance=(
-            "Avoid graphic detail, unverified blame, or precise casualty claims unless the source "
-            "clearly supports them."
+            "Avoid investment advice, directional calls, and overstated certainty about prices, "
+            "returns, or market impact."
         ),
         review_note=(
-            "Crime and disaster coverage should stay restrained, attributed, and careful with fast-moving facts."
+            "Finance coverage should stay factual, attributed, and free of buy or sell language."
+        ),
+    ),
+    _DomainSensitivityRule(
+        domain="diplomacy",
+        keywords=(
+            "diplomacy",
+            "diplomatic",
+            "foreign ministry",
+            "summit",
+            "treaty",
+            "ambassador",
+            "embassy",
+            "bilateral",
+            "trilateral",
+            "geopolitics",
+            "trade talks",
+            "inter-korean",
+            "inter korea",
+        ),
+        prompt_guidance=(
+            "Keep diplomatic claims attributed and avoid treating negotiations, official statements, "
+            "or forecasts as settled outcomes."
+        ),
+        review_note=(
+            "Diplomacy coverage should distinguish official statements from outcomes and avoid speculative geopolitical framing."
         ),
     ),
 )

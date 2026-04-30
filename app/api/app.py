@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.config import ConfigError
 from app.env import load_project_env
+from app.services.prompt_renderer import build_domain_sensitivity
 from app.storage import DatabaseSchemaError, PublishJobState
 
 if TYPE_CHECKING:
@@ -219,6 +220,14 @@ class ReviewDraftArticleEnrichmentResponse(_ApiModel):
     classification: str | None
 
 
+class ReviewDraftSensitivityResponse(_ApiModel):
+    is_high_risk: bool
+    domain: str | None
+    matched_terms: list[str]
+    review_note: str | None
+    prompt_guidance: str | None
+
+
 class ReviewDraftAuditEntryResponse(_ApiModel):
     action_id: int
     action_type: str
@@ -257,6 +266,7 @@ class ReviewDraftDetailResponse(_ApiModel):
     brief: ReviewDraftBriefResponse
     source_item: ReviewDraftSourceItemResponse
     article_enrichment: ReviewDraftArticleEnrichmentResponse | None
+    sensitivity: ReviewDraftSensitivityResponse
     review_actions: list[ReviewDraftAuditEntryResponse]
     sibling_variants: list[ReviewDraftSiblingVariantResponse]
 
@@ -1228,10 +1238,26 @@ def _build_review_draft_detail_response(detail) -> ReviewDraftDetailResponse:
         article_enrichment=_build_review_draft_article_enrichment_response(article_enrichment)
         if article_enrichment
         else None,
+        sensitivity=_build_review_draft_sensitivity_response(content_brief),
         review_actions=[_build_review_draft_audit_entry_response(action) for action in detail.review_actions],
         sibling_variants=[
             _build_review_draft_sibling_variant_response(variant) for variant in detail.sibling_variants
         ],
+    )
+
+
+def _build_review_draft_sensitivity_response(content_brief) -> ReviewDraftSensitivityResponse:
+    sensitivity = build_domain_sensitivity(
+        title=content_brief.title,
+        summary=content_brief.summary,
+        tags=tuple(content_brief.tags),
+    )
+    return ReviewDraftSensitivityResponse(
+        is_high_risk=sensitivity.is_high_risk,
+        domain=sensitivity.domain,
+        matched_terms=list(sensitivity.matched_terms),
+        review_note=sensitivity.review_note,
+        prompt_guidance=sensitivity.prompt_guidance,
     )
 
 

@@ -443,6 +443,32 @@ def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     assert "Different channel variant should stay hidden" not in response.text
 
 
+def test_review_detail_page_renders_sensitive_topic_review_note(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            brief_title="Defense ministry reports missile launch",
+            brief_summary="Officials said national security agencies are reviewing the launch.",
+            tags=("security", "defense"),
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "민감 주제 검토" in response.text
+    assert "안보 주제" in response.text
+    assert "Security coverage should verify attribution" in response.text
+    assert "Avoid operational speculation" in response.text
+
+
 def test_review_detail_page_returns_browser_friendly_not_found(tmp_path: Path) -> None:
     _build_session_factory(tmp_path)
     client = TestClient(create_app())
@@ -1989,6 +2015,8 @@ def _create_review_detail_draft(
     account_key: str = "ai_tools_daily",
     channel: str = "x",
     brief_title: str = "Brief for draft",
+    brief_summary: str = "Summary for review",
+    tags: tuple[str, ...] = ("ai",),
     variant_index: int,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
     created_at: datetime,
@@ -2033,10 +2061,10 @@ def _create_review_detail_draft(
             source_item_id=source_item.id,
             account_key=account_key,
             title=brief_title,
-            summary="Summary for review",
+            summary=brief_summary,
             key_points=["Point one"],
             landing_url="https://gilgop.cloud/ai-tools",
-            tags=["ai"],
+            tags=list(tags),
             angle="topic_takeaway",
             language="en",
         )

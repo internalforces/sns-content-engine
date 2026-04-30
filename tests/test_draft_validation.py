@@ -151,6 +151,37 @@ def test_draft_validator_warns_when_high_risk_finance_topic_is_detected() -> Non
     assert {issue.severity for issue in result.issues} == {"warning"}
 
 
+def test_draft_validator_includes_review_note_for_sensitive_country_news() -> None:
+    validator = DraftValidator()
+
+    result = validator.validate(
+        "Security agencies reviewed the update for Korea https://gilgop.cloud/security",
+        content_brief=_build_content_brief(
+            account_key="korea_global_news",
+            title="Defense ministry reports cyberattack investigation",
+            summary="Officials said national security agencies are investigating the incident.",
+            landing_url="https://gilgop.cloud/security",
+            tags=("security",),
+        ),
+        account_key="korea_global_news",
+        account=_build_account_config(
+            topic="Korea news for global readers",
+            landing_url="https://gilgop.cloud/security",
+            include_keywords=("korea", "security"),
+            source_tags=("security",),
+        ),
+        channel="x",
+    )
+
+    assert result.is_valid is True
+    assert _issue_codes(result) == {"high_risk_domain"}
+    issue = result.issues[0]
+    assert issue.metadata["domain"] == "security"
+    assert "defense" in issue.metadata["matched_terms"]
+    assert "Security coverage should verify attribution" in issue.metadata["review_note"]
+    assert "Avoid operational speculation" in issue.metadata["prompt_guidance"]
+
+
 def test_draft_validator_errors_on_high_risk_finance_claim_language() -> None:
     validator = DraftValidator()
 
