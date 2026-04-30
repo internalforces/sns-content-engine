@@ -63,28 +63,35 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert korea_account.matching.strict_topic_guard is False
     assert korea_account.validation.profile == "standard"
     assert korea_channel.schedule.cron == "0 9 * * *"
+    assert korea_channel.schedule.min_gap_minutes == 720
+    assert korea_channel.schedule.backlog_target == 1
     assert korea_channel.render.max_chars == 280
     assert korea_channel.validation.max_links == 1
     assert korea_channel.validation.banned_phrases == ()
-    assert korea_channel.validation.recent_duplicate_window_days == 3
+    assert korea_channel.validation.recent_duplicate_window_days == 7
     assert korea_channel.publisher is not None
     assert korea_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
     assert korea_linkedin_channel.render.max_chars == 3000
-    assert korea_linkedin_channel.validation.recent_duplicate_window_days == 3
+    assert korea_linkedin_channel.validation.recent_duplicate_window_days == 7
     assert korea_linkedin_channel.publisher is None
     assert korea_threads_channel.render.max_chars == 10000
-    assert korea_threads_channel.validation.recent_duplicate_window_days == 3
+    assert korea_threads_channel.validation.recent_duplicate_window_days == 7
     assert korea_threads_channel.publisher is None
 
     assert japan_account.topic == "Japan news for global readers"
     assert japan_account.prompt_profile == "global_country_news_explainer"
     assert japan_account.landing.strategy == "source"
     assert japan_channel.schedule.cron == "30 9 * * *"
+    assert japan_channel.schedule.min_gap_minutes == 720
+    assert japan_channel.schedule.backlog_target == 1
+    assert japan_channel.validation.recent_duplicate_window_days == 7
     assert japan_channel.publisher is not None
     assert japan_channel.publisher.credential_ref == "X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS"
     assert japan_linkedin_channel.render.max_chars == 3000
+    assert japan_linkedin_channel.validation.recent_duplicate_window_days == 7
     assert japan_linkedin_channel.publisher is None
     assert japan_threads_channel.render.max_chars == 10000
+    assert japan_threads_channel.validation.recent_duplicate_window_days == 7
     assert japan_threads_channel.publisher is None
 
     assert isinstance(korea_source, RssSourceConfig)
@@ -93,7 +100,7 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert korea_source.allow_full_text_fetch is False
     assert korea_source.allow_llm_rewrite is False
     assert korea_source.require_attribution is True
-    assert korea_source.duplicate_window_days == 3
+    assert korea_source.duplicate_window_days == 7
 
     assert isinstance(japan_source, RssSourceConfig)
     assert str(japan_source.url) == "https://japantoday.com/feed/atom"
@@ -101,6 +108,7 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert japan_source.allow_full_text_fetch is False
     assert japan_source.allow_llm_rewrite is False
     assert japan_source.require_attribution is True
+    assert japan_source.duplicate_window_days == 7
 
     assert registry.get_prompt_profile("global_country_news_explainer").system_template.startswith(
         "You are the review-first social editor"
