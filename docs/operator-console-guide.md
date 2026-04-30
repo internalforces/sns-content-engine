@@ -91,6 +91,47 @@ The Phase 1.5 Korea/Japan country-news config is tuned for review-led operation,
 - Source ingestion and draft validation use 7-day duplicate windows to reduce repeated wire coverage and identical social drafts.
 - LinkedIn and Threads remain manual handoff channels unless a separate live rollout intentionally configures a resolvable publisher.
 
+## Country news live-publish quality checklist
+
+Use this checklist before scheduling an X draft or recording a manual LinkedIn/Threads handoff for the Korea/Japan country-news accounts.
+
+1. Check the article URL.
+   - Open the source URL from the review detail page and confirm it reaches the specific article, not a homepage, tag page, or unrelated landing page.
+   - Confirm the visible article topic still matches the draft title and summary.
+   - Stop if the URL is broken, paywall-only without enough review context, redirected to unrelated content, or no longer supports the draft.
+
+2. Check source attribution.
+   - For X, confirm a compact `Source: ...` cue appears before the URL when attribution is required.
+   - For LinkedIn and Threads, confirm the source name or hostname is visible in the body or review context before manual upload.
+   - Edit before approval if the source is ambiguous, missing, or names the wrong outlet.
+
+3. Check summary accuracy.
+   - Verify the draft states only what the article or regenerated summary supports.
+   - Keep dates, numbers, names, places, legal status, casualty or damage figures, and official statements aligned with the source.
+   - Reject or edit drafts that speculate about motives, outcomes, market impact, diplomatic intent, health risk, or legal guilt beyond the source.
+
+4. Check category and coverage fit.
+   - Korea drafts should be meaningfully about Korea, South Korea, North Korea, Seoul, Korean politics, economy, society, science, culture, diplomacy, or inter-Korean affairs.
+   - Japan drafts should be meaningfully about Japan, Tokyo, Osaka, Kyoto, Japanese politics, economy, society, culture, public safety, or national institutions.
+   - Reject broad world, sports, entertainment, market, or wire-repeat stories when the country relevance is weak.
+
+5. Check sensitive-topic cues.
+   - Treat politics, security, legal, disaster, health, finance, and diplomacy notes as stop-and-check prompts, not as automatic rejection.
+   - Confirm sensitive drafts use sober wording, avoid blame or certainty not present in the source, and leave the reviewable facts easy to trace.
+   - Prefer rejection over scheduling when a sensitive draft cannot be verified quickly from the source.
+
+6. Decide the action.
+   - `Reject` low-value duplicates, weak country matches, stale wire repeats, broken URLs, unverifiable sensitive claims, or drafts that would need a full rewrite.
+   - `Edit` drafts that are basically sound but need attribution, shorter X wording, clearer dates, or less speculative phrasing.
+   - `Approve` only after the URL, attribution, accuracy, category fit, and sensitivity checks pass.
+   - `Schedule` X only after approval and with dry-run-first expectations. For LinkedIn and Threads manual handoff, use the rendered approved body and then record the final external result in the publish job.
+
+7. Stop the live run when needed.
+   - Stop if multiple drafts repeat the same source story inside the 7-day duplicate window.
+   - Stop if the current account already has a future X job and the new draft is not clearly better.
+   - Stop if a publisher credential, account identity, or external platform state is uncertain.
+   - Stop if a real-world emergency or fast-moving legal, disaster, security, or health story needs fuller context than a short social draft can provide.
+
 ## Manual handoff flow for LinkedIn and manual-fallback Threads
 
 1. Approval creates an explicit publish-job record automatically for LinkedIn, and for Threads only when that account does not currently resolve a live publisher from `publisher.credential_ref`.
