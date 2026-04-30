@@ -14,13 +14,13 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 ## Current Status
 - Current milestone: `M2_draft_safety_and_cadence`
 - Current task: `05_operator_quality_checklist`
-- Active status: `pending`
-- Last updated: `2026-04-30 16:54 KST`
+- Active status: `done`
+- Last updated: `2026-04-30 18:18 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `pending`
-- Resume decision: `continue_operator_quality_checklist_after_cadence_tuning`
-- Stop reason: `task_04_done`
+- Resume decision: `phase_1_5_quality_hardening_complete`
+- Stop reason: `task_05_done`
 
 ## Scope For Current Task
 - Goal: `Give the operator a repeatable quality checklist before country-news live publishing.`
@@ -44,7 +44,7 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 | M1 | 02 | Category And Matching Tuning | done | 2026-04-29 23:14 KST | Weak topic-only matches remain at 0; KBS `domestic`, `science`, and `inter korea` tags now preserve Korean society/legal/science/inter-Korean coverage without enabling broad `international` noise |
 | M2 | 03 | Sensitive Topic Guardrails | done | 2026-04-30 16:35 KST | Lightweight detection now covers politics, security, legal, disaster, health, finance, and diplomacy; API/console review detail exposes matched terms and reviewer notes |
 | M2 | 04 | Cadence And Workload Tuning | done | 2026-04-30 16:54 KST | Country-news X backlog is one future job per account, X min-gap is 720 minutes, source/channel duplicate windows are 7 days, and cadence is documented in the operator guide |
-| M2 | 05 | Operator Quality Checklist | pending | 2026-04-29 16:50 KST | Review checklist before live publishing |
+| M2 | 05 | Operator Quality Checklist | done | 2026-04-30 18:18 KST | Operator console guide now includes URL, attribution, accuracy, category, sensitivity, action, and stop-condition checks before live publishing |
 
 Status values:
 - `pending`
@@ -52,7 +52,7 @@ Status values:
 - `blocked`
 - `done`
 
-## Changed Files Through Task 04 Completion
+## Changed Files Through Task 05 Completion
 - `.secrets.baseline`
 - `app/api/app.py`
 - `app/api/console.py`
@@ -133,6 +133,8 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-30 16:35 KST` Completed Task 03 sensitive topic guardrails: prompt guidance now asks high-risk country-news drafts to keep dates, numbers, legal status, official statements, and attribution reviewer-checkable; validator warnings now carry review notes; API and console review detail expose sensitivity cues.
 - `2026-04-30 16:53 KST` Started Task 04 cadence tuning: country-news X backlog targets moved to one future job per account, X min-gap moved to 720 minutes, and source/channel duplicate windows moved to 7 days in both active config roots.
 - `2026-04-30 16:54 KST` Completed Task 04 cadence tuning: scheduler/review/config regression tests passed, secret scan passed, and whitespace diff check passed.
+- `2026-04-30 18:17 KST` Started Task 05 operator quality checklist: added a country-news live-publish quality checklist covering URL, attribution, summary accuracy, category fit, sensitive-topic review, action choices, and stop conditions.
+- `2026-04-30 18:18 KST` Completed Task 05 operator quality checklist: operator-facing live-publish checks are documented in `docs/operator-console-guide.md`, and required docs verification passed.
 
 ## Test Log
 - `2026-04-29 19:42 KST` production isolated `run-local` -> `passed` `status=succeeded; drafts=1530; failures=0`
@@ -173,18 +175,19 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-30 16:54 KST` `./.venv/bin/pytest tests/test_scheduler.py tests/test_review_queue_workflow.py tests/test_config.py -q` -> `passed` `75 passed`
 - `2026-04-30 16:54 KST` `scripts/scan_secrets.sh check` -> `passed`
 - `2026-04-30 16:54 KST` `git diff --check` -> `passed`
+- `2026-04-30 18:18 KST` `scripts/scan_secrets.sh check` -> `passed`
+- `2026-04-30 18:18 KST` `git diff --check` -> `passed`
 
 ## Open Questions
 - `Which sources generate useful unique items after several production runs?`
 - `What daily draft volume can the operator review comfortably?`
 
 ## Blockers
-- `none_for_task_05_start`
+- `none`
 
 ## Follow-up
-- `Start Task 05 operator quality checklist before recurring production runs.`
 - `Use the isolated partial Japan draft set and the 2026-04-29 discovery sample as initial review evidence, but run a clean full quality DB pipeline when the external draft provider is responsive.`
 - `Run the no-edit approve/schedule/dry-run check on a fresh Korea X draft once the next full isolated run completes.`
 
 ## Completion Summary
-- `Task 00 is complete. Restricted-source X generation now retains a source attribution candidate by default, keeps the required URL, fits the X character budget, and passed no-edit approve/schedule/dry-run verification on an isolated Japan X draft. Task 01 is complete for the first live RSS pass: all five sources were healthy, priority/monitoring notes were recorded, and no source was disabled. Task 02 is complete for the first category pass: weak topic-only matches remain removed, Korea primary-source domestic/science/inter-Korean coverage is restored, broad international noise remains excluded, and root config mirrors the explicit country-news config again. Task 03 is complete: country-news sensitivity detection now covers politics, security, legal, disaster, health, finance, and diplomacy; high-risk warnings carry reviewer guidance; and API/console review detail surfaces sensitivity notes without changing manual review or live publish boundaries. Task 04 is complete: Korea/Japan X cadence now keeps one future scheduled job per account, source and draft duplicate windows are 7 days, X min-gap is 720 minutes, and operator-facing cadence notes are documented.`
+- `Task 00 is complete. Restricted-source X generation now retains a source attribution candidate by default, keeps the required URL, fits the X character budget, and passed no-edit approve/schedule/dry-run verification on an isolated Japan X draft. Task 01 is complete for the first live RSS pass: all five sources were healthy, priority/monitoring notes were recorded, and no source was disabled. Task 02 is complete for the first category pass: weak topic-only matches remain removed, Korea primary-source domestic/science/inter-Korean coverage is restored, broad international noise remains excluded, and root config mirrors the explicit country-news config again. Task 03 is complete: country-news sensitivity detection now covers politics, security, legal, disaster, health, finance, and diplomacy; high-risk warnings carry reviewer guidance; and API/console review detail surfaces sensitivity notes without changing manual review or live publish boundaries. Task 04 is complete: Korea/Japan X cadence now keeps one future scheduled job per account, source and draft duplicate windows are 7 days, X min-gap is 720 minutes, and operator-facing cadence notes are documented. Task 05 is complete: the operator console guide now has a repeatable live-publish quality checklist for URL verification, source attribution, summary accuracy, country/category fit, sensitive-topic review, reject/edit/approve/schedule decisions, and stop conditions.`
