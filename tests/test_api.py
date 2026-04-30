@@ -1014,8 +1014,41 @@ def test_review_detail_endpoint_returns_full_draft_context(tmp_path: Path) -> No
         "Detail point two",
     ]
     assert payload["article_enrichment"]["classification"] == "analysis"
+    assert payload["sensitivity"] == {
+        "is_high_risk": False,
+        "domain": None,
+        "matched_terms": [],
+        "review_note": None,
+        "prompt_guidance": None,
+    }
     assert payload["review_actions"] == []
     assert payload["sibling_variants"] == []
+
+
+def test_review_detail_endpoint_returns_sensitive_topic_context(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            brief_title="Defense ministry reports missile launch",
+            brief_summary="Officials said national security agencies are reviewing the launch.",
+            tags=("security", "defense"),
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'api.db'}"},
+    )
+
+    assert response.status_code == 200
+    sensitivity = response.json()["sensitivity"]
+    assert sensitivity["is_high_risk"] is True
+    assert sensitivity["domain"] == "security"
+    assert "defense" in sensitivity["matched_terms"]
+    assert "Security coverage should verify attribution" in sensitivity["review_note"]
 
 
 def test_review_detail_endpoint_returns_audit_history_and_sibling_variants(tmp_path: Path) -> None:
@@ -1926,6 +1959,8 @@ def _create_draft_variant(
     account_key: str = "ai_tools_daily",
     channel: str = "x",
     brief_title: str = "Brief for draft",
+    brief_summary: str = "Summary for review",
+    tags: tuple[str, ...] = ("ai",),
     variant_index: int,
     draft_state: DraftVariantState = DraftVariantState.PENDING_REVIEW,
     created_at: datetime,
@@ -1970,10 +2005,10 @@ def _create_draft_variant(
             source_item_id=source_item.id,
             account_key=account_key,
             title=brief_title,
-            summary="Summary for review",
+            summary=brief_summary,
             key_points=["Point one"],
             landing_url="https://gilgop.cloud/ai-tools",
-            tags=["ai"],
+            tags=list(tags),
             angle="topic_takeaway",
             language="en",
         )

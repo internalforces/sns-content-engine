@@ -64,6 +64,28 @@
           <div class="console-body-block">{{ review_detail.body }}</div>
         </article>
       </div>
+      {% if review_detail.sensitivity.is_high_risk %}
+        <div class="console-panel-grid">
+          <article class="console-panel">
+            <p class="console-card-label">민감 주제 검토</p>
+            <h3>{{ review_detail.sensitivity.domain }} 주제</h3>
+            <dl class="console-definition-list">
+              <div>
+                <dt>감지어</dt>
+                <dd>{{ review_detail.sensitivity.matched_terms | join(", ") }}</dd>
+              </div>
+              <div>
+                <dt>검토 메모</dt>
+                <dd>{{ review_detail.sensitivity.review_note }}</dd>
+              </div>
+              <div>
+                <dt>문안 기준</dt>
+                <dd>{{ review_detail.sensitivity.prompt_guidance }}</dd>
+              </div>
+            </dl>
+          </article>
+        </div>
+      {% endif %}
     {% endif %}
   </section>
 

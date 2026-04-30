@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from app.connectors.llm import DraftGenerationProviderError
 from app.connectors.publishers.resolver import channel_requires_manual_publish_handoff
 from app.config import ConfigError
+from app.services.prompt_renderer import build_domain_sensitivity
 from app.storage import DatabaseSchemaError, PublishJobState
 from app.workflows.history_queries import PublishJobNotFoundError
 from app.workflows.review_queue import (
@@ -48,6 +49,8 @@ _KOREAN_LABELS = {
     "canonical_url": "대표 URL 중복",
     "discover": "수집",
     "discovery_only": "탐색 전용",
+    "diplomacy": "외교",
+    "disaster": "재난",
     "draft_generate": "초안 생성",
     "dry_run": "드라이런",
     "edit": "수정",
@@ -55,9 +58,12 @@ _KOREAN_LABELS = {
     "enriched": "보강 완료",
     "existing": "기존 있음",
     "failed": "실패",
+    "finance": "금융",
+    "health": "보건",
     "html_fetch": "HTML 수집",
     "ingest": "수집 저장",
     "in_progress": "진행 중",
+    "legal": "법률",
     "linkedin": "LinkedIn",
     "manual_local": "로컬 수동 실행",
     "news": "뉴스",
@@ -67,6 +73,7 @@ _KOREAN_LABELS = {
     "partial": "부분 완료",
     "pending": "대기",
     "pending_review": "검토 대기",
+    "politics": "정치",
     "practical_how_to": "실무 가이드",
     "product": "제품",
     "product_update": "제품 업데이트",
@@ -84,6 +91,7 @@ _KOREAN_LABELS = {
     "saved": "저장",
     "schedule": "예약",
     "scheduled": "예약됨",
+    "security": "안보",
     "skipped": "건너뜀",
     "source_identity": "소스 고유 ID 중복",
     "succeeded": "성공",
@@ -2033,6 +2041,11 @@ def _build_review_detail(
     content_brief = draft.content_brief
     source_item = content_brief.source_item
     article_enrichment = source_item.article_enrichment
+    sensitivity = build_domain_sensitivity(
+        title=content_brief.title,
+        summary=content_brief.summary,
+        tags=tuple(content_brief.tags),
+    )
     return {
         "draft_label": f"초안 {draft.id}",
         "channel": _humanize_label(draft.channel),
@@ -2100,6 +2113,13 @@ def _build_review_detail(
             if article_enrichment is not None
             else None
         ),
+        "sensitivity": {
+            "is_high_risk": sensitivity.is_high_risk,
+            "domain": _humanize_label(sensitivity.domain),
+            "matched_terms": list(sensitivity.matched_terms),
+            "review_note": sensitivity.review_note,
+            "prompt_guidance": sensitivity.prompt_guidance,
+        },
         "review_actions": [
             _build_review_action_row(
                 request,

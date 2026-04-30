@@ -120,3 +120,64 @@ def test_build_domain_sensitivity_returns_neutral_signal_for_low_risk_topic() ->
     assert sensitivity.domain is None
     assert sensitivity.matched_terms == ()
     assert sensitivity.prompt_guidance is None
+
+
+@pytest.mark.parametrize(
+    ("title", "summary", "tags", "expected_domain", "expected_note"),
+    [
+        (
+            "Court ruling changes election campaign rules",
+            "Judges issued a new ruling after a legal challenge.",
+            ("law",),
+            "politics",
+            "Politics coverage should stay sourced",
+        ),
+        (
+            "Defense ministry reports a new missile launch",
+            "Officials said national security agencies are reviewing the incident.",
+            ("security",),
+            "security",
+            "Security coverage should verify attribution",
+        ),
+        (
+            "Prosecutors open investigation into public contract",
+            "The case remains under review after police submitted charges.",
+            ("legal",),
+            "legal",
+            "Legal coverage should preserve alleged",
+        ),
+        (
+            "Earthquake prompts emergency evacuation",
+            "Authorities said rescue work is continuing after the disaster.",
+            ("disaster",),
+            "disaster",
+            "Disaster coverage should stay restrained",
+        ),
+        (
+            "Foreign ministry announces bilateral summit",
+            "Officials described the talks as a diplomatic step.",
+            ("diplomacy",),
+            "diplomacy",
+            "Diplomacy coverage should distinguish official statements",
+        ),
+    ],
+)
+def test_build_domain_sensitivity_covers_country_news_high_risk_domains(
+    title: str,
+    summary: str,
+    tags: tuple[str, ...],
+    expected_domain: str,
+    expected_note: str,
+) -> None:
+    sensitivity = build_domain_sensitivity(
+        title=title,
+        summary=summary,
+        tags=tags,
+        topic="Korea news for global readers",
+    )
+
+    assert sensitivity.is_high_risk is True
+    assert sensitivity.domain == expected_domain
+    assert sensitivity.matched_terms
+    assert sensitivity.review_note is not None
+    assert expected_note in sensitivity.review_note

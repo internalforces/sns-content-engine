@@ -531,6 +531,8 @@ def _validate_domain_sensitivity(
             metadata={
                 "domain": sensitivity.domain,
                 "matched_terms": sensitivity.matched_terms,
+                "review_note": sensitivity.review_note,
+                "prompt_guidance": sensitivity.prompt_guidance,
             },
         )
     ]

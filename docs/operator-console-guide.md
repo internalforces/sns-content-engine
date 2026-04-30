@@ -67,7 +67,7 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 - `Runs & Failures`: recent pipeline runs, technical failures, and policy skips.
 - `Articles`: stored article and enrichment status rows.
 - `Pending Review`: drafts waiting for manual review.
-- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Approved LinkedIn drafts always show copy-ready manual upload guidance. Approved Threads drafts show the schedule form when a live publisher resolves successfully and fall back to manual upload guidance when it does not.
+- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Sensitive country-news drafts show a review note when the title, summary, or tags match politics, security, legal, disaster, health, finance, or diplomacy cues. Approved LinkedIn drafts always show copy-ready manual upload guidance. Approved Threads drafts show the schedule form when a live publisher resolves successfully and fall back to manual upload guidance when it does not.
 - `Publish Jobs`: queued, published, failed, and cancelled jobs plus linked draft context. LinkedIn handoffs and manual-fallback Threads handoffs stay here until an operator records the final outcome.
 - `Scheduler`: discover, backfill, and publish-due actions with dry-run-first messaging.
 
@@ -120,6 +120,7 @@ export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-wi
 ## Safety reminders
 
 - Drafts stay in `pending_review` until an operator acts.
+- Treat the sensitivity note on review detail pages as a stop-and-check cue: verify attribution, legal status, official statements, casualty or health claims, and dates before approving.
 - Browser scheduling still uses the same validation, attribution, and provenance checks as the CLI and API.
 - `publish-due` stays dry-run by default in the browser. Live publish only runs when you explicitly select the one-run live option.
 - Live publish still depends on configured channel credentials from environment variables, not YAML secrets.
