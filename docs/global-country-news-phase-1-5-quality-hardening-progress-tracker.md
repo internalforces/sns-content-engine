@@ -15,12 +15,12 @@ When an autonomous agent works from `docs/global-country-news-phase-1-5-quality-
 - Current milestone: `M2_draft_safety_and_cadence`
 - Current task: `05_operator_quality_checklist`
 - Active status: `done`
-- Last updated: `2026-04-30 18:18 KST`
+- Last updated: `2026-05-06 21:50 KST`
 - Base branch: `master`
 - Active branch: `codex/task-05-live-publish`
 - Latest task commit: `pending`
-- Resume decision: `phase_1_5_quality_hardening_complete`
-- Stop reason: `task_05_done`
+- Resume decision: `phase_1_5_quality_hardening_reverified_with_dedup_fix`
+- Stop reason: `verification_passed`
 
 ## Scope For Current Task
 - Goal: `Give the operator a repeatable quality checklist before country-news live publishing.`
@@ -109,6 +109,13 @@ No source was disabled in this pass because all feeds were live and reusable wit
 | Increase X `min_gap_minutes` to `720` | The SlotPlanner honors occupied publish times and channel min-gap before creating a new slot | Guards against crowded same-day posting if the backlog target is raised later |
 | Increase source and channel duplicate windows from 3 to 7 days | Phase 1 discovery showed healthy but broad RSS feeds, including duplicate-heavy wire and overlap-prone sources | Reduces repeated wire coverage and identical social drafts during recurring review runs without disabling source coverage |
 
+## Latest Reverification
+| Date | Check | Result | Notes |
+| --- | --- | --- | --- |
+| `2026-05-06 21:47 KST` | Code and config audit | `passed` | Attribution hardening, sensitivity review cues, 7-day duplicate windows, one-job X backlog, and the operator quality checklist are present. Root `config/` files still match `config/global_country_news/`. |
+| `2026-05-06 21:47 KST` | Live RSS discovery | `passed` | 237 candidates from 5 sources; KBS 30, Yonhap 97, Korea Herald 50, Japan Times 30, Japan Today 30. No source failures reported. |
+| `2026-05-06 21:50 KST` | X attribution cleanup | `passed` | Existing attribution cues in short restricted-source X drafts are now normalized to one canonical `Source: ...` cue before the required URL. |
+
 ## Progress Log
 - `2026-04-29 16:50 KST` Initialized Phase 1.5 planning documents from the country-news quality hardening plan.
 - `2026-04-29 19:42 KST` Phase 1 isolated production run-local created real Korea/Japan drafts: 232 discovered, 227 saved, 5 duplicates, 170 briefs, 1,530 draft variants, 0 failures.
@@ -135,6 +142,9 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-30 16:54 KST` Completed Task 04 cadence tuning: scheduler/review/config regression tests passed, secret scan passed, and whitespace diff check passed.
 - `2026-04-30 18:17 KST` Started Task 05 operator quality checklist: added a country-news live-publish quality checklist covering URL, attribution, summary accuracy, category fit, sensitive-topic review, action choices, and stop conditions.
 - `2026-04-30 18:18 KST` Completed Task 05 operator quality checklist: operator-facing live-publish checks are documented in `docs/operator-console-guide.md`, and required docs verification passed.
+- `2026-05-06 21:47 KST` Reverified Phase 1.5 from the vibe prompt: current code/config/docs still satisfy the completed attribution, source-quality, matching, sensitivity, cadence, and operator-checklist tasks.
+- `2026-05-06 21:47 KST` Live discovery recheck returned 237 candidates from all 5 configured Korea/Japan RSS sources with no reported source failures.
+- `2026-05-06 21:50 KST` Tightened restricted-source X post-processing so short drafts with existing source cues are deduplicated and still end with exactly one compact `Source: ...` cue before the URL.
 
 ## Test Log
 - `2026-04-29 19:42 KST` production isolated `run-local` -> `passed` `status=succeeded; drafts=1530; failures=0`
@@ -177,6 +187,13 @@ No source was disabled in this pass because all feeds were live and reusable wit
 - `2026-04-30 16:54 KST` `git diff --check` -> `passed`
 - `2026-04-30 18:18 KST` `scripts/scan_secrets.sh check` -> `passed`
 - `2026-04-30 18:18 KST` `git diff --check` -> `passed`
+- `2026-05-06 21:47 KST` `./.venv/bin/python -m app.cli version` -> `passed` `sns-content-engine 0.1.0`
+- `2026-05-06 21:47 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py -q` -> `passed` `92 passed`
+- `2026-05-06 21:47 KST` `diff -u config/accounts.yaml config/global_country_news/accounts.yaml`, `diff -u config/prompts.yaml config/global_country_news/prompts.yaml`, and `diff -u config/sources.yaml config/global_country_news/sources.yaml` -> `passed` `no differences`
+- `2026-05-06 21:47 KST` `./.venv/bin/python -m app.cli discover --config-dir config/global_country_news` -> `passed` `237 candidates from 5 sources; KBS 30, Yonhap 97, Korea Herald 50, Japan Times 30, Japan Today 30`
+- `2026-05-06 21:50 KST` `./.venv/bin/pytest tests/test_x_draft_generator.py -q` -> `passed` `22 passed`
+- `2026-05-06 21:50 KST` `./.venv/bin/pytest tests/test_draft_validation.py tests/test_x_draft_generator.py tests/test_review_queue_workflow.py tests/test_scheduler.py -q` -> `passed` `93 passed`
+- `2026-05-06 21:50 KST` `scripts/scan_secrets.sh refresh-baseline`, `scripts/scan_secrets.sh check`, and `git diff --check` -> `passed`
 
 ## Open Questions
 - `Which sources generate useful unique items after several production runs?`

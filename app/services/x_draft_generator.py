@@ -629,15 +629,14 @@ def _coerce_x_variant_with_required_attribution(
     required_attribution: RequiredSourceAttribution,
 ) -> str:
     attribution_text = _format_source_attribution(required_attribution.label)
+    value_without_url = value.replace(landing_url, " ")
     if _contains_source_attribution(value, required_attribution):
-        if len(value) <= max_chars:
-            return value
         supporting_text = _strip_attribution_cues(
-            value.replace(landing_url, " "),
+            value_without_url,
             required_attribution=required_attribution,
         )
     else:
-        supporting_text = value.replace(landing_url, " ")
+        supporting_text = value_without_url
 
     return _fit_text_with_attribution_and_url(
         text=supporting_text,
@@ -674,12 +673,19 @@ def _strip_attribution_cues(
         escaped_label = re.escape(label)
         for pattern in (
             rf"\b(?:according to|per|via|from)\s+Source:\s*{escaped_label}\b\.?",
+            rf"\b(?:the update is|this update is|source is)\s+Source:\s*{escaped_label}\b\.?",
             rf"\bSource:\s*{escaped_label}\b\.?",
-            rf"\b(?:according to|per|via|from)\s+{escaped_label}\b\.?",
+            rf"\b(?:according to|per|via|from|reported by)\s+{escaped_label}\b\.?",
         ):
             cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
-    return _normalize_body(cleaned)
+    cleaned = re.sub(
+        r"(?:[\s,;:.-]+(?:according to|per|via|from|reported by|the update is|this update is|source is))+$",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return _normalize_body(_normalize_body(cleaned).rstrip(" ,;:.-"))
 
 
 def _fit_text_with_attribution_and_url(

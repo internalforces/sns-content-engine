@@ -184,6 +184,35 @@ def test_x_draft_generator_adds_required_source_attribution_to_x_variants() -> N
     assert all(len(variant) <= 120 for variant in variants)
 
 
+def test_x_draft_generator_deduplicates_existing_attribution_in_short_x_variants() -> None:
+    provider = _CapturingProvider(
+        (
+            "First X draft Source: Finance Feed. The update is Source: Finance Feed https://example.com/articles/1",
+            "Second X draft, per Finance Feed. https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(require_attribution=True),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=140),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+    )
+
+    assert variants == (
+        "First X draft Source: Finance Feed https://example.com/articles/1",
+        "Second X draft Source: Finance Feed https://example.com/articles/1",
+    )
+    assert all(variant.count("Source: Finance Feed") == 1 for variant in variants)
+    assert all(variant.count("https://example.com/articles/1") == 1 for variant in variants)
+    assert all(len(variant) <= 140 for variant in variants)
+
+
 def test_x_draft_generator_preserves_required_attribution_when_shortening_x_variants() -> None:
     long_context = " ".join(["Korea policy update for global readers"] * 8)
     provider = _CapturingProvider(
