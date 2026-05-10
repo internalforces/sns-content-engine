@@ -90,6 +90,28 @@ def test_fake_llm_provider_distinguishes_linkedin_and_threads_structured_tone() 
     assert "easy to share without losing the factual core" in threads_variants[0]
 
 
+def test_fake_llm_provider_generates_ghost_longform_article_shape() -> None:
+    provider = FakeLLMProvider()
+    request = DraftGenerationRequest(
+        channel="ghost",
+        system_prompt="Write reviewable long-form country news.",
+        user_prompt="Keep source trail visible for Ghost handoff.",
+        landing_url="https://example.com/articles/1",
+        max_chars=12000,
+        variant_count=2,
+        title="Useful AI workflow patterns",
+        key_points=("Useful AI workflow patterns", "Tight review loops", "Better scheduling"),
+    )
+
+    variants = provider.generate_variants(request)
+
+    assert len(variants) == 2
+    assert variants[0].startswith("# Useful AI workflow patterns")
+    assert "\n## What happened\n" in variants[0]
+    assert "\n## Sources\n- Original report: https://example.com/articles/1" in variants[0]
+    assert variants[0] != variants[1]
+
+
 def test_fake_llm_provider_uses_guide_cta_for_guide_landings() -> None:
     provider = FakeLLMProvider()
     request = DraftGenerationRequest(
@@ -332,6 +354,35 @@ def test_x_draft_generator_preserves_multiline_structure_for_linkedin_channel() 
     assert provider.request is not None
     assert provider.request.channel == "linkedin"
     assert "1. One-line summary" in provider.request.system_prompt
+
+
+def test_x_draft_generator_preserves_ghost_longform_structure_and_adds_source_attribution() -> None:
+    provider = _CapturingProvider(
+        (
+            "# Useful AI workflow patterns\n\n## What happened\nDraft one.\n\n## Sources\n- https://example.com/articles/1",
+            "# Useful AI workflow patterns\n\n## What happened\nDraft two.\n\n## Sources\n- https://example.com/articles/1",
+        )
+    )
+    generator = XDraftGenerator(provider)
+
+    variants = generator.generate(
+        content_brief=_build_content_brief(require_attribution=True),
+        account_key="ai_tools_daily",
+        account=_build_account_config(max_chars=12000, channels=("ghost",)),
+        prompt_profile=PromptProfileConfig(
+            system_template="System {{ account_key }} for {{ channel }}",
+            user_template="User {{ title }} {{ landing_url }}",
+        ),
+        variant_count=2,
+        channel="ghost",
+    )
+
+    assert variants[0].startswith("# Useful AI workflow patterns\n")
+    assert "\n## Sources\n- https://example.com/articles/1" in variants[0]
+    assert "\nSource: Finance Feed" in variants[0]
+    assert provider.request is not None
+    assert provider.request.channel == "ghost"
+    assert "article drafts, not social teasers" in provider.request.system_prompt
 
 
 @pytest.mark.parametrize(

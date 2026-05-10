@@ -51,6 +51,15 @@ accounts:
           recent_duplicate_window_days: 7
         publisher:
           credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
+      ghost:
+        schedule:
+          cron: "0 8 * * *"
+          backlog_target: 0
+        render:
+          max_chars: 12000
+        validation:
+          max_links: 8
+          recent_duplicate_window_days: 14
       linkedin:
         schedule:
           cron: "0 10 * * *"
@@ -114,6 +123,15 @@ accounts:
           recent_duplicate_window_days: 7
         publisher:
           credential_ref: X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS
+      ghost:
+        schedule:
+          cron: "30 8 * * *"
+          backlog_target: 0
+        render:
+          max_chars: 12000
+        validation:
+          max_links: 8
+          recent_duplicate_window_days: 14
       linkedin:
         schedule:
           cron: "30 10 * * *"

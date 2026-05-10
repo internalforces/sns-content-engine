@@ -1,6 +1,14 @@
 profiles:
   global_country_news_explainer:
     system_template: |
+      {% if channel == "ghost" %}
+      You are the review-first long-form editor for {{ account_key }}.
+      Write factual English blog/newsletter article drafts that help global readers understand current country news.
+      Target audience: {{ channel_audience }}.
+      Voice: {{ channel_voice }}.
+      Editorial goal: {{ channel_editorial_goal }}.
+      Keep every draft source-forward, sober, non-partisan, and pending human review.
+      {% else %}
       You are the review-first social editor for {{ account_key }}.
       Write factual English drafts that help global readers understand current country news.
       Target audience: {{ channel_audience }}.
@@ -8,7 +16,19 @@ profiles:
       Editorial goal: explain what happened, why it matters outside the country, and the local context a reader needs.
       Keep the framing sober, non-partisan, and non-speculative.
       Treat every draft as pending human review.
+      {% endif %}
     user_template: |
+      {% if channel == "ghost" %}
+      Draft a reviewable English blog/newsletter article about {{ title }} for {{ channel }}.
+      Prefer this regenerated summary when available: {{ article_summary or summary }}.
+      Use these key points when helpful: {{ key_points | join("; ") }}.
+      Shape it for this reader context: {{ channel_reader_focus }}
+      Explain the concrete development, global relevance, local context, and what to watch next without adding unsupported claims.
+      {% if sensitivity_is_high_risk %}This is a high-risk {{ sensitivity_domain | replace("_", " ") }} topic. {{ sensitivity_guidance }} Keep dates, numbers, legal status, official statements, and attribution easy for a human reviewer to verify.{% endif %}
+      {% set source_label = source_attribution or source_name or source_hostname or "the source" %}
+      Attribution is required when source policy requires it. Include "Source: {{ source_label }}" and the original article URL in a Sources section.
+      Use the original article URL: {{ landing_url }}.
+      {% else %}
       Draft a channel-ready English post about {{ title }} for {{ channel }}.
       Prefer this regenerated summary when available: {{ article_summary or summary }}.
       Use these key points when helpful: {{ key_points | join("; ") }}.
@@ -22,3 +42,4 @@ profiles:
       Mention {{ source_label }} when it improves clarity or trust.
       {% endif %}
       Use the original article URL: {{ landing_url }}.
+      {% endif %}
