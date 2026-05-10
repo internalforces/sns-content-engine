@@ -17,6 +17,8 @@ from app.storage import ContentBrief, SourcePolicyMode
 _WHITESPACE_RE = re.compile(r"\s+")
 _LINE_BREAK_RE = re.compile(r"\n{3,}")
 _STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
+_LONGFORM_CHANNELS = frozenset({"ghost"})
+_MULTILINE_CHANNELS = _STRUCTURED_CHANNELS | _LONGFORM_CHANNELS
 _STRUCTURED_SECTION_LABELS = (
     "1. One-line summary",
     "2. Key points",
@@ -222,6 +224,22 @@ def _build_system_prompt(
     max_chars: int,
     variant_count: int,
 ) -> str:
+    if channel in _LONGFORM_CHANNELS:
+        channel_label = _channel_label(channel)
+        return (
+            f"{base_prompt}\n\n"
+            "Long-form channel constraints:\n"
+            f"- Output plain-text {channel_label} article drafts, not social teasers.\n"
+            f"- Return exactly {variant_count} distinct variants.\n"
+            f"- Keep every variant at or under {max_chars} characters.\n"
+            "- Use Markdown-style section headings that an operator can edit before publishing.\n"
+            "- Include a concise headline, dek, context section, implications section, and source section.\n"
+            "- Keep facts, dates, numbers, names, and legal or official status traceable to the source context.\n"
+            "- Include the required source URL in the source section.\n"
+            "- Do not publish, schedule, or imply approval; this is a review draft only.\n"
+            "- Do not add unsupported claims, community calls-to-action, or financial/medical/legal advice."
+        )
+
     if channel == "x" or channel not in _STRUCTURED_CHANNELS:
         channel_label = _channel_label(channel)
         return (
@@ -269,6 +287,21 @@ def _build_user_prompt(
     max_chars: int,
     variant_count: int,
 ) -> str:
+    if channel in _LONGFORM_CHANNELS:
+        return (
+            f"{base_prompt}\n\n"
+            "Long-form output requirements:\n"
+            f"- Channel: {channel}\n"
+            f"- Variant count: {variant_count}\n"
+            f"- Max characters per variant: {max_chars}\n"
+            f"- Required source URL: {landing_url}\n"
+            "- Draft for a blog/newsletter article an operator will review before Ghost handoff.\n"
+            "- Use this structure: headline, dek, What happened, Why it matters, Context to watch, Sources.\n"
+            "- Keep the article self-contained but concise enough for manual review.\n"
+            "- List the source attribution and required URL under Sources.\n"
+            "- Avoid social-post language such as hashtags, viral hooks, or engagement bait."
+        )
+
     if channel == "x" or channel not in _STRUCTURED_CHANNELS:
         return (
             f"{base_prompt}\n\n"
@@ -326,6 +359,37 @@ def _build_structured_retry_request(
 
 
 def _channel_style_guidance(channel: str) -> ChannelStyleGuidance:
+    if channel == "ghost":
+        return ChannelStyleGuidance(
+            audience=(
+                "global readers who want durable context before following the story "
+                "through social distribution"
+            ),
+            voice="reported, explanatory, sober, and source-forward",
+            editorial_goal=(
+                "turn one verified country-news brief into an operator-reviewable "
+                "blog or newsletter article draft"
+            ),
+            reader_focus=(
+                "Frame the update for readers who need the local context, the global "
+                "relevance, and the specific source trail in one place."
+            ),
+            implication_focus=(
+                "the verified public-interest context and the next developments a "
+                "reader can watch without speculation"
+            ),
+            system_constraints=(
+                "- Write like an explanatory article draft, not a social post.",
+                "- Keep source attribution visible and easy for an operator to check.",
+                "- Use restrained news language and avoid community-distribution calls to action.",
+            ),
+            user_constraints=(
+                "- Make the dek summarize the concrete development and why global readers should care.",
+                "- Make the context section explain local institutions, geography, or policy terms only when source-supported.",
+                "- Make the source section easy to copy into a Ghost article handoff.",
+            ),
+        )
+
     if channel == "linkedin":
         return ChannelStyleGuidance(
             audience=(
@@ -535,7 +599,14 @@ def _validate_variants(
         normalized = _normalize_variant_body(variant, channel=request.channel)
         if not normalized:
             raise DraftGenerationError(f"variant {index} is empty after normalization")
-        if _channel_uses_compaction(request.channel):
+        if request.channel in _LONGFORM_CHANNELS:
+            normalized = _coerce_longform_variant(
+                normalized,
+                landing_url=request.landing_url,
+                max_chars=request.max_chars,
+                required_attribution=required_attribution,
+            )
+        elif _channel_uses_compaction(request.channel):
             if request.landing_url not in normalized:
                 raise DraftGenerationError(f"variant {index} is missing the landing URL")
             normalized = _coerce_x_variant_to_fit(
@@ -571,7 +642,7 @@ def _normalize_body(value: str) -> str:
 
 def _normalize_variant_body(value: str, *, channel: str) -> str:
     normalized = value.replace("\r\n", "\n").replace("\r", "\n")
-    if channel not in _STRUCTURED_CHANNELS:
+    if channel not in _MULTILINE_CHANNELS:
         return _normalize_body(normalized)
 
     normalized_lines: list[str] = []
@@ -587,6 +658,28 @@ def _normalize_variant_body(value: str, *, channel: str) -> str:
         blank_pending = False
 
     return _LINE_BREAK_RE.sub("\n\n", "\n".join(normalized_lines)).strip()
+
+
+def _coerce_longform_variant(
+    value: str,
+    *,
+    landing_url: str,
+    max_chars: int,
+    required_attribution: RequiredSourceAttribution | None,
+) -> str:
+    lines = [value.strip()]
+    if required_attribution is not None and not _contains_source_attribution(
+        value,
+        required_attribution,
+    ):
+        lines.extend(("", f"Source: {required_attribution.label}"))
+    if landing_url not in value:
+        lines.extend(("", "Sources", f"- {landing_url}"))
+
+    normalized = _LINE_BREAK_RE.sub("\n\n", "\n".join(lines)).strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    return value
 
 
 def _coerce_x_variant_to_fit(
@@ -864,6 +957,8 @@ def _channel_uses_compaction(channel: str) -> bool:
 
 
 def _channel_label(channel: str) -> str:
+    if channel == "ghost":
+        return "Ghost"
     if channel == "linkedin":
         return "LinkedIn"
     if channel == "threads":

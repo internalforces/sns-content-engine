@@ -27,10 +27,12 @@ def test_registry_loads_active_country_news_config_directory() -> None:
 
     korea_account = registry.get_account("korea_global_news")
     korea_channel = korea_account.channels["x"]
+    korea_ghost_channel = korea_account.channels["ghost"]
     korea_linkedin_channel = korea_account.channels["linkedin"]
     korea_threads_channel = korea_account.channels["threads"]
     japan_account = registry.get_account("japan_global_news")
     japan_channel = japan_account.channels["x"]
+    japan_ghost_channel = japan_account.channels["ghost"]
     japan_linkedin_channel = japan_account.channels["linkedin"]
     japan_threads_channel = japan_account.channels["threads"]
     korea_source = registry.get_source("korea_kbs_world_latest")
@@ -71,6 +73,12 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert korea_channel.validation.recent_duplicate_window_days == 7
     assert korea_channel.publisher is not None
     assert korea_channel.publisher.credential_ref == "X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS"
+    assert korea_ghost_channel.schedule.cron == "0 8 * * *"
+    assert korea_ghost_channel.schedule.backlog_target == 0
+    assert korea_ghost_channel.render.max_chars == 12000
+    assert korea_ghost_channel.validation.max_links == 8
+    assert korea_ghost_channel.validation.recent_duplicate_window_days == 14
+    assert korea_ghost_channel.publisher is None
     assert korea_linkedin_channel.render.max_chars == 3000
     assert korea_linkedin_channel.validation.recent_duplicate_window_days == 7
     assert korea_linkedin_channel.publisher is None
@@ -87,6 +95,12 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert japan_channel.validation.recent_duplicate_window_days == 7
     assert japan_channel.publisher is not None
     assert japan_channel.publisher.credential_ref == "X_JAPAN_GLOBAL_NEWS_PUBLISHER_CREDENTIALS"
+    assert japan_ghost_channel.schedule.cron == "30 8 * * *"
+    assert japan_ghost_channel.schedule.backlog_target == 0
+    assert japan_ghost_channel.render.max_chars == 12000
+    assert japan_ghost_channel.validation.max_links == 8
+    assert japan_ghost_channel.validation.recent_duplicate_window_days == 14
+    assert japan_ghost_channel.publisher is None
     assert japan_linkedin_channel.render.max_chars == 3000
     assert japan_linkedin_channel.validation.recent_duplicate_window_days == 7
     assert japan_linkedin_channel.publisher is None
@@ -110,9 +124,10 @@ def test_registry_loads_active_country_news_config_directory() -> None:
     assert japan_source.require_attribution is True
     assert japan_source.duplicate_window_days == 7
 
-    assert registry.get_prompt_profile("global_country_news_explainer").system_template.startswith(
-        "You are the review-first social editor"
-    )
+    prompt_profile = registry.get_prompt_profile("global_country_news_explainer")
+    assert 'channel == "ghost"' in prompt_profile.system_template
+    assert "You are the review-first long-form editor" in prompt_profile.system_template
+    assert "You are the review-first social editor" in prompt_profile.system_template
     assert registry.get_source_set("korea_global_primary").sources == (
         "korea_kbs_world_latest",
         "korea_yonhap_english",
@@ -148,9 +163,10 @@ def test_registry_loads_global_country_news_phase1_config_directory() -> None:
         "japan_japan_times_latest",
         "japan_japan_today_atom",
     )
-    assert registry.get_prompt_profile("global_country_news_explainer").user_template.endswith(
-        "Use the original article URL: {{ landing_url }}."
-    )
+    prompt_profile = registry.get_prompt_profile("global_country_news_explainer")
+    assert 'channel == "ghost"' in prompt_profile.user_template
+    assert "Draft a reviewable English blog/newsletter article" in prompt_profile.user_template
+    assert "Use the original article URL: {{ landing_url }}." in prompt_profile.user_template
 
 
 def test_source_landing_strategy_rejects_static_rules(tmp_path: Path) -> None:

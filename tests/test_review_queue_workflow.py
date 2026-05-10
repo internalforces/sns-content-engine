@@ -225,6 +225,48 @@ def test_approve_draft_creates_manual_publish_handoff_for_linkedin(session_facto
     assert actions[0].publish_job_id == result.publish_job_id
 
 
+def test_approve_draft_creates_manual_publish_handoff_for_ghost_longform(
+    session_factory,
+    config_dir,
+) -> None:
+    body = (
+        "# Useful AI workflow patterns\n\n"
+        "## What happened\n"
+        "Useful AI automation workflows for operators.\n\n"
+        "## Sources\n"
+        "- Original report: https://gilgop.cloud/ai-tools"
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="ghost", body=body)
+        draft_id = draft.id
+
+    result = approve_draft(
+        draft_id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+
+    assert result.action_type is ReviewActionType.APPROVE
+    assert result.publish_job_id is not None
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list()
+        logs = PublishLogRepository(session).list()
+
+    assert len(jobs) == 1
+    assert jobs[0].id == result.publish_job_id
+    assert jobs[0].channel == "ghost"
+    assert jobs[0].scheduled_for is None
+    assert logs[0].payload == {
+        "account_key": "ai_tools_daily",
+        "channel": "ghost",
+        "draft_variant_id": draft_id,
+        "handoff_mode": "manual_upload",
+        "scheduled_for": None,
+    }
+
+
 def test_approve_draft_for_threads_falls_back_to_manual_handoff_when_live_publisher_is_unavailable(
     session_factory,
     threads_live_config_dir,
@@ -340,6 +382,46 @@ def test_complete_manual_publish_handoff_marks_job_published_and_records_log(
         "last_error": None,
         "reason": None,
     }
+
+
+def test_complete_manual_publish_handoff_records_ghost_article_url(
+    session_factory,
+    config_dir,
+) -> None:
+    body = (
+        "# Useful AI workflow patterns\n\n"
+        "## Sources\n"
+        "- Original report: https://gilgop.cloud/ai-tools"
+    )
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(session, channel="ghost", body=body)
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=config_dir,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    result = complete_manual_publish_handoff(
+        approval.publish_job_id,
+        operator="publisher-a",
+        external_post_id="https://news.example.com/useful-ai-workflow-patterns",
+        session_factory=session_factory,
+    )
+
+    assert result.publish_job_state is PublishJobState.PUBLISHED
+    assert result.external_post_id == "https://news.example.com/useful-ai-workflow-patterns"
+
+    with session_scope(session_factory) as session:
+        job = PublishJobRepository(session).get(approval.publish_job_id)
+        logs = PublishLogRepository(session).list_for_job(approval.publish_job_id)
+
+    assert job is not None
+    assert job.channel == "ghost"
+    assert job.external_post_id == "https://news.example.com/useful-ai-workflow-patterns"
+    assert [log.event_type for log in logs] == ["manual_handoff_created", "published"]
 
 
 def test_fail_manual_publish_handoff_marks_job_failed_and_records_log(
@@ -683,6 +765,25 @@ def test_schedule_draft_rejects_linkedin_manual_publish_channel(session_factory,
         )
 
 
+def test_schedule_draft_rejects_ghost_manual_publish_channel(session_factory, config_dir) -> None:
+    with session_scope(session_factory) as session:
+        draft = _create_draft_variant(
+            session,
+            channel="ghost",
+            draft_state=DraftVariantState.APPROVED,
+            body="# Useful AI workflow patterns\n\nhttps://gilgop.cloud/ai-tools",
+        )
+
+    with pytest.raises(DraftScheduleError, match="manual publish handoff"):
+        schedule_draft(
+            draft.id,
+            scheduled_for="2026-03-18T09:00:00+09:00",
+            reviewer="scheduler-a",
+            config_dir=config_dir,
+            session_factory=session_factory,
+        )
+
+
 def test_schedule_draft_rejects_threads_when_live_publisher_is_unavailable(
     session_factory,
     threads_live_config_dir,
@@ -970,6 +1071,16 @@ def _write_project_config(path: Path, *, include_threads_publisher: bool = False
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
+              ghost:
+                schedule:
+                  cron: "0 8 * * *"
+                  backlog_target: 0
+                render:
+                  max_chars: 12000
+                validation:
+                  max_links: 8
+                  banned_phrases: []
+                  recent_duplicate_window_days: 14
               threads:
                 schedule:
                   cron: "0 11 * * *"

@@ -167,7 +167,7 @@ class ConfigPublisherResolver:
         raise ValueError(f"channel {channel!r} does not support live publishing in the MVP")
 
 
-_ALWAYS_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin"})
+_ALWAYS_MANUAL_PUBLISH_CHANNELS = frozenset({"ghost", "linkedin"})
 _CONFIG_GATED_LIVE_PUBLISH_CHANNELS = frozenset({"threads"})
 
 

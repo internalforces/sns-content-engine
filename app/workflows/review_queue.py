@@ -64,7 +64,7 @@ class ManualPublishStateError(ManualPublishError):
     """Raised when a manual publish outcome is attempted from the wrong state."""
 
 
-_MANUAL_PUBLISH_CHANNELS = frozenset({"linkedin", "threads"})
+_MANUAL_PUBLISH_CHANNELS = frozenset({"ghost", "linkedin", "threads"})
 
 
 @dataclass(frozen=True, slots=True)

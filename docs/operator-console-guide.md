@@ -67,8 +67,8 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 - `Runs & Failures`: recent pipeline runs, technical failures, and policy skips.
 - `Articles`: stored article and enrichment status rows.
 - `Pending Review`: drafts waiting for manual review.
-- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Sensitive country-news drafts show a review note when the title, summary, or tags match politics, security, legal, disaster, health, finance, or diplomacy cues. Approved LinkedIn drafts always show copy-ready manual upload guidance. Approved Threads drafts show the schedule form when a live publisher resolves successfully and fall back to manual upload guidance when it does not.
-- `Publish Jobs`: queued, published, failed, and cancelled jobs plus linked draft context. LinkedIn handoffs and manual-fallback Threads handoffs stay here until an operator records the final outcome.
+- `Review Detail`: approve, reject, edit, or schedule one draft while keeping current validation and audit behavior. Sensitive country-news drafts show a review note when the title, summary, or tags match politics, security, legal, disaster, health, finance, or diplomacy cues. Approved Ghost and LinkedIn drafts always show copy-ready manual upload guidance. Approved Threads drafts show the schedule form when a live publisher resolves successfully and fall back to manual upload guidance when it does not.
+- `Publish Jobs`: queued, published, failed, and cancelled jobs plus linked draft context. Ghost, LinkedIn, and manual-fallback Threads handoffs stay here until an operator records the final outcome.
 - `Scheduler`: discover, backfill, and publish-due actions with dry-run-first messaging.
 
 ## Recommended local flow
@@ -78,7 +78,7 @@ For `sns.gilgop.cloud`, the checked-in default is the Caddy reverse-proxy baseli
 3. Approve, reject, or edit the draft.
 4. If the approved draft is `x`, use the schedule form and then follow its queued or published state through `Publish Jobs`.
 5. For the first live rollout, do not use the optional Threads live path even if the review page could show the schedule form later. Keep Threads on the manual upload path until a separate Threads rollout is intentionally prepared.
-6. If the approved draft is `linkedin`, or `threads` still shows manual upload guidance, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
+6. If the approved draft is `ghost`, `linkedin`, or `threads` still shows manual upload guidance, copy the rendered body from the review page, publish it manually on the external platform, then open the linked publish job and record `완료`, `실패`, or `취소`.
 7. Use `Scheduler` only for discovery, backfill, and due scheduled jobs after confirming the current live-publish queue.
 
 ## Country news cadence baseline
@@ -90,6 +90,18 @@ The Phase 1.5 Korea/Japan country-news config is tuned for review-led operation,
 - X schedules require a 720-minute same account/channel gap, so accidental backlog increases still avoid crowded same-day posting.
 - Source ingestion and draft validation use 7-day duplicate windows to reduce repeated wire coverage and identical social drafts.
 - LinkedIn and Threads remain manual handoff channels unless a separate live rollout intentionally configures a resolvable publisher.
+- Ghost long-form drafts are generated as review-led manual handoffs with a 12,000 character cap, 8-link review allowance, and no live API publishing.
+
+## Ghost long-form handoff baseline
+
+The Phase 2 first slice adds a `ghost` draft channel for Korea/Japan country news. Ghost is the selected primary owned long-form home, but the app does not publish to Ghost directly yet.
+
+1. Generate drafts through the normal local pipeline or `generate-drafts`; Ghost variants enter the same pending-review queue as social drafts.
+2. Review the Ghost draft as a long-form article, checking headline, dek, context sections, source attribution, and the source URL.
+3. Approve only after the article body is ready for manual Ghost copy/paste.
+4. Approval creates a manual publish handoff job instead of a scheduled live-publish job.
+5. Publish or save the article manually in Ghost, then record the final Ghost URL through the publish-job detail page.
+6. Use `실패` or `전달 취소` if the Ghost article should not be recorded as published.
 
 ## Country news live-publish quality checklist
 
@@ -132,9 +144,9 @@ Use this checklist before scheduling an X draft or recording a manual LinkedIn/T
    - Stop if a publisher credential, account identity, or external platform state is uncertain.
    - Stop if a real-world emergency or fast-moving legal, disaster, security, or health story needs fuller context than a short social draft can provide.
 
-## Manual handoff flow for LinkedIn and manual-fallback Threads
+## Manual handoff flow for Ghost, LinkedIn, and manual-fallback Threads
 
-1. Approval creates an explicit publish-job record automatically for LinkedIn, and for Threads only when that account does not currently resolve a live publisher from `publisher.credential_ref`.
+1. Approval creates an explicit publish-job record automatically for Ghost and LinkedIn, and for Threads only when that account does not currently resolve a live publisher from `publisher.credential_ref`.
 2. The review detail page keeps the approved body available as operator copy for the external platform.
 3. The publish-job detail page shows manual action forms only while the handoff is still open.
 4. `발행 완료 기록` stores the final state as `published` and can include an external post ID or link.
@@ -175,7 +187,7 @@ export THREADS_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-wi
 - Browser scheduling still uses the same validation, attribution, and provenance checks as the CLI and API.
 - `publish-due` stays dry-run by default in the browser. Live publish only runs when you explicitly select the one-run live option.
 - Live publish still depends on configured channel credentials from environment variables, not YAML secrets.
-- LinkedIn handoffs are never auto-published by the browser. Threads handoffs are also manual-only whenever live credentials are missing, invalid, or not configured for that account.
+- Ghost and LinkedIn handoffs are never auto-published by the browser. Threads handoffs are also manual-only whenever live credentials are missing, invalid, or not configured for that account.
 - Scheduler backfill and review-page scheduling only treat Threads as live-publish-capable when the configured account can resolve a live Threads publisher. Otherwise the console keeps Threads on the manual handoff path.
 - Manual handoff forms disappear after a job reaches `published`, `failed`, or `cancelled`; if a fresh post is needed later, start from a new approved draft or new handoff instead of reopening the terminal job.
 - Edge Basic Auth is an access-control wrapper only. It does not replace the repository's own review-first workflow or justify public unauthenticated exposure.

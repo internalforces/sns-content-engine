@@ -143,6 +143,75 @@ def test_generate_drafts_creates_multichannel_variants_for_linkedin_and_threads(
     assert "\n8. URL\nhttps://example.com/articles/ai-tools-canonical" in threads_drafts[0].body
 
 
+def test_generate_drafts_creates_reviewable_ghost_longform_variants(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(
+        tmp_path,
+        accounts_yaml="""
+        accounts:
+          ai_tools_daily:
+            topic: "AI tools and workflows"
+            source_sets:
+              - ai_tools_primary
+            prompt_profile: ai_tools_default
+            landing:
+              fallback_url: https://gilgop.cloud/ai-tools
+              rules: []
+            channels:
+              ghost:
+                schedule:
+                  cron: "0 8 * * *"
+                  backlog_target: 0
+                render:
+                  max_chars: 12000
+                validation:
+                  max_links: 8
+                  recent_duplicate_window_days: 14
+        """,
+        prompts_yaml="""
+        profiles:
+          ai_tools_default:
+            system_template: "System for {{ account_key }} on {{ channel }} for {{ channel_audience }}"
+            user_template: "Write about {{ title }} and use {{ landing_url }} for {{ channel_reader_focus }}"
+        """,
+    )
+
+    with session_scope(session_factory) as session:
+        brief = _create_content_brief(
+            session,
+            account_key="ai_tools_daily",
+            article_url="https://example.com/articles/ai-tools-canonical",
+            article_source_name="AI Tools Daily",
+        )
+        brief_id = brief.id
+
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+        variant_count=2,
+    )
+
+    assert result.processed_content_brief_ids == (brief_id,)
+    assert result.created_count == 1
+    assert result.created_variant_count == 2
+    assert result.counts_by_status() == {"created": 1}
+
+    with session_scope(session_factory) as session:
+        ghost_drafts = DraftVariantRepository(session).list_by_content_brief_and_channel(
+            brief_id,
+            "ghost",
+        )
+
+    assert len(ghost_drafts) == 2
+    assert ghost_drafts[0].body.startswith("# Useful AI workflow patterns")
+    assert "\n## What happened\n" in ghost_drafts[0].body
+    assert "\n## Sources\n- Original report: https://example.com/articles/ai-tools-canonical" in ghost_drafts[0].body
+    assert ghost_drafts[0].source_name == "AI Tools Daily"
+    assert ghost_drafts[0].article_url == "https://example.com/articles/ai-tools-canonical"
+    assert all(draft.state is DraftVariantState.PENDING_REVIEW for draft in ghost_drafts)
+
+
 def test_generate_drafts_uses_article_url_when_enrichment_exists(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     _write_project_config(tmp_path)
@@ -181,8 +250,16 @@ def test_generate_drafts_is_idempotent_when_x_drafts_already_exist(tmp_path: Pat
         brief = _create_content_brief(session, account_key="ai_tools_daily")
         brief_id = brief.id
 
-    first = generate_drafts(tmp_path, session_factory=session_factory)
-    second = generate_drafts(tmp_path, session_factory=session_factory)
+    first = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
+    second = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert first.created_count == 1
     assert first.created_variant_count == 3
@@ -262,7 +339,11 @@ def test_generate_drafts_skips_missing_account_and_continues_processing(tmp_path
         active_brief = _create_content_brief(session, account_key="ai_tools_daily")
         active_brief_id = active_brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert result.processed_content_brief_ids == (missing_brief.id, active_brief_id)
     assert result.created_count == 1
@@ -336,7 +417,10 @@ def test_generate_drafts_uses_openai_provider_when_api_key_is_present(
         brief = _create_content_brief(session, account_key="ai_tools_daily")
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+    )
 
     assert result.created_count == 1
 
@@ -400,7 +484,11 @@ def test_generate_drafts_shortens_overlong_openai_variants_before_storing(
         brief = _create_content_brief(session, account_key="ai_tools_daily")
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert result.created_count == 1
 
@@ -469,7 +557,10 @@ def test_generate_drafts_honors_providers_yaml_routing_when_present(
         brief = _create_content_brief(session, account_key="ai_tools_daily")
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+    )
 
     assert result.created_count == 1
     assert result.provider_names == ("codex_wrapper",)
@@ -570,7 +661,11 @@ def test_generate_drafts_persists_source_and_policy_provenance_on_drafts(tmp_pat
         )
         brief_id = brief.id
 
-    result = generate_drafts(tmp_path, session_factory=session_factory)
+    result = generate_drafts(
+        tmp_path,
+        session_factory=session_factory,
+        llm_provider=FakeLLMProvider(),
+    )
 
     assert result.created_count == 1
 

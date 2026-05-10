@@ -26,6 +26,11 @@ _STRUCTURED_SUMMARY_SUFFIXES = (
     "stands out as the update most worth a quick operator scan.",
     "is the development to keep on the immediate review list.",
 )
+_LONGFORM_ANGLE_LINES = (
+    "Editorial angle: explain the immediate facts first, then the wider country-news context.",
+    "Editorial angle: foreground what changed and what a global reader needs to know next.",
+    "Editorial angle: keep the update source-led, concise, and ready for a Ghost handoff.",
+)
 _LINKEDIN_IMPACT_LINES = (
     "Next impact to monitor: how this update changes execution priorities, partner expectations, or market positioning.",
     "Forward impact: watch for downstream shifts in planning, compliance, capital allocation, or customer messaging.",
@@ -57,6 +62,7 @@ _THREADS_CONCLUSION_LINES = (
     "Bottom line: if this keeps moving, the linked report is the quickest factual place to start.",
 )
 _STRUCTURED_CHANNELS = frozenset({"linkedin", "threads"})
+_LONGFORM_CHANNELS = frozenset({"ghost"})
 _WORD_RE = re.compile(r"[A-Za-z0-9']+")
 _PROMPT_STOPWORDS = frozenset(
     {
@@ -122,6 +128,8 @@ class FakeLLMProvider:
         if request.variant_count not in (2, 3):
             raise ValueError("variant_count must be 2 or 3")
 
+        if request.channel in _LONGFORM_CHANNELS:
+            return _generate_longform_variants(request)
         if request.channel in _STRUCTURED_CHANNELS:
             return _generate_structured_variants(request)
 
@@ -285,6 +293,60 @@ def _generate_structured_variants(request: DraftGenerationRequest) -> tuple[str,
     return tuple(variants)
 
 
+def _generate_longform_variants(request: DraftGenerationRequest) -> tuple[str, ...]:
+    variants: list[str] = []
+    prompt_focus = _build_prompt_focus(request)
+    keywords = _build_keywords(request)
+    title = request.title.rstrip(".")
+
+    for index in range(request.variant_count):
+        key_point = _select_key_point(request.key_points, index=index) or title
+        secondary_point = _select_key_point(
+            request.key_points,
+            index=min(index + 1, request.variant_count - 1),
+        )
+        body = "\n".join(
+            [
+                f"# {title}",
+                "",
+                (
+                    f"Dek: {title} needs a closer read for global readers, with the "
+                    f"source trail preserved for editorial review."
+                ),
+                "",
+                "## What happened",
+                (
+                    f"{title} is the verified development at the center of this draft. "
+                    f"{key_point.rstrip('.')}."
+                ),
+                "",
+                "## Why it matters",
+                (
+                    f"The practical context is {prompt_focus or 'country-news relevance'}; "
+                    "the article should help readers understand the local facts before "
+                    "drawing broader conclusions."
+                ),
+                "",
+                "## Context to watch",
+                (
+                    f"Watchpoint: {(secondary_point or key_point).rstrip('.')}. "
+                    "Keep names, dates, official status, and sensitive claims aligned with the source."
+                ),
+                "",
+                "## Editorial tags",
+                ", ".join(keywords),
+                "",
+                _LONGFORM_ANGLE_LINES[index],
+                "",
+                "## Sources",
+                f"- Original report: {request.landing_url}",
+            ]
+        )
+        variants.append(_fit_longform_text(body=body, request=request))
+
+    return tuple(variants)
+
+
 def _tokenize(text: str) -> tuple[str, ...]:
     return tuple(match.group(0).casefold() for match in _WORD_RE.finditer(text))
 
@@ -319,6 +381,23 @@ def _fit_structured_text(*, body: str, request: DraftGenerationRequest) -> str:
         }:
             continue
         lines[index] = _shorten_text(line, limit=max(len(line) - 40, 24))
+        candidate = "\n".join(lines).strip()
+        if len(candidate) <= request.max_chars:
+            return candidate
+
+    return "\n".join(lines).strip()[: request.max_chars].rstrip()
+
+
+def _fit_longform_text(*, body: str, request: DraftGenerationRequest) -> str:
+    normalized = body.strip()
+    if len(normalized) <= request.max_chars:
+        return normalized
+
+    lines = normalized.split("\n")
+    for index, line in enumerate(lines):
+        if line.startswith("#") or line.startswith("- Original report:") or not line.strip():
+            continue
+        lines[index] = _shorten_text(line, limit=max(len(line) - 80, 80))
         candidate = "\n".join(lines).strip()
         if len(candidate) <= request.max_chars:
             return candidate
