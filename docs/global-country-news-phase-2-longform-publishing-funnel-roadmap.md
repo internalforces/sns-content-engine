@@ -5,6 +5,7 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 - creates deeper blog/newsletter drafts from country news briefs
 - keeps source attribution and review controls
 - supports Ghost or WordPress as an owned content home
+- preserves original-article URL behavior for X, Threads, and LinkedIn drafts
 - uses Substack, beehiiv, LinkedIn Newsletter, Medium, Reddit, and Hacker News intentionally rather than automatically
 
 ## Generated Document Naming
@@ -22,10 +23,10 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 - Publisher adapters exist for X and Threads; LinkedIn is manual handoff.
 
 ### Current Limitations Relevant To The New Goal
-- No blog/article draft type exists.
+- Ghost blog/article drafts now exist as review-led manual handoffs.
 - No aggregation of multiple source items into a single long-form brief exists.
-- No Ghost, WordPress, Substack, or newsletter integration exists.
-- X currently links to original source URLs, not blog URLs.
+- No live Ghost, WordPress, Substack, or newsletter integration exists.
+- Social drafts intentionally link to original source URLs, not blog URLs.
 
 ## Environment And Execution Assumptions
 - Base branch: `master`
@@ -56,7 +57,7 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 2. Review and edit it.
 3. Publish manually or through a dry-run-first adapter.
 4. Store external URL.
-5. Later generate X/Threads/LinkedIn variants that can point to the blog URL.
+5. Keep X/Threads/LinkedIn variants source-linked to the original article URL; the stored Ghost URL is for long-form handoff records, not social draft replacement.
 
 ### Distribution Layer
 - Owned home: Ghost first, WordPress alternate.
@@ -100,16 +101,16 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 - Ship when:
   - one long-form article can be safely published or recorded
 
-### Milestone M4: Social Funnel
-- Goal: let social posts point to reviewed long-form URLs.
+### Milestone M4: Social Source-Link Guardrail
+- Goal: explicitly keep social posts pointed at the original source URL while long-form handoff remains separate.
 - Includes:
-  - X teaser option
-  - Threads explainer option
-  - LinkedIn professional summary option
+  - X original-source URL behavior
+  - Threads original-source URL behavior
+  - LinkedIn original-source URL behavior
 - Excludes:
-  - forcing all posts into funnel mode
+  - adding blog-funnel mode in this phase
 - Ship when:
-  - operator can choose original-source mode or blog-funnel mode
+  - regression coverage and docs confirm social drafts use original article URLs
 
 ## Implementation Roadmap
 
@@ -195,21 +196,22 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 - Done when:
   - one reviewed long-form article can be published or recorded safely
 
-### Task 06: Add Optional Social Funnel Mode
-- Goal: let social drafts use a reviewed blog URL instead of only the original article URL.
+### Task 06: Confirm Original-Source Social Links
+- Goal: keep social drafts pointed at the original article URL even after reviewed Ghost URLs are recorded.
 - Actions:
-  - define original-source mode versus blog-funnel mode
-  - update prompts and validation carefully
+  - document that blog-funnel mode is not part of this phase
+  - verify prompt rendering chooses the original article URL over any long-form landing URL for social channels
+  - preserve validation that requires the expected source URL in draft bodies
   - avoid breaking Phase 1 behavior
 - Dependencies:
-  - Task 05 external URL recording
+  - Task 05 external URL recording decision
 - Verification commands:
   - `./.venv/bin/pytest tests/test_x_draft_generator.py tests/test_draft_validation.py tests/test_review_queue_workflow.py -q`
   - `git diff --check`
 - Risk or rollback note:
-  - funnel mode must be opt-in
+  - future funnel work must be opened as a separate opt-in task with explicit storage and review semantics
 - Done when:
-  - operator can choose whether X points to original source or long-form destination
+  - X, Threads, and LinkedIn remain source-linked while Ghost manual handoff can still record a final article URL
 
 ## Suggested Execution Order
 1. Task 01: Choose Longform Platform Strategy
@@ -217,7 +219,7 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 3. Task 03: Add Longform Prompt And Generation Flow
 4. Task 04: Expose Longform Review Or Handoff
 5. Task 05: Add First Platform Handoff Or Adapter
-6. Task 06: Add Optional Social Funnel Mode
+6. Task 06: Confirm Original-Source Social Links
 
 ## Initial Milestone Recommendation
 Start with platform strategy and model design. Do not write integration code until the operator chooses the long-form home and confirms whether Phase 2 should begin.

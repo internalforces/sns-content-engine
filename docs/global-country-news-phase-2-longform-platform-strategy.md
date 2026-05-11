@@ -44,6 +44,7 @@ This first model stays within these constraints:
 - keep approval separate from publication or URL recording
 - support `single_story_explainer` first, with `country_daily_brief` deferred until multi-source provenance has an explicit model
 - store a canonical external URL only after manual Ghost publication is confirmed
+- keep X, Threads, and LinkedIn drafts pointed at the original article URL rather than the recorded Ghost URL
 
 The smallest safe path is:
 1. Generate a long-form draft from one or more country-news briefs.
@@ -61,8 +62,8 @@ Implemented first slice:
 ## Explicit Boundaries
 - No live Ghost or WordPress API publish happens in Task 01 or Task 02.
 - No Substack, beehiiv, Medium, Reddit, or Hacker News automation is added.
-- Existing X, Threads, and LinkedIn behavior stays independent until a later opt-in social funnel task.
-- X continues to link to original source URLs until Task 06 explicitly adds blog-funnel mode.
+- Existing X, Threads, and LinkedIn behavior stays independent and source-linked.
+- X, Threads, and LinkedIn continue to link to original source URLs; blog-funnel mode is not part of this phase.
 - Any future adapter must support dry-run behavior before live posting.
 
 ## Task 02 Starting Assumptions

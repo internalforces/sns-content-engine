@@ -91,6 +91,7 @@ The Phase 1.5 Korea/Japan country-news config is tuned for review-led operation,
 - Source ingestion and draft validation use 7-day duplicate windows to reduce repeated wire coverage and identical social drafts.
 - LinkedIn and Threads remain manual handoff channels unless a separate live rollout intentionally configures a resolvable publisher.
 - Ghost long-form drafts are generated as review-led manual handoffs with a 12,000 character cap, 8-link review allowance, and no live API publishing.
+- X, Threads, and LinkedIn drafts keep using the original article URL; a recorded Ghost URL does not replace social draft links in this phase.
 
 ## Ghost long-form handoff baseline
 
@@ -102,6 +103,7 @@ The Phase 2 first slice adds a `ghost` draft channel for Korea/Japan country new
 4. Approval creates a manual publish handoff job instead of a scheduled live-publish job.
 5. Publish or save the article manually in Ghost, then record the final Ghost URL through the publish-job detail page.
 6. Use `실패` or `전달 취소` if the Ghost article should not be recorded as published.
+7. Treat the recorded Ghost URL as the long-form outcome only; social drafts continue to point at the original article URL.
 
 ## Country news live-publish quality checklist
 

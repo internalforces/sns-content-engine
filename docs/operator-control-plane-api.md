@@ -17,6 +17,7 @@ The same FastAPI app serves both the browser console and these JSON routes. For 
 - Approving `threads` drafts creates that same manual handoff only when the configured account does not resolve a live Threads publisher from `publisher.credential_ref`. Otherwise the approved draft stays on the normal scheduled publish path.
 - `POST /scheduler/publish-due` stays dry-run by default. Real publishing only happens when the request body includes `"live": true`.
 - Manual Ghost, LinkedIn, and manual-fallback Threads handoffs are never picked up by `publish-due`; operators finish them through the manual publish routes after uploading on the external platform.
+- X, Threads, and LinkedIn draft generation keeps pointing at the original article URL; a Ghost URL recorded on a manual publish job is not used as a replacement social link in this phase.
 - Read routes stay read-only. Only the review action and scheduler action routes can mutate stored state.
 
 ## Request Conventions
@@ -156,7 +157,7 @@ When that bundle is missing, malformed, or incomplete, the API keeps Threads on 
 
 ## Ghost long-form handoff
 
-The `ghost` channel is manual-only in this slice. Generated Ghost drafts stay in the same review queue, but approval creates a manual handoff publish job rather than a scheduled job. After the operator publishes or saves the article in Ghost, call `POST /publish-jobs/{publish_job_id}/manual/complete` and place the final Ghost article URL in `external_post_id`.
+The `ghost` channel is manual-only in this slice. Generated Ghost drafts stay in the same review queue, but approval creates a manual handoff publish job rather than a scheduled job. After the operator publishes or saves the article in Ghost, call `POST /publish-jobs/{publish_job_id}/manual/complete` and place the final Ghost article URL in `external_post_id`. That recorded URL is the long-form handoff outcome only; social drafts keep their original article URLs.
 
 ## Scheduler Action Surfaces
 

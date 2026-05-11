@@ -465,7 +465,7 @@ def _channel_style_guidance(channel: str) -> ChannelStyleGuidance:
 
 
 def resolve_draft_link_url(content_brief: ContentBrief) -> str:
-    """Return the URL that generated drafts should include."""
+    """Return the URL generated drafts should include, preferring original articles."""
 
     provenance = build_draft_provenance_snapshot(content_brief)
     return provenance.article_url or content_brief.landing_url
