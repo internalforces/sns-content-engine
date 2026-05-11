@@ -13,7 +13,7 @@ Use it when you want an autonomous coding agent to design and implement blog/new
 
 ## Initiative Brief
 - Initiative name: `Global Country News Phase 2 Longform Publishing Funnel`
-- One-sentence outcome: `Add a review-led long-form content layer where blog/newsletter posts become the deeper context destination and social channels distribute or adapt that content.`
+- One-sentence outcome: `Add a review-led long-form content layer while keeping X, Threads, and LinkedIn drafts pointed at the original article URL.`
 - Why this matters now:
   - Phase 1 keeps channel drafts independent for safety.
   - Once source quality is stable, long-form posts can create durable value beyond short social summaries.
@@ -24,7 +24,7 @@ Use it when you want an autonomous coding agent to design and implement blog/new
   - group news items into long-form briefs
   - generate blog/newsletter drafts
   - review and publish or hand off to a chosen platform
-  - later let X/Threads/LinkedIn point to the long-form destination
+  - keep social drafts independent and source-linked instead of turning them into a blog funnel
 - Explicit non-goals:
   - no Phase 2 work before Phase 1 and Phase 1.5 are stable
   - no automatic publication of long-form content without review
@@ -52,19 +52,21 @@ The desired implementation should:
 - treat Substack or beehiiv as newsletter/distribution channels
 - support LinkedIn Newsletter or LinkedIn article handoff for professional context
 - keep Reddit/Hacker News as manual community distribution, not automated spam
-- allow X to later become a short teaser to the long-form URL
+- preserve X, Threads, and LinkedIn drafts as source-linked posts that use the original article URL
 
 The agent should preserve:
 - manual review before publishing
 - dry-run or handoff-first behavior for new external surfaces
 - env-only secrets
 - source attribution and provenance
+- the existing original-article URL behavior for social drafts
 
 The agent should avoid:
 - implementing every platform at once
 - weakening article/source policy checks
 - cross-posting automatically to communities
 - replacing Phase 1's stable independent channel model until a dedicated task changes it
+- adding a blog-funnel URL selector for social drafts in this phase
 
 ## Platform Direction
 Recommended platform roles:

@@ -685,29 +685,89 @@ def test_x_draft_generator_retries_structured_channels_after_validation_failure(
     assert all(len(variant) <= 3000 for variant in variants)
 
 
-def test_x_draft_generator_prefers_article_url_over_content_landing_url() -> None:
-    provider = _CapturingProvider(
+@pytest.mark.parametrize("channel", ["x", "linkedin", "threads"])
+def test_social_draft_generator_prefers_original_article_url_over_content_landing_url(
+    channel: str,
+) -> None:
+    original_article_url = "https://example.com/articles/1"
+    longform_landing_url = "https://ghost.example.com/final-story"
+    variants = (
         (
             "First X draft https://example.com/articles/1",
             "Second X draft https://example.com/articles/1",
         )
+        if channel == "x"
+        else _structured_variants(original_article_url)
     )
+    provider = _CapturingProvider(variants)
     generator = XDraftGenerator(provider)
 
     generator.generate(
-        content_brief=_build_content_brief(landing_url="https://gilgop.cloud/ai-tools"),
+        content_brief=_build_content_brief(landing_url=longform_landing_url),
         account_key="ai_tools_daily",
-        account=_build_account_config(max_chars=120),
+        account=_build_account_config(
+            max_chars=120 if channel == "x" else 3000,
+            channels=(channel,),
+        ),
         prompt_profile=PromptProfileConfig(
             system_template="System {{ account_key }}",
             user_template="Use {{ landing_url }} not {{ content_landing_url }}",
         ),
         variant_count=2,
+        channel=channel,
     )
 
     assert provider.request is not None
-    assert "Use https://example.com/articles/1 not https://gilgop.cloud/ai-tools" in provider.request.user_prompt
-    assert provider.request.landing_url == "https://example.com/articles/1"
+    assert (
+        "Use https://example.com/articles/1 not https://ghost.example.com/final-story"
+        in provider.request.user_prompt
+    )
+    assert provider.request.landing_url == original_article_url
+
+
+def _structured_variants(url: str) -> tuple[str, str]:
+    return (
+        (
+            "1. One-line summary\n"
+            "Summary line.\n"
+            "2. Key points\n"
+            "- First point\n"
+            "- Second point\n"
+            "- Third point\n"
+            "3. Keywords\n"
+            "AI, Workflow\n"
+            "4. Background/Context\n"
+            "Context line.\n"
+            "5. Forward impact\n"
+            "Impact line.\n"
+            "6. Insight\n"
+            "Insight line.\n"
+            "7. One-line conclusion\n"
+            "Conclusion line.\n"
+            "8. URL\n"
+            f"{url}"
+        ),
+        (
+            "1. One-line summary\n"
+            "Another summary line.\n"
+            "2. Key points\n"
+            "- First point\n"
+            "- Second point\n"
+            "- Third point\n"
+            "3. Keywords\n"
+            "AI, Workflow\n"
+            "4. Background/Context\n"
+            "Context line.\n"
+            "5. Forward impact\n"
+            "Impact line.\n"
+            "6. Insight\n"
+            "Insight line.\n"
+            "7. One-line conclusion\n"
+            "Conclusion line.\n"
+            "8. URL\n"
+            f"{url}"
+        ),
+    )
 
 
 class _CapturingProvider:

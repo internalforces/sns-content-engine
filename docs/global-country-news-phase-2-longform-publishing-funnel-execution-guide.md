@@ -1,7 +1,7 @@
 # Global Country News Phase 2 Longform Publishing Funnel Execution Guide
 
 ## Purpose
-This document guides Phase 2: adding long-form blog/newsletter publishing and optional social funnel behavior after the country-news MVP is stable.
+This document guides Phase 2: adding long-form blog/newsletter publishing while preserving original-source social draft behavior after the country-news MVP is stable.
 
 Progress must be tracked in:
 - `docs/global-country-news-phase-2-longform-publishing-funnel-progress-tracker.md`
@@ -48,7 +48,7 @@ High-signal tests:
 - Keep external platform credentials in environment variables only.
 - Start with handoff/dry-run behavior before live external posting.
 - Do not automate Reddit, Hacker News, or other community posting.
-- Keep original-source social mode available even if blog-funnel mode is added.
+- Keep X, Threads, and LinkedIn drafts pointed at the original article URL in this phase.
 
 ## Platform Guidance
 - Prefer Ghost for first owned-home integration if the operator has no stronger preference.
@@ -80,10 +80,11 @@ High-signal tests:
 - Keep approval separate from publication.
 - Store external URL after manual or adapter-based publication.
 
-### Funnel Mode
-- Make blog-funnel mode opt-in.
+### Social Source-Link Guardrail
+- Do not add blog-funnel mode in this phase.
 - Preserve current Phase 1 behavior where social posts link directly to original sources.
 - Verify link count and required URL validation carefully.
+- Treat recorded Ghost URLs as manual long-form handoff outcomes, not as replacement URLs for social draft generation.
 
 ## Progress Tracking Rules
 Update the tracker when:
