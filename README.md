@@ -129,6 +129,21 @@ uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 
 브라우저에서 `http://127.0.0.1:8000/console/`을 열면 실행 이력, 기사 상태, 검수 큐, 발행 작업, 스케줄러를 확인할 수 있습니다. JSON API 문서는 `/docs`에서 제공합니다.
 
+원격 운영에서는 공유 FastAPI 앱을 Caddy와 Basic Auth 뒤에 둡니다. In production, keep the shared FastAPI app on `127.0.0.1:8000` and route the console and JSON operator API through the checked-in Caddy plus Basic Auth edge layer. 외부 상태 확인이 필요한 경우에만 `/health`를 예외로 열고, do not expose the app directly on a public `0.0.0.0` bind.
+
+### 5. 단일 서버 재시작 후 점검
+
+배포 또는 서비스 재시작 뒤에는 저장소의 smoke-check 스크립트로 웹·스케줄러·Caddy 상태, loopback healthcheck, edge 인증, dry-run 발행 경로를 함께 확인합니다.
+
+```bash
+cd /opt/sns-content-engine
+SNS_SMOKE_EDGE_USER=operator \
+SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
+scripts/single_server_smoke_check.sh
+```
+
+평문 edge 암호는 파일에 저장하지 말고 이 점검 명령에 일회성 환경변수로만 전달합니다. The backup and rollback order lives in the single-server deployment guide.
+
 ## 주요 명령
 
 ```text
