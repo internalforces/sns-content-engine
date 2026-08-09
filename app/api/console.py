@@ -37,7 +37,7 @@ _DEFAULT_DASHBOARD_FAILURE_LIMIT = 6
 _DEFAULT_ARTICLE_LIMIT = 25
 _DEFAULT_PUBLISH_JOB_LIMIT = 25
 _SCHEDULER_LIVE_VALUES = {"1", "on", "true", "yes"}
-_MANUAL_UPLOAD_CHANNELS = frozenset({"linkedin", "threads"})
+_MANUAL_UPLOAD_CHANNELS = frozenset({"ghost", "linkedin", "threads"})
 _KOREAN_LABELS = {
     "analysis": "분석",
     "approve": "승인",
@@ -59,6 +59,7 @@ _KOREAN_LABELS = {
     "existing": "기존 있음",
     "failed": "실패",
     "finance": "금융",
+    "ghost": "Ghost",
     "health": "보건",
     "html_fetch": "HTML 수집",
     "ingest": "수집 저장",
@@ -2255,7 +2256,7 @@ def _review_detail_requires_manual_upload_guidance(
     draft = detail.draft
     if draft.channel not in _MANUAL_UPLOAD_CHANNELS:
         return False
-    if draft.channel == "linkedin":
+    if draft.channel in {"ghost", "linkedin"}:
         return True
 
     content_brief = draft.content_brief

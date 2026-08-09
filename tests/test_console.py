@@ -597,6 +597,32 @@ def test_review_detail_shows_manual_upload_guidance_for_approved_linkedin_draft(
     assert "8. URL" in response.text
 
 
+def test_review_detail_shows_manual_upload_guidance_for_approved_ghost_draft(
+    tmp_path: Path,
+) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="ghost",
+            variant_index=0,
+            draft_state=DraftVariantState.APPROVED,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body="# Headline\n\nLong-form article body.",
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "Ghost 수동 업로드" in response.text
+    assert "발행 작업 만들기" not in response.text
+    assert "# Headline" in response.text
+
+
 def test_review_detail_shows_manual_upload_guidance_for_threads_without_live_publisher(
     tmp_path: Path,
 ) -> None:
@@ -1106,6 +1132,42 @@ def test_publish_jobs_detail_page_shows_manual_publish_action_forms_for_open_han
     assert "발행 실패 기록" in response.text
     assert "전달 취소" in response.text
     assert f'/console/publish-jobs/{approval.publish_job_id}' in response.text
+
+
+def test_publish_jobs_detail_page_shows_manual_publish_actions_for_ghost_handoff(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            channel="ghost",
+            variant_index=0,
+            created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            body="# AI workflow headline\n\nLong-form article body.\n\nhttps://gilgop.cloud/ai-tools",
+            include_provenance=True,
+        )
+
+    approval = approve_draft(
+        draft.id,
+        reviewer="editor-a",
+        config_dir=tmp_path,
+        session_factory=session_factory,
+    )
+    assert approval.publish_job_id is not None
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/publish-jobs/{approval.publish_job_id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "Ghost 수동 발행 기록" in response.text
+    assert "발행 완료 기록" in response.text
+    assert "발행 실패 기록" in response.text
+    assert "전달 취소" in response.text
 
 
 def test_publish_jobs_detail_action_complete_records_manual_publish_outcome(
@@ -2206,6 +2268,19 @@ def _write_minimal_project_config(path: Path, *, include_threads_publisher: bool
                   max_links: 1
                   banned_phrases: []
                   recent_duplicate_window_days: 7
+              ghost:
+                schedule:
+                  cron: "0 8 * * *"
+                  window_minutes: 0
+                  jitter_minutes: 0
+                  min_gap_minutes: 0
+                  backlog_target: 0
+                render:
+                  max_chars: 12000
+                validation:
+                  max_links: 8
+                  banned_phrases: []
+                  recent_duplicate_window_days: 14
               linkedin:
                 schedule:
                   cron: "0 10 * * *"
