@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib import error, request
 from urllib.parse import quote, urlencode

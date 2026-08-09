@@ -13,17 +13,16 @@ from app.storage import (
     PipelineRunStageRepository,
     PipelineRunStatus,
     PipelineStage,
-    SourcePolicyMode,
     SourceItem,
     SourceItemRepository,
+    SourcePolicyMode,
     StageExecutionStatus,
     create_all_tables,
     create_database_engine,
     create_session_factory,
     session_scope,
 )
-from app.workflows import list_pipeline_failures, list_pipeline_runs
-from app.workflows import list_article_statuses
+from app.workflows import list_article_statuses, list_pipeline_failures, list_pipeline_runs
 
 
 def test_list_pipeline_runs_returns_recent_rows(tmp_path) -> None:

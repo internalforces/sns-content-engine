@@ -31,9 +31,9 @@ from app.storage import (
     PipelineRunStatus,
     PipelineStage,
     PublishJob,
+    PublishJobRepository,
     PublishJobState,
     PublishLogRepository,
-    PublishJobRepository,
     SourceItem,
     SourceItemRepository,
     SourcePolicyMode,
@@ -101,6 +101,7 @@ def test_console_shell_landing_page_renders_navigation_and_context() -> None:
     assert "sqlite:///tmp/operator.db" in response.text
     assert "수동 검토 필수" in response.text
     assert "브라우저 기본 발행 경로는 드라이런입니다" in response.text
+    assert "built-in method copy" not in response.text
 
 
 def test_console_shell_static_asset_is_served() -> None:

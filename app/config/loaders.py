@@ -6,13 +6,18 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import yaml
+from pydantic import BaseModel, ValidationError
 from yaml.constructor import ConstructorError
 from yaml.nodes import MappingNode
 from yaml.resolver import BaseResolver
-from pydantic import BaseModel, ValidationError
 
 from app.config.errors import ConfigLoadError, ConfigValidationError
-from app.config.schemas import AIProvidersConfig, AccountsFileConfig, PromptsFileConfig, SourcesFileConfig
+from app.config.schemas import (
+    AccountsFileConfig,
+    AIProvidersConfig,
+    PromptsFileConfig,
+    SourcesFileConfig,
+)
 
 ConfigModel = TypeVar("ConfigModel", bound=BaseModel)
 

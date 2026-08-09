@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import hashlib
 import hmac
 import json
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib import error, request
 from urllib.parse import quote

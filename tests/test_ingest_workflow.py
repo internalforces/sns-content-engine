@@ -8,9 +8,9 @@ from textwrap import dedent
 
 from app.domain import SourceConnectorResult, SourceItemCandidate
 from app.storage import (
-    SourcePolicyMode,
     SourceItem,
     SourceItemRepository,
+    SourcePolicyMode,
     create_all_tables,
     create_database_engine,
     create_session_factory,

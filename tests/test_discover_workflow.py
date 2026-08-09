@@ -12,8 +12,8 @@ from app.connectors.sources import (
     ManualCsvSourceConnector,
     RssSourceConnector,
     SitemapSourceConnector,
-    SourceFetchError,
     SourceConnectorRegistry,
+    SourceFetchError,
 )
 from app.workflows.discover_sources import discover_sources
 

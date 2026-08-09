@@ -14,11 +14,11 @@ from app.connectors.sources import SourceConnectorRegistry
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.services import SourceItemDeduper
 from app.storage import (
-    SourcePolicyMode,
+    SourceItem,
     SourceItemRecentFingerprintClaim,
     SourceItemRecentFingerprintClaimRepository,
-    SourceItem,
     SourceItemRepository,
+    SourcePolicyMode,
     create_database_engine,
     create_session_factory,
     ensure_database_schema_is_current,

@@ -9,6 +9,7 @@ from textwrap import dedent
 
 import pytest
 
+import app.scheduler.jobs as scheduler_jobs_module
 import app.scheduler.runtime as runtime_module
 from app.config import ScheduleConfig
 from app.connectors.publishers import (
@@ -17,7 +18,6 @@ from app.connectors.publishers import (
     ThreadsHttpResponse,
     ThreadsPublisher,
 )
-import app.scheduler.jobs as scheduler_jobs_module
 from app.scheduler import (
     PublishExecutionResult,
     SlotPlanner,

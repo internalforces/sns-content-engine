@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-import re
 from urllib import error, request
 from urllib.parse import urlsplit
 
 from app.config import AccountConfig
 from app.services.prompt_renderer import build_domain_sensitivity
+from app.services.topic_matching import (
+    contains_phrase,
+    normalize_match_text,
+    strip_urls,
+    topic_keywords,
+)
 from app.services.x_draft_generator import resolve_draft_link_url
-from app.services.topic_matching import contains_phrase, normalize_match_text, strip_urls, topic_keywords
 from app.storage import ContentBrief, DraftVariant, DraftVariantState, SourcePolicyMode
 
 DraftValidationSeverity = Literal["error", "warning"]

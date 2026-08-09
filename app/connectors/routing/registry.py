@@ -11,7 +11,7 @@ from app.connectors._env_helpers import has_non_empty_env
 from app.connectors.routing.models import Route, StepKey
 
 if TYPE_CHECKING:
-    from app.config.schemas import AIProvidersConfig, AccountAIConfig
+    from app.config.schemas import AccountAIConfig, AIProvidersConfig
 
 # --------------------------------------------------------------------------- #
 # Default model identifiers

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import AccountConfig
-from app.config import ConfigRegistry
+from app.config import AccountConfig, ConfigRegistry
 from app.domain import AccountMatchCandidate, SourceItemCandidate, select_top_account_candidates
 from app.services import AccountMatcher
 from app.services.topic_matching import topic_keywords

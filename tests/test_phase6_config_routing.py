@@ -17,13 +17,12 @@ from pathlib import Path
 import pytest
 
 from app.config.schemas import (
-    AIProvidersConfig,
     AccountAIConfig,
+    AIProvidersConfig,
     RouteConfig,
 )
 from app.connectors.routing.models import Route, StepKey
 from app.connectors.routing.registry import RouteRegistry
-
 
 # --------------------------------------------------------------------------- #
 # RouteConfig schema validation
@@ -193,7 +192,6 @@ def test_load_providers_config_loads_file_with_params(tmp_path: Path) -> None:
 
 def test_load_providers_config_rejects_invalid_yaml(tmp_path: Path) -> None:
     from app.config import ConfigLoadError, ConfigValidationError
-
     from app.config.loaders import load_providers_config
 
     path = tmp_path / "providers.yaml"
@@ -205,7 +203,6 @@ def test_load_providers_config_rejects_invalid_yaml(tmp_path: Path) -> None:
 
 def test_load_providers_config_rejects_route_with_empty_provider(tmp_path: Path) -> None:
     from app.config import ConfigValidationError
-
     from app.config.loaders import load_providers_config
 
     yaml_text = textwrap.dedent("""
@@ -541,7 +538,9 @@ def test_with_account_override_does_not_mutate_original_registry() -> None:
 def test_account_config_has_default_empty_ai_config(tmp_path: Path) -> None:
     """accounts.yaml without ai: block should default to empty AccountAIConfig."""
     import textwrap
+
     import yaml
+
     from app.config.schemas import AccountsFileConfig
 
     yaml_text = textwrap.dedent("""
@@ -572,7 +571,9 @@ def test_account_config_has_default_empty_ai_config(tmp_path: Path) -> None:
 def test_account_config_accepts_ai_block(tmp_path: Path) -> None:
     """accounts.yaml with ai: block should populate AccountAIConfig."""
     import textwrap
+
     import yaml
+
     from app.config.schemas import AccountsFileConfig
 
     yaml_text = textwrap.dedent("""

@@ -10,9 +10,9 @@ from typing import Protocol
 from app.config import ConfigRegistry
 from app.connectors.publishers import (
     ConfigPublisherResolver,
+    PublisherResolver,
     PublishRequest,
     PublishResult,
-    PublisherResolver,
 )
 from app.connectors.publishers.resolver import channel_requires_manual_publish_handoff
 from app.operations import RetryPolicy, log_event
