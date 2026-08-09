@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _MULTISPACE_RE = re.compile(r"\s+")

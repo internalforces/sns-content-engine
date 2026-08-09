@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -64,24 +64,17 @@ def test_caddy_reverse_proxy_assets_pin_the_edge_protection_baseline() -> None:
 
 def test_operator_docs_keep_remote_access_on_the_edge_baseline() -> None:
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-    console_guide = (PROJECT_ROOT / "docs/operator-console-guide.md").read_text(encoding="utf-8")
-    control_plane_guide = (PROJECT_ROOT / "docs/operator-control-plane-api.md").read_text(
+    deployment_guide = (PROJECT_ROOT / "docs/single-server-deployment-guide.md").read_text(
         encoding="utf-8"
     )
 
-    assert "keep the shared FastAPI app on `127.0.0.1:8000`" in readme
-    assert "Caddy plus Basic Auth edge layer" in readme
-    assert "do not expose the app directly on a public `0.0.0.0` bind" in readme
+    assert "FastAPI 앱을 `127.0.0.1:8000`에 유지" in readme
+    assert "Caddy와 Basic Auth 경계" in readme
+    assert "공개 `0.0.0.0` 주소로 직접 노출하지 않습니다" in readme
 
-    assert "https://sns.gilgop.cloud/console/" in console_guide
-    assert "Do not rebind `uvicorn` to `0.0.0.0`" in console_guide
-    assert "protects every other route, including `/console`, `/reviews/...`, `/scheduler/...`" in (
-        console_guide
-    )
-
-    assert "keep that app bound to `127.0.0.1:8000`" in control_plane_guide
-    assert "protects every other route with Basic Auth" in control_plane_guide
-    assert '"https://sns.gilgop.cloud/reviews/pending?' in control_plane_guide
+    assert "https://sns.gilgop.cloud/console/" in deployment_guide
+    assert "proxies only to `127.0.0.1:8000`" in deployment_guide
+    assert "requires edge Basic Auth for every other route" in deployment_guide
 
 
 def test_single_server_runbook_assets_cover_smoke_checks_and_recovery() -> None:
@@ -95,7 +88,7 @@ def test_single_server_runbook_assets_cover_smoke_checks_and_recovery() -> None:
 
     assert "scripts/single_server_smoke_check.sh" in readme
     assert "SNS_SMOKE_EDGE_USER=operator" in readme
-    assert "backup and rollback order lives in the single-server deployment guide" in readme
+    assert "백업과 롤백 순서" in readme
 
     assert "scripts/single_server_smoke_check.sh" in deployment_guide
     assert "Backup baseline for SQLite-first rollout" in deployment_guide

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from app.config import AccountConfig, load_accounts_config
-from app.connectors.publishers.base import PublishRequest, PublishResult, Publisher
+from app.connectors.publishers.base import Publisher, PublishRequest, PublishResult
 from app.connectors.publishers.threads import ThreadsHttpClient, ThreadsPublisher
 from app.connectors.publishers.x import XHttpClient, XPublisher
 

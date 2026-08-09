@@ -7,7 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import app.connectors.sources.base as source_base_module
-from app.config import GdeltSourceConfig, ManualCsvSourceConfig, RssSourceConfig, SitemapSourceConfig
+from app.config import (
+    GdeltSourceConfig,
+    ManualCsvSourceConfig,
+    RssSourceConfig,
+    SitemapSourceConfig,
+)
 from app.connectors.sources import (
     GdeltSourceConnector,
     ManualCsvSourceConnector,

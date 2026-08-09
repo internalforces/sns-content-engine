@@ -1,6 +1,10 @@
 # SNS Content Engine — 포트폴리오 기술 사례
 
-이 문서는 코드 리뷰나 기술 면접에서 프로젝트의 설계 의도와 구현 근거를 빠르게 확인하기 위한 사례 분석입니다. 사용자용 실행 방법은 [루트 README](../README.md), 실제 운영 절차는 [운영 문서 맵](README.md)을 참고합니다.
+이 문서는 코드 리뷰나 기술 면접에서 프로젝트의 설계 의도와 구현 근거를 빠르게 확인하기 위한 사례 분석입니다. 사용자용 실행 방법은 [루트 README](../README.md), 실제 배포 절차는 [단일 서버 배포 가이드](single-server-deployment-guide.md)를 참고합니다.
+
+## 저자와 작업 방식
+
+저자와 최종 의사결정자는 `internalforces`입니다. Codex는 코드·테스트·문서 초안과 반복 리팩터링 보조에 사용했습니다. 출처 정책, 검수 경계, 실발행 안전 기본값, 채널별 자동화 범위, 운영 지표 정의와 변경 채택 여부는 프로젝트 소유자가 직접 판단했습니다. AI 생성 변경은 테스트와 정적 검사를 통과한 경우에만 반영합니다.
 
 ## 1. 문제 정의
 
@@ -100,7 +104,7 @@ DB unique constraint와 repository 처리를 함께 사용해 단순 사전 조�
 - 외부 채널에 수동 업로드해야 하는 작업
 - 예약 발행 대기·진행·성공·실패·취소 작업
 
-주요 구현은 [`app/workflows/review_queue.py`](../app/workflows/review_queue.py)와 [`app/storage/models.py`](../app/storage/models.py)입니다.
+주요 구현은 [`app/workflows/review_queue.py`](../app/workflows/review_queue.py), 조회·결과 모델·전이 지원 코드로 나눈 `app/workflows/review_*` 모듈과 [`app/storage/models.py`](../app/storage/models.py)입니다.
 
 ### 4.5 안전한 예약 발행
 
@@ -136,20 +140,20 @@ Resolver는 설정과 환경변수로 구현체를 선택합니다. 워크플로
 - **JSON API:** 운영 자동화와 향후 프론트엔드 연동에 적합
 - **웹 콘솔:** 검수 큐, 기사 상태, 발행 작업, 스케줄러를 비개발자가 다루기 적합
 
-웹 콘솔은 별도 비즈니스 로직을 만들지 않고 API/워크플로 레이어의 서비스를 재사용합니다. FastAPI 앱은 [`app/api/app.py`](../app/api/app.py), 콘솔은 [`app/api/console.py`](../app/api/console.py)에서 확인할 수 있습니다.
+웹 콘솔은 별도 비즈니스 로직을 만들지 않고 API/워크플로 레이어의 서비스를 재사용합니다. FastAPI 앱 조립, Pydantic 계약, 응답 변환은 `app/api/app.py`, `schemas.py`, `presenters.py`로 분리했고 콘솔은 라우트와 기능별 화면 모델 모듈로 나눴습니다.
 
 ## 6. 테스트 전략과 검증 결과
 
-2026-08-09에 Python 3.13.12 환경에서 전체 테스트를 실행해 다음 결과를 확인했습니다.
+2026-08-09에 Python 3.13.12 환경에서 전체 테스트와 branch coverage를 실행해 다음 결과를 확인했습니다.
 
 ```text
-561 passed in 14.73s
+563 passed, 82.36% branch coverage
 ```
 
 실행 명령:
 
 ```bash
-PYTHONPATH=. ./.venv/bin/pytest -q
+./.venv/bin/pytest -q --cov=app --cov-report=term --cov-report=xml:coverage.xml
 ```
 
 검증 범위는 다음을 포함합니다.
@@ -163,6 +167,7 @@ PYTHONPATH=. ./.venv/bin/pytest -q
 - 스케줄 슬롯, backfill, dry-run, live publish, 멱등성
 - X/Threads 게시자 오류 매핑
 - CLI, API, 웹 콘솔, 배포 스크립트
+- 운영 지표 정의와 CSV 누적
 
 테스트 시간은 현재 로컬 환경의 참고값이며 성능 벤치마크로 사용하지 않습니다.
 

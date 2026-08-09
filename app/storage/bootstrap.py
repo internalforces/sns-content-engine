@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+import app.storage.models  # noqa: F401
 from app.domain import (
     build_dedupe_fingerprint,
     build_normalized_title_hash,
@@ -18,7 +19,6 @@ from app.domain import (
     normalize_title_text,
 )
 from app.storage.database import Base, create_database_engine, resolve_database_url
-import app.storage.models  # noqa: F401
 
 _SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 _LEGACY_SCHEMA_VERSION = 1

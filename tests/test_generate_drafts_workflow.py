@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import app.connectors.llm.openai_provider as openai_provider_module
-import app.connectors.llm.codex_wrapper_provider as codex_wrapper_provider_module
 from datetime import datetime, timezone
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
+import app.connectors.llm.codex_wrapper_provider as codex_wrapper_provider_module
+import app.connectors.llm.openai_provider as openai_provider_module
 from app.connectors.llm import (
     CodexWrapperDraftGenerationProvider,
     DraftGenerationProviderError,
@@ -22,8 +22,8 @@ from app.storage import (
     DraftVariantRepository,
     DraftVariantState,
     SourceItem,
-    SourcePolicyMode,
     SourceItemRepository,
+    SourcePolicyMode,
     create_all_tables,
     create_database_engine,
     create_session_factory,

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import app.connectors.llm.codex_wrapper_provider as codex_wrapper_provider_module
-import app.connectors.llm.openai_provider as openai_provider_module
 from datetime import datetime, timezone
 from pathlib import Path
 
+import app.connectors.llm.codex_wrapper_provider as codex_wrapper_provider_module
+import app.connectors.llm.openai_provider as openai_provider_module
 from app.connectors.llm import FakeLLMProvider
 from app.domain import SourceConnectorResult, SourceItemCandidate
 from app.storage import (

@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from textwrap import dedent
 
-from app.connectors.publishers import ConfigPublisherResolver, PublishRequest, XHttpResponse, XPublisher
+from app.connectors.publishers import (
+    ConfigPublisherResolver,
+    PublishRequest,
+    XHttpResponse,
+    XPublisher,
+)
 
 
 class StubXHttpClient:

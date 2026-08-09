@@ -6,11 +6,11 @@ import os
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from app.connectors.tts.base import TTSInput, TTSOutput, TTSProvider
-from app.connectors.tts.fake import FakeTTSProvider
 from app.connectors.routing.executor import execute_with_fallback
 from app.connectors.routing.models import Route, StepKey
 from app.connectors.routing.registry import RouteRegistry
+from app.connectors.tts.base import TTSInput, TTSOutput, TTSProvider
+from app.connectors.tts.fake import FakeTTSProvider
 
 if TYPE_CHECKING:
     from app.config.schemas import AIProvidersConfig

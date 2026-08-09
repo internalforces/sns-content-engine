@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from enum import Enum
 import hashlib
 import re
 import unicodedata
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import Enum
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _TRACKING_QUERY_PARAM_NAMES = {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Mapping, MutableMapping
+from typing import MutableMapping
 
 
 def load_project_env(

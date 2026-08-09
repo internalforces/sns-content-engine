@@ -30,173 +30,32 @@ from app.storage import (
 )
 from app.storage.repositories import DraftVariantRepository
 from app.workflows.history_queries import PublishJobNotFoundError
-
-
-class ReviewQueueError(ValueError):
-    """Base error for manual review workflow failures."""
-
-
-class DraftNotFoundError(ReviewQueueError):
-    """Raised when a referenced draft does not exist."""
-
-
-class ReviewerIdentityError(ReviewQueueError):
-    """Raised when no reviewer identity can be resolved."""
-
-
-class DraftReviewStateError(ReviewQueueError):
-    """Raised when a review action is attempted from the wrong state."""
-
-
-class DraftScheduleError(ReviewQueueError):
-    """Raised when scheduling validation fails."""
-
-
-class DraftValidationFailedError(ReviewQueueError):
-    """Raised when a draft fails the approval/publish validator."""
-
-
-class ManualPublishError(ReviewQueueError):
-    """Raised when a manual publish handoff update is invalid."""
-
-
-class ManualPublishStateError(ManualPublishError):
-    """Raised when a manual publish outcome is attempted from the wrong state."""
-
-
-_MANUAL_PUBLISH_CHANNELS = frozenset({"ghost", "linkedin", "threads"})
-
-
-@dataclass(frozen=True, slots=True)
-class PendingReviewDraft:
-    """Serialized draft row for review queue listing."""
-
-    draft_id: int
-    account_key: str
-    channel: str
-    variant_index: int
-    created_at: datetime
-    title: str
-    body: str
-
-
-@dataclass(frozen=True, slots=True)
-class PendingReviewDraftsResult:
-    """Aggregated pending review queue result."""
-
-    drafts: tuple[PendingReviewDraft, ...]
-
-    @property
-    def pending_count(self) -> int:
-        """Return the number of drafts awaiting review."""
-
-        return len(self.drafts)
-
-
-@dataclass(frozen=True, slots=True)
-class ReviewDraftResult:
-    """Outcome of a review queue mutation."""
-
-    draft_id: int
-    reviewer: str
-    action_type: ReviewActionType
-    draft_state: DraftVariantState
-    action_id: int
-    channel: str | None = None
-    publish_job_id: int | None = None
-    scheduled_for: datetime | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ReviewDraftDetailResult:
-    """Serialized draft detail with related audit history and sibling variants."""
-
-    draft: DraftVariant
-    review_actions: tuple[ReviewAction, ...]
-    sibling_variants: tuple[DraftVariant, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ManualPublishOutcomeResult:
-    """Outcome of a manual publish handoff update."""
-
-    publish_job_id: int
-    channel: str
-    operator: str
-    previous_state: PublishJobState
-    publish_job_state: PublishJobState
-    external_post_id: str | None = None
-    last_error: str | None = None
-    published_at: datetime | None = None
-
-
-def get_review_draft_detail(
-    draft_id: int,
-    *,
-    database_url: str | None = None,
-    session_factory=None,
-) -> ReviewDraftDetailResult:
-    """Return one draft with linked detail, audit history, and sibling variants."""
-
-    owned_engine, resolved_session_factory = _resolve_session_factory(
-        database_url=database_url,
-        session_factory=session_factory,
-    )
-    try:
-        with session_scope(resolved_session_factory) as session:
-            drafts = DraftVariantRepository(session)
-            draft = drafts.get_detail(draft_id)
-            if draft is None:
-                raise DraftNotFoundError(f"draft {draft_id} was not found")
-
-            review_actions = tuple(ReviewActionRepository(session).list_for_draft(draft_id))
-            sibling_variants = tuple(
-                sibling
-                for sibling in drafts.list_by_content_brief_and_channel(
-                    draft.content_brief_id,
-                    draft.channel,
-                )
-                if sibling.id != draft.id
-            )
-            return ReviewDraftDetailResult(
-                draft=draft,
-                review_actions=review_actions,
-                sibling_variants=sibling_variants,
-            )
-    finally:
-        _dispose_engine(owned_engine)
-
-
-def list_pending_review_drafts(
-    *,
-    database_url: str | None = None,
-    session_factory=None,
-) -> PendingReviewDraftsResult:
-    """Return pending drafts in review order."""
-
-    owned_engine, resolved_session_factory = _resolve_session_factory(
-        database_url=database_url,
-        session_factory=session_factory,
-    )
-    try:
-        with session_scope(resolved_session_factory) as session:
-            drafts = DraftVariantRepository(session).list_by_state(DraftVariantState.PENDING_REVIEW)
-            items = tuple(
-                PendingReviewDraft(
-                    draft_id=draft.id,
-                    account_key=draft.content_brief.account_key,
-                    channel=draft.channel,
-                    variant_index=draft.variant_index,
-                    created_at=draft.created_at,
-                    title=draft.content_brief.title,
-                    body=draft.body,
-                )
-                for draft in drafts
-            )
-    finally:
-        _dispose_engine(owned_engine)
-
-    return PendingReviewDraftsResult(drafts=items)
+from app.workflows.review_models import (
+    DraftNotFoundError,
+    DraftReviewStateError,
+    DraftScheduleError,
+    DraftValidationFailedError,
+    ManualPublishError,
+    ManualPublishOutcomeResult,
+    ManualPublishStateError,
+    PendingReviewDraft,
+    PendingReviewDraftsResult,
+    ReviewDraftDetailResult,
+    ReviewDraftResult,
+    ReviewerIdentityError,
+    ReviewQueueError,
+)
+from app.workflows.review_persistence import _dispose_engine, _resolve_session_factory
+from app.workflows.review_queries import get_review_draft_detail, list_pending_review_drafts
+from app.workflows.review_support import (
+    _build_manual_publish_job_idempotency_key,
+    _build_manual_publish_log_payload,
+    _parse_scheduled_for,
+    _require_draft_state,
+    _require_manual_publish_handoff,
+    _require_publish_job_content_brief,
+    _require_publish_job_state,
+)
 
 
 def approve_draft(
@@ -820,7 +679,6 @@ def _run_review_action(
     finally:
         _dispose_engine(owned_engine)
 
-
 def _run_manual_publish_action(
     publish_job_id: int,
     *,
@@ -842,143 +700,3 @@ def _run_manual_publish_action(
             return handler(session, publish_job, operator_name)
     finally:
         _dispose_engine(owned_engine)
-
-
-def _require_draft_state(
-    draft_id: int,
-    current_state: DraftVariantState,
-    expected_state: DraftVariantState,
-    *,
-    action: str,
-) -> None:
-    if current_state is expected_state:
-        return
-    action_labels = {
-        "approve": "approved",
-        "reject": "rejected",
-        "edit": "edited",
-        "schedule": "scheduled",
-    }
-    action_label = action_labels.get(action, action)
-    raise DraftReviewStateError(
-        f"draft {draft_id} cannot be {action_label} from state {current_state.value!r}; "
-        f"expected {expected_state.value!r}"
-    )
-
-
-def _require_manual_publish_handoff(
-    publish_job: PublishJob,
-    *,
-    action: str,
-) -> None:
-    if publish_job.channel not in _MANUAL_PUBLISH_CHANNELS:
-        raise ManualPublishError(
-            f"publish job {publish_job.id} channel {publish_job.channel!r} "
-            "does not support manual publish outcome recording"
-        )
-    if publish_job.scheduled_for is not None:
-        raise ManualPublishError(f"publish job {publish_job.id} is not a manual publish handoff")
-    _require_publish_job_state(
-        publish_job.id,
-        publish_job.state,
-        PublishJobState.SCHEDULED,
-        action=action,
-    )
-
-
-def _require_publish_job_state(
-    publish_job_id: int,
-    current_state: PublishJobState,
-    expected_state: PublishJobState,
-    *,
-    action: str,
-) -> None:
-    if current_state is expected_state:
-        return
-    raise ManualPublishStateError(
-        f"publish job {publish_job_id} cannot {action} from state {current_state.value!r}; "
-        f"expected {expected_state.value!r}"
-    )
-
-
-def _require_publish_job_content_brief(publish_job: PublishJob):
-    draft = publish_job.draft_variant
-    if draft is None:
-        raise ReviewQueueError(f"publish job {publish_job.id} is missing its draft variant")
-
-    content_brief = draft.content_brief
-    if content_brief is None:
-        raise ReviewQueueError(f"publish job {publish_job.id} is missing its content brief")
-    return content_brief
-
-
-def _build_manual_publish_log_payload(
-    publish_job: PublishJob,
-    *,
-    operator: str,
-    status: str,
-    external_post_id: str | None = None,
-    last_error: str | None = None,
-    reason: str | None = None,
-) -> dict[str, object]:
-    content_brief = _require_publish_job_content_brief(publish_job)
-    return {
-        "status": status,
-        "account_key": content_brief.account_key,
-        "channel": publish_job.channel,
-        "draft_variant_id": publish_job.draft_variant_id,
-        "handoff_mode": "manual_upload",
-        "operator": operator,
-        "attempt_count": publish_job.attempt_count,
-        "external_post_id": external_post_id,
-        "last_error": last_error,
-        "reason": reason,
-    }
-
-
-def _parse_scheduled_for(value: str | datetime) -> datetime:
-    if isinstance(value, datetime):
-        scheduled_for = value
-    else:
-        raw_value = value.strip()
-        if not raw_value:
-            raise DraftScheduleError("scheduled_for must not be empty")
-        try:
-            scheduled_for = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise DraftScheduleError(
-                "scheduled_for must be a valid ISO 8601 datetime"
-            ) from exc
-
-    if scheduled_for.tzinfo is None:
-        raise DraftScheduleError("scheduled_for must include a timezone offset")
-
-    return scheduled_for.astimezone(timezone.utc)
-
-
-def _build_manual_publish_job_idempotency_key(
-    *,
-    draft_variant_id: int,
-    channel: str,
-    created_at: datetime,
-) -> str:
-    raw_key = f"{draft_variant_id}:{channel.strip()}:manual_handoff:{created_at.isoformat()}"
-    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-
-
-def _resolve_session_factory(*, database_url: str | None, session_factory):
-    owned_engine = None
-    if session_factory is None:
-        owned_engine = create_database_engine(database_url)
-        ensure_database_schema_is_current(owned_engine)
-        return owned_engine, create_session_factory(owned_engine)
-
-    bound_engine = getattr(session_factory, "kw", {}).get("bind")
-    if bound_engine is not None:
-        ensure_database_schema_is_current(bound_engine)
-    return owned_engine, session_factory
-
-
-def _dispose_engine(engine) -> None:
-    if engine is not None:
-        engine.dispose()

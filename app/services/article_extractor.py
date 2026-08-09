@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
-import re
 
 from app.domain.extraction_selectors import (
     EXTRACTION_SELECTOR_RE,

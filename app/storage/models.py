@@ -9,7 +9,6 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     DateTime,
-    Enum as SqlEnum,
     ForeignKey,
     Index,
     Integer,
@@ -17,6 +16,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+)
+from sqlalchemy import (
+    Enum as SqlEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.types import TypeDecorator
