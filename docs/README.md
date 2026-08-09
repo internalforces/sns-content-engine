@@ -1,6 +1,13 @@
 # Documentation Map
 
-This page separates current operator documentation from completed initiative records. Runtime behavior is defined by the code, checked-in config, and tests; planning documents are not a promise that every idea described in them is implemented.
+This page separates portfolio material, current operator documentation, and completed initiative records. Runtime behavior is defined by the code, checked-in config, and tests; planning documents are not a promise that every idea described in them is implemented.
+
+## Portfolio Entry Points
+
+- [Project README](../README.md): recruiter-friendly overview, architecture, key decisions, quick start, and current boundaries.
+- [Technical case study](portfolio-case-study.md): problem framing, design tradeoffs, implementation evidence, verification results, and a recommended code-review path.
+
+For a short review, start with the root README. For an engineering interview or code review, continue with the technical case study before opening the operator guides below.
 
 ## Current Sources Of Truth
 

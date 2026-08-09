@@ -1,314 +1,201 @@
-# sns-content-engine
+# SNS Content Engine
 
-Config-driven multi-account SNS content automation engine.
+> 여러 뉴스 소스를 수집하고 채널별 초안을 생성한 뒤, 사람의 검토를 거쳐 안전하게 발행하는 설정 기반 콘텐츠 운영 시스템
 
-## Overview
+이 프로젝트는 단순한 “LLM 글쓰기 스크립트”가 아니라 콘텐츠 수집, 출처 정책, 중복 제거, AI 공급자 라우팅, 편집 검수, 예약 발행, 감사 이력, 배포까지 하나의 운영 흐름으로 연결합니다. 한국·일본 뉴스를 글로벌 독자에게 전달하는 다계정 운영 시나리오를 기준으로 구현했습니다.
 
-This repository implements a review-led content engine for operating multiple topic-based social accounts from one system.
+[기술 사례 분석](docs/portfolio-case-study.md) · [문서 전체 보기](docs/README.md) · [운영 콘솔 가이드](docs/operator-console-guide.md) · [배포 가이드](docs/single-server-deployment-guide.md)
 
-The initial MVP is intentionally limited to:
+## 프로젝트 한눈에 보기
 
-- X live publishing as the only intended first-rollout live path
-- Manual Ghost long-form and LinkedIn handoffs with operator-recorded outcomes
-- Config-gated Threads live publishing as a later opt-in path, with manual fallback until it is intentionally enabled
-- English-language operation
-- Manual review before publishing
-- SQLite as an acceptable local persistence option
+| 구분 | 구현 내용 |
+| --- | --- |
+| 해결 과제 | 여러 출처와 SNS 계정을 한 시스템에서 운영하면서 저작권·중복·오발행 위험 통제 |
+| 핵심 흐름 | 소스 탐색 → 수집·중복 제거 → 정책 기반 보강 → 콘텐츠 브리프 → 채널별 초안 → 사람 검수 → 예약/수동 발행 |
+| 지원 소스 | RSS, Sitemap, Manual CSV, GDELT |
+| 지원 채널 | X, Threads, Ghost, LinkedIn |
+| 운영 화면 | CLI, FastAPI JSON API, 서버 렌더링 웹 콘솔 |
+| 안전 장치 | 기본 dry-run, 명시적 live opt-in, 수동 승인, 출처 표기, 비밀정보 환경변수 분리, 감사 로그 |
+| 검증 | Python 3.13 환경에서 자동화 테스트 561개 통과 |
+| 배포 | SQLite 기반 단일 서버, systemd 이중 프로세스, Caddy HTTPS/Basic Auth, 백업·롤백 절차 |
 
-The current implementation includes configuration loading, source discovery and ingestion, policy-aware article enrichment, brief generation, `x`/`ghost`/`linkedin`/`threads` draft generation, CLI/API/browser review surfaces, scheduled publish jobs for X and live-configured Threads, and manual publish handoffs for Ghost, LinkedIn, and Threads fallback cases. The long-running scheduler keeps `publish-due` in dry-run mode; live publishing requires an explicit one-off `--live` command or browser/API opt-in.
+## 왜 만들었는가
 
-## Repository Structure
+콘텐츠 자동화는 생성 기능만으로 운영할 수 없습니다. 실제 서비스에서는 다음 문제가 함께 발생합니다.
 
-```text
-sns-content-engine/
-  app/
-    api/
-    config/
-    connectors/
-      llm/
-      publishers/
-      routing/
-      sources/
-      tts/
-    domain/
-    scheduler/
-    services/
-    storage/
-    workflows/
-    cli.py
-  config/
-  data/
-  deploy/
-  docs/
-  scripts/
-  tests/
-  .env.example
-  .env.production.example
-  pyproject.toml
-  README.md
+- 소스마다 전문 수집과 AI 재작성 허용 범위가 다릅니다.
+- 같은 기사가 URL, 제목, 요약의 미세한 차이로 반복 유입될 수 있습니다.
+- 채널마다 글자 수, 링크, 말투, 발행 방식이 다릅니다.
+- AI 결과를 곧바로 게시하면 사실성·브랜드·정책 위험이 커집니다.
+- 스케줄러 재실행이나 외부 API 오류가 중복 게시로 이어질 수 있습니다.
+- 운영자는 “왜 건너뛰었는지”와 “누가 무엇을 승인했는지”를 확인해야 합니다.
+
+이 프로젝트는 위 문제를 각각의 예외 처리로 흩어놓지 않고, 설정·도메인 상태·감사 이력으로 명시적으로 모델링했습니다.
+
+## 핵심 설계
+
+```mermaid
+flowchart LR
+    A["RSS / Sitemap / CSV / GDELT"] --> B["Connector Registry"]
+    B --> C["Discovery & Deduplication"]
+    C --> D["Policy-aware Enrichment"]
+    D --> E["Content Brief"]
+    E --> F["Channel Draft Generation"]
+    F --> G["Human Review Queue"]
+    G -->|"X / opt-in Threads"| H["Scheduler & Live Publisher"]
+    G -->|"Ghost / LinkedIn / fallback Threads"| I["Manual Publish Handoff"]
+    C -.-> J[("SQLite")]
+    D -.-> J
+    E -.-> J
+    F -.-> J
+    G -.-> J
+    H -.-> J
+    I -.-> J
+    K["CLI / API / Web Console"] --> G
+    K --> H
+    K --> I
 ```
 
-## Local Setup
+### 1. 설정으로 확장하는 멀티 계정 구조
 
-1. Create a virtual environment with Python 3.12 or 3.13.
-2. Install the package and development dependencies:
+계정, 주제 매칭, 프롬프트, 소스, 채널 제한, 스케줄, AI 공급자를 YAML로 분리했습니다. 새 계정이나 소스를 추가할 때 핵심 워크플로를 수정하지 않고 설정과 어댑터를 조합할 수 있습니다.
+
+### 2. 출처 정책을 런타임 데이터로 관리
+
+각 소스는 `discovery_only`, `reusable`, `restricted` 정책과 전문 수집·AI 재작성·출처 표기 허용 여부를 가집니다. 금지된 단계는 오류처럼 숨기지 않고 `policy_skip` 이력으로 남겨 운영자가 의도된 생략과 실제 실패를 구분할 수 있습니다.
+
+### 3. 생성과 발행 사이의 명시적 검수 경계
+
+로컬 파이프라인은 항상 `pending_review`에서 멈춥니다. 승인, 반려, 수정, 예약은 별도 액션이며 검토자와 변경 이력을 저장합니다. Ghost·LinkedIn과 미설정 Threads는 자동 발행 대신 수동 인계 작업으로 전환됩니다.
+
+### 4. 실패를 전제로 한 발행 안전성
+
+예약 발행은 기본적으로 dry-run이며 `--live`를 명시해야 외부 API를 호출합니다. 발행 작업에는 상태 전이, 멱등성 키, 시도 횟수, 오류, 외부 게시물 ID, 이벤트 로그가 남습니다. 자동 무한 재시도 대신 원인 확인 후 수동 재예약하는 정책을 사용합니다.
+
+### 5. 교체 가능한 외부 연동
+
+소스, LLM, 게시자, TTS를 인터페이스와 resolver로 분리했습니다. 운영 환경에서는 OpenAI·Anthropic·Codex-Wrapper 등의 경로를 설정으로 선택하고, 테스트에서는 결정론적 fake 구현을 주입합니다.
+
+## 기술 스택
+
+- **Language:** Python 3.12–3.13
+- **API / UI:** FastAPI, Pydantic, Jinja2, Uvicorn
+- **Data:** SQLAlchemy 2, SQLite
+- **Scheduling:** APScheduler
+- **AI integration:** OpenAI, Anthropic, Codex-Wrapper, ElevenLabs, Google TTS adapter
+- **Quality / Operations:** pytest, pre-commit, detect-secrets, systemd, Caddy
+
+## 빠른 실행
+
+### 1. 개발 환경 구성
 
 ```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
-3. Optional: enable live draft generation. If `<config-dir>/providers.yaml` is present, `generate-drafts` and `run-local` use its route chain at runtime. The checked-in `config/providers.yaml` is OpenAI-first for the active country-news config, so the default production path is to keep that file in place and export `OPENAI_API_KEY`. If the file is absent, draft generation falls back to environment-based auto-detection in this order: OpenAI, Anthropic, then Codex-Wrapper. If no supported provider credentials are present, local workflows use the built-in fake provider for safety.
+실제 키는 저장소에 커밋하지 말고 `.env.example`을 참고해 로컬 `.env` 또는 환경변수로만 관리합니다. 키가 없으면 지원되는 워크플로에서 테스트용 fake provider를 사용할 수 있습니다.
+
+### 2. 테스트
 
 ```bash
-export OPENAI_API_KEY="your_api_key_here"
-export OPENAI_MODEL="gpt-5.4-mini"
-export OPENAI_REASONING_EFFORT="none"
-export OPENAI_TIMEOUT_SECONDS="30"
+pytest -q
 ```
 
-For non-default Codex-Wrapper routes, set `CODEX_WRAPPER_API_KEY`, `CODEX_WRAPPER_BASE_URL`, and optionally `CODEX_WRAPPER_MODEL` instead of the OpenAI variables above.
+현재 검증 결과: `561 passed` (Python 3.13.12, 2026-08-09).
 
-4. Optional: install the local secret-scanning hook and keep your real `.env` file private.
-
-```bash
-chmod 600 .env
-scripts/scan_secrets.sh refresh-baseline
-./.venv/bin/pre-commit install
-scripts/scan_secrets.sh check
-```
-
-Keep real credentials in the ignored local `.env` file only. `.env.example` is the checked-in template, and common key or certificate file extensions are ignored by default to reduce accidental commits.
-
-## Example Config Sets
-
-- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It defines `korea_global_news` and `japan_global_news` accounts across `x`, `ghost`, `linkedin`, and `threads`. X is the only live-configured channel by default; Ghost and LinkedIn use manual handoff, and Threads stays on manual fallback until a publisher credential reference and valid env bundle are added. The checked-in source sets use real Korea/Japan RSS feeds with restricted source policy defaults: RSS metadata and original article URLs are used, full-text fetch and LLM rewrite are disabled, and attribution is required. Social drafts continue to link to the original article; a final Ghost URL is stored only as the long-form handoff outcome.
-- `config/global_country_news/` mirrors the active country-news config for Phase 1 validation and production handoff commands that need an explicit country-news config path.
-- `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
-- `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
-
-These example directories are not production defaults. Copy them into a separate working config directory and replace the sample URLs with your own operator-approved sources before real runs.
-`sns-engine healthcheck` now treats bundled `config/examples/...` directories and unresolved `example.com` / `example.org` / `example.net` URLs as not operator-ready, so copy and edit the sample files before using them for live workflows.
-Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-aware enrichment skips are now recorded when later steps block full-text fetch or rewrite, so the sample is intended for recent-news discovery rather than direct full-text reuse.
-
-## Operator Guides
-
-- [Documentation map](docs/README.md) for the current source-of-truth guides, completed initiative records, and historical planning files.
-- [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, the preferred `deploy/caddy/` HTTPS plus Basic Auth baseline for a protected `sns.gilgop.cloud` rollout, and the checked-in smoke-check plus backup or rollback runbook.
-- [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
-- [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
-- [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
-- [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, manual publish handoff actions, publish-job visibility, and scheduler-safe HTTP actions.
-- [Phase 2 long-form platform strategy](docs/global-country-news-phase-2-longform-platform-strategy.md) for the implemented Ghost handoff boundaries and original-source social-link decision.
-
-For remote operation at `sns.gilgop.cloud`, keep the shared FastAPI app on `127.0.0.1:8000` and route both `/console` and the JSON operator routes through the checked-in Caddy plus Basic Auth edge layer. Leave `/health` open only if you need external probes; do not expose the app directly on a public `0.0.0.0` bind.
-
-The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, Ghost and LinkedIn remain operator-driven manual upload flows with explicit outcome recording, and the country-news rollout should keep Threads on the manual path even though the platform can support a later live Threads opt-in.
-
-## CLI Usage
-
-Run the CLI through the console script:
-
-```bash
-sns-engine version
-sns-engine healthcheck --config-dir config
-sns-engine rollout-summary --config-dir config
-sns-engine discover
-sns-engine ingest
-sns-engine enrich-articles
-sns-engine build-briefs
-sns-engine generate-drafts
-sns-engine run-local
-sns-engine history runs
-sns-engine history failures
-sns-engine review list
-sns-engine review approve 42 --reviewer editor
-sns-engine review reject 42 --reason "Off topic"
-sns-engine review edit 42 --body "Revised draft text"
-sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00
-sns-engine scheduler discover
-sns-engine scheduler backfill
-sns-engine scheduler publish-due
-sns-engine scheduler publish-due --live
-sns-engine scheduler run
-sns-engine db init
-sns-engine db upgrade
-```
-
-Run the same commands through the module entrypoint:
-
-```bash
-python -m app.cli version
-python -m app.cli healthcheck --config-dir config
-python -m app.cli rollout-summary --config-dir config
-python -m app.cli discover
-python -m app.cli ingest
-python -m app.cli enrich-articles
-python -m app.cli build-briefs
-python -m app.cli generate-drafts
-python -m app.cli run-local
-python -m app.cli history runs
-python -m app.cli history failures
-python -m app.cli review list
-python -m app.cli scheduler backfill
-python -m app.cli scheduler publish-due
-python -m app.cli scheduler run
-python -m app.cli db init
-python -m app.cli db upgrade
-```
-
-The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV / GDELT connectors, and reports normalized source item candidates plus captured failures.
-
-The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
-
-The `enrich-articles` command fetches and extracts stored article pages when source policy permits, regenerates summaries, and records readable failures or intentional policy skips. The default restricted country-news sources intentionally skip full-text fetch and rewrite.
-
-The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
-
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for every configured channel. The active country-news config produces `x`, `ghost`, `linkedin`, and `threads` variants; Ghost receives long-form prompt constraints. When `<config-dir>/providers.yaml` is present, the workflow uses its `draft_generate` route chain and model overrides. When the file is absent or no configured route is credentialed, it falls back to environment-based auto-detection and uses the deterministic fake provider only when no supported live-provider credentials are available.
-
-The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving Ghost or LinkedIn always creates an explicit manual publish handoff job. Threads creates the same handoff only when live publishing is not configured cleanly; otherwise it stays on the scheduled publish path alongside X. Scheduling is rejected for manual-only handoffs.
-
-The `run-local` command is the local one-shot pipeline entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, uses the same draft-provider resolution path as `generate-drafts`, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
-
-The `history runs` and `history failures` commands expose operator-readable summaries from persisted `pipeline_runs` and article-enrichment history while still matching the future UI/API data model. Run history includes policy-aware counts and rewrite-provider names when available, and failure history prints both ordinary `type=failure` rows and intentional `type=policy_skip` rows with source-policy metadata.
-
-The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
-
-The `rollout-summary` command prints a redacted summary of provider routes and live-publisher channel configuration. It reports credential references but never credential values and is intended for first-rollout preflight checks.
-
-The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring the X publisher path and its referenced environment variables. For the country-news rollout, keep Threads on the manual fallback path. Only jobs with a real schedule enter the due queue, so manual Ghost, LinkedIn, and manual-fallback Threads handoffs are excluded until an operator records their outcome through the console or API.
-
-Example channel config:
-
-```yaml
-channels:
-  x:
-    schedule:
-      cron: "0 9 * * *"
-    render:
-      max_chars: 280
-    publisher:
-      credential_ref: X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS
-```
-
-Example country-news X credential bundle:
-
-```bash
-export X_AI_TOOLS_DAILY_PUBLISHER_CREDENTIALS='{"access_token":"replace-with-user-access-token"}'
-sns-engine scheduler publish-due --live
-```
-
-Threads credential bundles use the same `publisher.credential_ref` lookup pattern as X, but the JSON object must include both `access_token` and `threads_user_id`. Keep that bundle in the environment only; do not store the raw token or user ID in YAML. Treat that Threads live path as a later rollout step instead of part of the first protected live enablement.
-
-If you already have an older SQLite file from a previous milestone, run `sns-engine db upgrade --database-url ...` before `ingest` or `run-local`. Fresh databases should still start with `sns-engine db init`.
-
-Initialize the schema through the thin script wrapper:
-
-```bash
-python scripts/create_db.py
-python scripts/create_db.py --database-url sqlite:///data/sns_content_engine.db --upgrade
-```
-
-## Operations
-
-For a normal one-shot local run, initialize or upgrade the database once, verify readiness, and run the pipeline:
+### 3. 안전한 로컬 파이프라인
 
 ```bash
 sns-engine db init --database-url sqlite:///data/sns_content_engine.db
-sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine run-local --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine healthcheck \
+  --config-dir config \
+  --database-url sqlite:///data/sns_content_engine.db
+sns-engine run-local \
+  --config-dir config \
+  --database-url sqlite:///data/sns_content_engine.db
+sns-engine review list \
+  --database-url sqlite:///data/sns_content_engine.db
 ```
 
-Use `db upgrade` instead of `db init` for an existing database. To inspect each pipeline stage separately, run:
+`run-local`은 `ingest → enrich → build-briefs → generate-drafts`를 실행하고 게시하지 않은 채 검수 대기 상태로 종료합니다.
+
+### 4. 웹 콘솔
 
 ```bash
-sns-engine discover --config-dir config
-sns-engine ingest --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine enrich-articles --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine build-briefs --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine generate-drafts --config-dir config --database-url sqlite:///data/sns_content_engine.db
+uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-After generation, use the review and publish commands as separate operator actions:
+브라우저에서 `http://127.0.0.1:8000/console/`을 열면 실행 이력, 기사 상태, 검수 큐, 발행 작업, 스케줄러를 확인할 수 있습니다. JSON API 문서는 `/docs`에서 제공합니다.
 
-```bash
-sns-engine history runs --database-url sqlite:///data/sns_content_engine.db
-sns-engine history failures --database-url sqlite:///data/sns_content_engine.db
-sns-engine review list --database-url sqlite:///data/sns_content_engine.db
-sns-engine review approve 42 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine review schedule 42 --scheduled-for 2026-03-18T09:00:00+00:00 --reviewer editor --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db --live
-sns-engine scheduler run --config-dir config --database-url sqlite:///data/sns_content_engine.db
-```
+원격 운영에서는 공유 FastAPI 앱을 Caddy와 Basic Auth 뒤에 둡니다. In production, keep the shared FastAPI app on `127.0.0.1:8000` and route the console and JSON operator API through the checked-in Caddy plus Basic Auth edge layer. 외부 상태 확인이 필요한 경우에만 `/health`를 예외로 열고, do not expose the app directly on a public `0.0.0.0` bind.
 
-Operational notes:
+### 5. 단일 서버 재시작 후 점검
 
-- `healthcheck` is readiness only. If it reports an outdated SQLite schema, run `sns-engine db upgrade`. Use `sns-engine db init` only for fresh databases.
-- `healthcheck` also fails when `--config-dir` points at bundled `config/examples/...` content or when placeholder `example.com` / `example.org` / `example.net` URLs are still present. Copy the sample config to a separate directory and replace those URLs before real runs.
-- Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
-- Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
-- Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
-- For the country-news rollout, configure live publish only for the explicitly approved `x` account; keep Ghost and LinkedIn manual-only and keep Threads on the manual fallback path.
-- Draft generation checks `<config-dir>/providers.yaml` first when present. The checked-in default file is OpenAI-first for the active country-news config. Without it, environment-based auto-detection tries OpenAI, Anthropic, then Codex-Wrapper; if no supported credentials are configured, local workflows fall back to the deterministic fake provider.
-- Provider credentials still come from environment variables only. `providers.yaml` selects route order and optional model overrides; it does not store secrets.
-- If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
-- In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
-- Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
-- Approving a Ghost or LinkedIn draft always creates a `scheduled_for = null` publish job that represents a manual upload handoff. Ghost completion may store the final article URL in `external_post_id`. Threads uses the same handoff only when the configured account cannot resolve a live Threads publisher from `publisher.credential_ref`.
-- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for Ghost, LinkedIn, and Threads accounts that still fall back to manual handoff because the credential bundle is missing or invalid.
-- `sns-engine scheduler backfill` also respects that same capability split. It can create future Threads jobs only when the configured account resolves a live Threads publisher; otherwise it skips Threads and leaves manual fallback drafts out of the scheduled queue.
-
-Suggested dry-run and smoke checks:
-
-```bash
-sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine scheduler publish-due --config-dir config --database-url sqlite:///data/sns_content_engine.db
-scripts/scan_secrets.sh check
-./.venv/bin/pytest tests/test_cli.py tests/test_scheduler.py tests/test_scripts.py
-```
-
-For the protected single-server rollout path, the repository also includes `scripts/single_server_smoke_check.sh` to verify the redacted first-rollout config summary, `sns-web.service`, `sns-scheduler.service`, `caddy.service`, loopback `/health`, the edge-protected console, and dry-run `publish-due` behavior after a restart:
+배포 또는 서비스 재시작 뒤에는 저장소의 smoke-check 스크립트로 웹·스케줄러·Caddy 상태, loopback healthcheck, edge 인증, dry-run 발행 경로를 함께 확인합니다.
 
 ```bash
 cd /opt/sns-content-engine
-export SNS_SMOKE_EDGE_USER=operator
-export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
+SNS_SMOKE_EDGE_USER=operator \
+SNS_SMOKE_EDGE_PASSWORD='replace-with-password' \
 scripts/single_server_smoke_check.sh
 ```
 
-Use one-shot environment variables for that check instead of storing the cleartext console password in a checked-in file. The corresponding SQLite backup and rollback order lives in the single-server deployment guide.
+평문 edge 암호는 파일에 저장하지 말고 이 점검 명령에 일회성 환경변수로만 전달합니다. The backup and rollback order lives in the single-server deployment guide.
 
-Checked-in `systemd` units for one-server operation now live under:
+## 주요 명령
 
-- `deploy/systemd/sns-web.service`
-- `deploy/systemd/sns-scheduler.service`
-
-Copy them into `/etc/systemd/system/`, adjust `User` and `Group` if you use a different service account than the default `sns-engine`, and keep both services pointed at the same `/opt/sns-content-engine/.env` file plus `/opt/sns-content-engine/config` directory.
-
-## Testing
-
-Run the test suite with:
-
-```bash
-./.venv/bin/pytest
+```text
+sns-engine discover                    소스 후보 탐색
+sns-engine ingest                      정규화·중복 제거 후 저장
+sns-engine enrich-articles             정책이 허용한 기사 보강
+sns-engine build-briefs                채널 중립 콘텐츠 브리프 생성
+sns-engine generate-drafts             채널별 초안 생성
+sns-engine run-local                   전체 로컬 파이프라인 실행
+sns-engine review ...                  승인·반려·수정·예약
+sns-engine scheduler publish-due       발행 대상 dry-run
+sns-engine scheduler publish-due --live 명시적 실발행
+sns-engine history ...                 실행·실패·정책 생략 이력 조회
+sns-engine rollout-summary             비밀값을 가린 운영 설정 점검
 ```
 
-## Current Boundaries
+전체 운영 절차는 [문서 맵](docs/README.md)에서 목적별로 찾을 수 있습니다.
 
-- Ghost is a review-led manual handoff. There is no Ghost Admin API adapter or live Ghost publishing path.
-- LinkedIn is manual handoff only.
-- Threads live publishing exists but is disabled in the checked-in country-news accounts until an operator adds `publisher.credential_ref` and a valid env credential bundle.
-- Long-form generation is single-story. Multi-source daily or weekly briefs do not yet have a provenance model.
-- TTS and metadata-generation provider services exist as integration building blocks, but the main CLI pipeline does not currently expose TTS or a standalone metadata-generation stage.
-- X, Threads, and LinkedIn drafts use the original article URL. Recording a Ghost URL does not turn social drafts into a blog funnel.
+## 저장소 구조
 
-## Finance Local MVP Notes
+```text
+app/
+  api/          FastAPI와 서버 렌더링 운영 콘솔
+  config/       YAML 스키마, 로더, 레지스트리
+  connectors/   source / LLM / publisher / TTS 어댑터
+  domain/       중복 제거, 매칭, 브리프 등 순수 도메인 로직
+  scheduler/    슬롯 계획, 백필, 예약 발행
+  services/     추출, 요약, 생성, 검증 서비스
+  storage/      SQLAlchemy 모델과 repository
+  workflows/    단계별 애플리케이션 워크플로
+config/         실제·예제 운영 설정
+deploy/         systemd와 Caddy 배포 자산
+docs/           사례 분석, 운영 가이드, 개발 기록
+scripts/        DB 초기화, 비밀정보 검사, smoke check
+tests/          단위·통합·운영 경계 테스트
+```
 
-Use the finance-local example config under `config/examples/finance_local/` as a starting point when you want to run the new RSS -> HTML -> summary -> brief -> draft flow without hard-coding production feeds. Copy those files into a temporary config directory and edit the feed/account values locally.
+## 현재 운영 경계
 
-Finance-local guardrails:
-- RSS is used for discovery only. The pipeline fetches article HTML and regenerates summaries from extracted body text when possible.
-- Readable failure reasons are stored for blocked fetches, extraction failures, and content that is too short to summarize.
-- Draft generation now includes source context and explicit anti-investment-advice guidance.
-- The local one-shot pipeline always stops at `pending_review`; scheduling, manual handoff completion, and live publishing remain separate operator actions.
+- X만 초기 실발행 경로로 활성화하며, Threads 실발행은 자격 증명을 명시적으로 설정한 경우에만 opt-in 됩니다.
+- Ghost와 LinkedIn은 검수 후 수동 발행 인계 방식입니다.
+- 장문 콘텐츠는 단일 기사를 기준으로 생성합니다. 여러 출처를 합성하는 일간·주간 브리프는 구현 범위 밖입니다.
+- TTS와 메타데이터 서비스 어댑터는 있으나 메인 CLI 파이프라인의 독립 단계로 노출하지 않았습니다.
+- 기본 데이터베이스와 배포 기준은 단일 서버용 SQLite입니다. 수평 확장이 필요한 서비스라면 작업 큐와 서버형 DB 도입이 다음 단계입니다.
+
+이 경계를 숨기지 않고 문서와 healthcheck에 드러내는 것도 운영 안전성의 일부로 다뤘습니다.
+
+## 더 살펴보기
+
+- [포트폴리오 기술 사례](docs/portfolio-case-study.md): 문제 정의, 의사결정, 트레이드오프, 코드 탐색 순서
+- [운영 콘솔](docs/operator-console-guide.md): 검수와 수동 발행 흐름
+- [Control-plane API](docs/operator-control-plane-api.md): 운영 API와 안전 모델
+- [단일 서버 배포](docs/single-server-deployment-guide.md): systemd, Caddy, 백업, 롤백
+- [장문 발행 전략](docs/global-country-news-phase-2-longform-platform-strategy.md): Ghost 인계와 원문 링크 정책
+- [전체 문서 맵](docs/README.md): 현재 문서와 완료된 개발 기록 구분
