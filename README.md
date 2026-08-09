@@ -4,16 +4,18 @@ Config-driven multi-account SNS content automation engine.
 
 ## Overview
 
-This repository bootstraps the MVP foundation for a shared content engine that can support multiple topic-based social accounts from one system.
+This repository implements a review-led content engine for operating multiple topic-based social accounts from one system.
 
 The initial MVP is intentionally limited to:
 
-- X live publishing as the only intended first-rollout live path, operator-recorded manual handoff tracking for LinkedIn, and config-gated Threads live publishing kept as a later opt-in path with manual fallback until it is intentionally enabled
+- X live publishing as the only intended first-rollout live path
+- Manual Ghost long-form and LinkedIn handoffs with operator-recorded outcomes
+- Config-gated Threads live publishing as a later opt-in path, with manual fallback until it is intentionally enabled
 - English-language operation
 - Manual review before publishing
 - SQLite as an acceptable local persistence option
 
-The current milestone includes configuration loading, source ingestion, brief generation, multichannel draft generation, a CLI-first manual review queue, scheduled publish jobs for X and live-configured Threads, manual publish handoff tracking for LinkedIn plus Threads fallback cases, live X and Threads publisher adapters, and the minimum operations layer needed to run the MVP safely on a single server. The long-running scheduler still keeps `publish-due` in dry-run mode unless you explicitly run the one-off live command.
+The current implementation includes configuration loading, source discovery and ingestion, policy-aware article enrichment, brief generation, `x`/`ghost`/`linkedin`/`threads` draft generation, CLI/API/browser review surfaces, scheduled publish jobs for X and live-configured Threads, and manual publish handoffs for Ghost, LinkedIn, and Threads fallback cases. The long-running scheduler keeps `publish-due` in dry-run mode; live publishing requires an explicit one-off `--live` command or browser/API opt-in.
 
 ## Repository Structure
 
@@ -23,8 +25,11 @@ sns-content-engine/
     api/
     config/
     connectors/
+      llm/
       publishers/
+      routing/
       sources/
+      tts/
     domain/
     scheduler/
     services/
@@ -33,8 +38,12 @@ sns-content-engine/
     cli.py
   config/
   data/
+  deploy/
+  docs/
+  scripts/
   tests/
   .env.example
+  .env.production.example
   pyproject.toml
   README.md
 ```
@@ -72,7 +81,7 @@ Keep real credentials in the ignored local `.env` file only. `.env.example` is t
 
 ## Example Config Sets
 
-- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It now defines `korea_global_news` and `japan_global_news` accounts across `x`, `linkedin`, and `threads`, with live publishing configured only for `x` by default and source-linked sharing as the default link strategy. The checked-in default source sets use real Korea/Japan RSS feeds with restricted source policy defaults: RSS metadata and original article URLs are used, full-text fetch and LLM rewrite are disabled, and attribution is required. For the country-news rollout, keep Threads on the manual fallback path even though the codebase can promote it later by adding `publisher.credential_ref` under the `threads` channel and exporting the referenced env bundle.
+- `config/` remains the active default configuration used by the CLI unless you pass a different `--config-dir`. It defines `korea_global_news` and `japan_global_news` accounts across `x`, `ghost`, `linkedin`, and `threads`. X is the only live-configured channel by default; Ghost and LinkedIn use manual handoff, and Threads stays on manual fallback until a publisher credential reference and valid env bundle are added. The checked-in source sets use real Korea/Japan RSS feeds with restricted source policy defaults: RSS metadata and original article URLs are used, full-text fetch and LLM rewrite are disabled, and attribution is required. Social drafts continue to link to the original article; a final Ghost URL is stored only as the long-form handoff outcome.
 - `config/global_country_news/` mirrors the active country-news config for Phase 1 validation and production handoff commands that need an explicit country-news config path.
 - `config/examples/finance_local/` is a finance-local sample for the current review-first MVP flow.
 - `config/examples/all_domain_news/` is a sample-only all-domain setup showing reusable public sources, reusable newsroom or IR sources, attribution-friendly Wikinews-style settings, and a discovery-only GDELT sample kept in its own source set.
@@ -83,15 +92,17 @@ Keep the bundled GDELT example in a dedicated discovery-only source set. Policy-
 
 ## Operator Guides
 
+- [Documentation map](docs/README.md) for the current source-of-truth guides, completed initiative records, and historical planning files.
 - [Single-server deployment guide](docs/single-server-deployment-guide.md) for the recommended `/opt/sns-content-engine` layout, shared `.env` handling, SQLite-first database choice, checked-in `systemd` units under `deploy/systemd/`, the preferred `deploy/caddy/` HTTPS plus Basic Auth baseline for a protected `sns.gilgop.cloud` rollout, and the checked-in smoke-check plus backup or rollback runbook.
 - [Operator console guide](docs/operator-console-guide.md) for starting the FastAPI-served browser console and using dashboard, review, publish-job, and scheduler pages safely.
 - [Finance Local MVP guide](docs/finance-local-operator-guide.md) for the original review-first finance workflow.
 - [All-domain news guide](docs/all-domain-news-operator-guide.md) for source-policy categories, intentional enrichment skips, Codex-Wrapper usage, and manual-review expectations.
 - [Operator control-plane API guide](docs/operator-control-plane-api.md) for review detail, manual publish handoff actions, publish-job visibility, and scheduler-safe HTTP actions.
+- [Phase 2 long-form platform strategy](docs/global-country-news-phase-2-longform-platform-strategy.md) for the implemented Ghost handoff boundaries and original-source social-link decision.
 
 For remote operation at `sns.gilgop.cloud`, keep the shared FastAPI app on `127.0.0.1:8000` and route both `/console` and the JSON operator routes through the checked-in Caddy plus Basic Auth edge layer. Leave `/health` open only if you need external probes; do not expose the app directly on a public `0.0.0.0` bind.
 
-The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, LinkedIn remains an operator-driven manual upload flow with explicit outcome recording, and the country-news rollout should keep Threads on the manual path even though the platform can support a later live Threads opt-in.
+The console follows the same safety model as the CLI and API: drafts still require manual review, browser `publish-due` stays dry-run unless you explicitly opt into one live run, Ghost and LinkedIn remain operator-driven manual upload flows with explicit outcome recording, and the country-news rollout should keep Threads on the manual path even though the platform can support a later live Threads opt-in.
 
 ## CLI Usage
 
@@ -100,8 +111,10 @@ Run the CLI through the console script:
 ```bash
 sns-engine version
 sns-engine healthcheck --config-dir config
+sns-engine rollout-summary --config-dir config
 sns-engine discover
 sns-engine ingest
+sns-engine enrich-articles
 sns-engine build-briefs
 sns-engine generate-drafts
 sns-engine run-local
@@ -118,6 +131,7 @@ sns-engine scheduler publish-due
 sns-engine scheduler publish-due --live
 sns-engine scheduler run
 sns-engine db init
+sns-engine db upgrade
 ```
 
 Run the same commands through the module entrypoint:
@@ -125,8 +139,10 @@ Run the same commands through the module entrypoint:
 ```bash
 python -m app.cli version
 python -m app.cli healthcheck --config-dir config
+python -m app.cli rollout-summary --config-dir config
 python -m app.cli discover
 python -m app.cli ingest
+python -m app.cli enrich-articles
 python -m app.cli build-briefs
 python -m app.cli generate-drafts
 python -m app.cli run-local
@@ -137,17 +153,20 @@ python -m app.cli scheduler backfill
 python -m app.cli scheduler publish-due
 python -m app.cli scheduler run
 python -m app.cli db init
+python -m app.cli db upgrade
 ```
 
 The `discover` command loads configured sources, runs the RSS / sitemap / manual CSV / GDELT connectors, and reports normalized source item candidates plus captured failures.
 
 The `ingest` command runs discovery, applies canonical URL / title / fingerprint deduplication, and stores only new source items in the configured database.
 
+The `enrich-articles` command fetches and extracts stored article pages when source policy permits, regenerates summaries, and records readable failures or intentional policy skips. The default restricted country-news sources intentionally skip full-text fetch and rewrite.
+
 The `build-briefs` command reads ingested source items, matches them to eligible accounts, resolves landing URLs, and stores channel-neutral content briefs for later draft generation.
 
-The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for the configured `x`, `linkedin`, and `threads` accounts. When `<config-dir>/providers.yaml` is present, it uses the configured route chain and model overrides at runtime. The checked-in default file is OpenAI-first for the active country-news config. When the file is absent, it falls back to environment-based auto-detection and only uses the deterministic fake provider when no supported live-provider credentials are configured.
+The `generate-drafts` command reads stored content briefs, renders the configured prompt profile, and stores channel-specific draft variants for every configured channel. The active country-news config produces `x`, `ghost`, `linkedin`, and `threads` variants; Ghost receives long-form prompt constraints. When `<config-dir>/providers.yaml` is present, the workflow uses its `draft_generate` route chain and model overrides. When the file is absent or no configured route is credentialed, it falls back to environment-based auto-detection and uses the deterministic fake provider only when no supported live-provider credentials are available.
 
-The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving LinkedIn drafts always creates an explicit manual publish handoff job. Threads drafts create that same handoff only when live publishing is not configured cleanly; otherwise Threads stays on the scheduled publish path alongside X.
+The `review` command group lists `pending_review` drafts and supports approve, reject, edit, and one-off schedule actions while recording reviewer audit history. Approving Ghost or LinkedIn always creates an explicit manual publish handoff job. Threads creates the same handoff only when live publishing is not configured cleanly; otherwise it stays on the scheduled publish path alongside X. Scheduling is rejected for manual-only handoffs.
 
 The `run-local` command is the local one-shot pipeline entrypoint. It runs `ingest -> enrich -> build-briefs -> generate-drafts`, stores pipeline run history, uses the same draft-provider resolution path as `generate-drafts`, and stops with drafts in `pending_review`. It never auto-approves or auto-publishes.
 
@@ -155,7 +174,9 @@ The `history runs` and `history failures` commands expose operator-readable summ
 
 The `healthcheck` command is a strict readiness check. It validates config loading, operator-readiness signals for bundled sample configs and placeholder URLs, and database schema readiness; it prints key=value status lines and exits non-zero if any required check fails.
 
-The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring the X publisher path and its referenced environment variables. For the country-news rollout, keep Threads on the manual fallback path. Only scheduled jobs enter the due queue, so manual LinkedIn handoffs and manual-fallback Threads handoffs are intentionally excluded until an operator records their outcome through the console or API.
+The `rollout-summary` command prints a redacted summary of provider routes and live-publisher channel configuration. It reports credential references but never credential values and is intended for first-rollout preflight checks.
+
+The `scheduler publish-due` command stays in safe dry-run mode by default. Pass `--live` only after configuring the X publisher path and its referenced environment variables. For the country-news rollout, keep Threads on the manual fallback path. Only jobs with a real schedule enter the due queue, so manual Ghost, LinkedIn, and manual-fallback Threads handoffs are excluded until an operator records their outcome through the console or API.
 
 Example channel config:
 
@@ -190,16 +211,27 @@ python scripts/create_db.py --database-url sqlite:///data/sns_content_engine.db 
 
 ## Operations
 
-Use the following operating sequence for local or single-server runs:
+For a normal one-shot local run, initialize or upgrade the database once, verify readiness, and run the pipeline:
 
 ```bash
 sns-engine db init --database-url sqlite:///data/sns_content_engine.db
 sns-engine healthcheck --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine run-local --config-dir config --database-url sqlite:///data/sns_content_engine.db
+```
+
+Use `db upgrade` instead of `db init` for an existing database. To inspect each pipeline stage separately, run:
+
+```bash
 sns-engine discover --config-dir config
 sns-engine ingest --config-dir config --database-url sqlite:///data/sns_content_engine.db
+sns-engine enrich-articles --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine build-briefs --config-dir config --database-url sqlite:///data/sns_content_engine.db
 sns-engine generate-drafts --config-dir config --database-url sqlite:///data/sns_content_engine.db
-sns-engine run-local --config-dir config --database-url sqlite:///data/sns_content_engine.db
+```
+
+After generation, use the review and publish commands as separate operator actions:
+
+```bash
 sns-engine history runs --database-url sqlite:///data/sns_content_engine.db
 sns-engine history failures --database-url sqlite:///data/sns_content_engine.db
 sns-engine review list --database-url sqlite:///data/sns_content_engine.db
@@ -217,14 +249,14 @@ Operational notes:
 - Scheduler and publish operations now emit one-line `key=value` logs such as `event=workflow component=scheduler status=ok workflow=publish_due ...`, which are intended for terminal, journald, or basic log shipping.
 - Dry-run is the default safety mode for `scheduler publish-due`. Use it first to confirm the due-job queue and logging behavior before a live publish.
 - Live publish requires configured publisher credentials through environment variables only. Do not store credentials in YAML.
-- For the country-news rollout, configure live publish only for the explicitly approved `x` account; keep `threads` on the manual fallback path and keep LinkedIn manual-only.
+- For the country-news rollout, configure live publish only for the explicitly approved `x` account; keep Ghost and LinkedIn manual-only and keep Threads on the manual fallback path.
 - Draft generation checks `<config-dir>/providers.yaml` first when present. The checked-in default file is OpenAI-first for the active country-news config. Without it, environment-based auto-detection tries OpenAI, Anthropic, then Codex-Wrapper; if no supported credentials are configured, local workflows fall back to the deterministic fake provider.
 - Provider credentials still come from environment variables only. `providers.yaml` selects route order and optional model overrides; it does not store secrets.
 - If a live draft provider is selected and fails, `generate-drafts` exits with an error instead of silently falling back to fake output.
 - In server environments, prefer `DATABASE_URL` via `Environment` or `EnvironmentFile` instead of passing the DB URL on the command line.
 - Retry policy is `manual_reschedule`. Failed publish jobs remain failed with `attempt_count` and `last_error` recorded. After fixing the cause, reschedule the already approved draft with `sns-engine review schedule ...` to create a new publish job.
-- Approving a LinkedIn draft always creates a `scheduled_for = null` publish job that represents a manual upload handoff. Threads does the same only when the configured account cannot resolve a live Threads publisher from `publisher.credential_ref`.
-- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for LinkedIn and for Threads accounts that still fall back to manual handoff because the credential bundle is missing or invalid.
+- Approving a Ghost or LinkedIn draft always creates a `scheduled_for = null` publish job that represents a manual upload handoff. Ghost completion may store the final article URL in `external_post_id`. Threads uses the same handoff only when the configured account cannot resolve a live Threads publisher from `publisher.credential_ref`.
+- `sns-engine review schedule ...` remains the scheduled-publish path for channels with a live publisher. It is intentionally rejected for Ghost, LinkedIn, and Threads accounts that still fall back to manual handoff because the credential bundle is missing or invalid.
 - `sns-engine scheduler backfill` also respects that same capability split. It can create future Threads jobs only when the configured account resolves a live Threads publisher; otherwise it skips Threads and leaves manual fallback drafts out of the scheduled queue.
 
 Suggested dry-run and smoke checks:
@@ -262,9 +294,14 @@ Run the test suite with:
 ./.venv/bin/pytest
 ```
 
-## Next Steps
+## Current Boundaries
 
-Future milestones can add configuration loading, domain models, workflows, storage, scheduling, and publisher adapters without changing the basic package layout introduced here.
+- Ghost is a review-led manual handoff. There is no Ghost Admin API adapter or live Ghost publishing path.
+- LinkedIn is manual handoff only.
+- Threads live publishing exists but is disabled in the checked-in country-news accounts until an operator adds `publisher.credential_ref` and a valid env credential bundle.
+- Long-form generation is single-story. Multi-source daily or weekly briefs do not yet have a provenance model.
+- TTS and metadata-generation provider services exist as integration building blocks, but the main CLI pipeline does not currently expose TTS or a standalone metadata-generation stage.
+- X, Threads, and LinkedIn drafts use the original article URL. Recording a Ghost URL does not turn social drafts into a blog funnel.
 
 ## Finance Local MVP Notes
 
@@ -274,4 +311,4 @@ Finance-local guardrails:
 - RSS is used for discovery only. The pipeline fetches article HTML and regenerates summaries from extracted body text when possible.
 - Readable failure reasons are stored for blocked fetches, extraction failures, and content that is too short to summarize.
 - Draft generation now includes source context and explicit anti-investment-advice guidance.
-- The local MVP always stops at `pending_review`; publish automation remains separate and unchanged.
+- The local one-shot pipeline always stops at `pending_review`; scheduling, manual handoff completion, and live publishing remain separate operator actions.

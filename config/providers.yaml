@@ -26,6 +26,12 @@
 #   elevenlabs           — Requires ELEVENLABS_API_KEY
 #   google               — Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_TTS_CREDENTIALS_JSON
 #   fake                 — No credentials needed (deterministic stub, for testing)
+#
+# Runtime coverage:
+#   generate-drafts and run-local currently consume draft_generate routes.
+#   metadata_generate and tts_synthesize routes are available to their service
+#   resolvers, but the main CLI pipeline does not expose standalone metadata or
+#   TTS stages yet.
 
 routes:
   # ── LLM: active country-news default path ────────────────────────────────

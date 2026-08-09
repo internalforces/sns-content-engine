@@ -1,5 +1,11 @@
 # Global Country News Phase 2 Longform Publishing Funnel Roadmap
 
+## Status
+
+- Tasks 01 through 06 are complete; this roadmap is retained as the original implementation plan.
+- Do not restart work from the initial recommendation at the end of this file.
+- See `docs/global-country-news-phase-2-longform-publishing-funnel-progress-tracker.md` for shipped evidence and `docs/README.md` for the current documentation map.
+
 ## Goal
 Extend the stable country-news MVP into a long-form publishing funnel that:
 - creates deeper blog/newsletter drafts from country news briefs
@@ -222,4 +228,4 @@ Extend the stable country-news MVP into a long-form publishing funnel that:
 6. Task 06: Confirm Original-Source Social Links
 
 ## Initial Milestone Recommendation
-Start with platform strategy and model design. Do not write integration code until the operator chooses the long-form home and confirms whether Phase 2 should begin.
+Historical kickoff recommendation: start with platform strategy and model design, and do not write integration code until the operator chooses the long-form home. The operator selected Ghost and Tasks 01 through 06 are now complete.

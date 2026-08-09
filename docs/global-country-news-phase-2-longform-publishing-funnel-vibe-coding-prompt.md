@@ -1,5 +1,10 @@
 # Global Country News Phase 2 Longform Publishing Funnel Vibe Coding Prompt
 
+## Status
+
+- This kickoff prompt is complete and retained for historical context.
+- Do not use it to restart Tasks 01 through 06; consult the progress tracker and `docs/README.md` before defining any follow-on work.
+
 ## Purpose
 This document is the kickoff brief for expanding the country news MVP into a long-form publishing funnel after Phase 1 and Phase 1.5 are stable.
 

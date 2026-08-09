@@ -16,10 +16,10 @@ When an autonomous agent works from `docs/global-country-news-phase-2-longform-p
 - Current milestone: `M4_social_source_link_guardrail`
 - Current task: `06_confirm_original_source_social_links`
 - Active status: `done`
-- Last updated: `2026-05-11 11:12 KST`
+- Last updated: `2026-08-09 KST`
 - Base branch: `master`
-- Active branch: `codex/task-05-live-publish`
-- Latest task commit: `pending`
+- Active branch: `master` (initiative complete)
+- Latest implementation commit: `6a3a3ff` (`Keep social drafts on original source URLs`)
 - Resume decision: `operator_decided_social_links_remain_original_source`
 - Stop reason: `tasks_01_to_06_completed_with_social_original_source_guardrail`
 
@@ -111,6 +111,7 @@ Status values:
 - `2026-05-10 21:35 KST` Completed Task 04 review exposure by reusing existing pending-review, approve/reject/edit, API, console, and publish-job surfaces for Ghost manual handoffs.
 - `2026-05-10 21:35 KST` Completed Task 05 first platform handoff in manual mode: approving Ghost creates a manual handoff, schedule rejects Ghost as manual-only, and manual completion records the final Ghost article URL. No live adapter or credentials were added.
 - `2026-05-11 11:08 KST` Completed Task 06 by recording the operator decision to keep X, Threads, and LinkedIn pointed at original article URLs, updating Phase 2 docs, and adding social-channel regression coverage for original URL selection.
+- `2026-08-09 KST` Reconciled the tracker with git history, added the current documentation map, refreshed README channel/CLI boundaries, and restored Ghost manual-handoff forms in the browser console to match the shipped workflow and operator guides.
 
 ## Test Log
 - `2026-04-29 16:50 KST` `not_run` `phase_waiting_for_phase_1_and_phase_1_5`
@@ -128,6 +129,10 @@ Status values:
 - `2026-05-10 21:41 KST` `git diff --check` -> `passed`
 - `2026-05-11 11:12 KST` `./.venv/bin/pytest tests/test_x_draft_generator.py tests/test_draft_validation.py tests/test_review_queue_workflow.py -q` -> `passed` `81 passed`
 - `2026-05-11 11:12 KST` `git diff --check` -> `passed`
+- `2026-08-09 KST` `./.venv/bin/pytest -q tests/test_console.py tests/test_api.py tests/test_review_queue_workflow.py` -> `passed` `114 passed`
+- `2026-08-09 KST` `./.venv/bin/pytest -q` -> `passed` `561 passed`
+- `2026-08-09 KST` `markdown relative-link check and documented CLI help checks` -> `passed`
+- `2026-08-09 KST` `scripts/scan_secrets.sh check && git diff --check` -> `passed`
 
 ## Open Questions
 - `What source-count limit and grouping rules should a future multi-source country daily brief use?`

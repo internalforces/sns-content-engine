@@ -1,5 +1,10 @@
 # Global Country News Phase 2 Longform Publishing Funnel Execution Guide
 
+## Status
+
+- This execution guide covers the completed Tasks 01 through 06 and is retained as an audit record.
+- Do not select another task from this guide. Any live Ghost adapter, multi-source brief, or blog-funnel mode requires a new explicitly scoped initiative.
+
 ## Purpose
 This document guides Phase 2: adding long-form blog/newsletter publishing while preserving original-source social draft behavior after the country-news MVP is stable.
 

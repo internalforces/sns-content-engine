@@ -12,7 +12,7 @@ The same FastAPI app serves both the browser console and these JSON routes. For 
 
 ## Safety Model
 
-- Manual review remains the gate. Drafts stay in `pending_review` until an operator explicitly approves, rejects, edits, or schedules them.
+- Manual review remains the gate. Editing keeps a draft in `pending_review`; approval or rejection records the decision, and only an approved live-capable draft can be scheduled.
 - Approving `ghost` and `linkedin` drafts always creates an explicit manual publish handoff job instead of a scheduled live-publish slot.
 - Approving `threads` drafts creates that same manual handoff only when the configured account does not resolve a live Threads publisher from `publisher.credential_ref`. Otherwise the approved draft stays on the normal scheduled publish path.
 - `POST /scheduler/publish-due` stays dry-run by default. Real publishing only happens when the request body includes `"live": true`.
@@ -36,6 +36,17 @@ curl -fsS "http://127.0.0.1:8000/health?config_dir=/opt/sns-content-engine/confi
 curl -u operator:replace-with-password \
   "https://sns.gilgop.cloud/reviews/pending?database_url=sqlite:////opt/sns-content-engine/data/sns_content_engine.db"
 ```
+
+## Health And Read-Only Operations
+
+| Route | Purpose | Notes |
+| --- | --- | --- |
+| `GET /health` | Validate config and database readiness. | Accepts `config_dir` and `database_url`; returns a non-`ok` response status when required checks fail. |
+| `GET /runs` | List persisted pipeline runs. | Includes stage counts, policy-skip counts, attribution counts, and rewrite providers. |
+| `GET /failures` | List enrichment failures and policy skips. | Returns ordinary failures and intentional policy skips in separate arrays. |
+| `GET /articles` | List article/enrichment status rows. | Supports a `limit` parameter. |
+
+These routes are read-only. `/health` uses the selected config and database context; the history and article routes use `database_url`.
 
 ## Review Surfaces
 

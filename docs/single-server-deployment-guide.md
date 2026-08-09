@@ -73,6 +73,7 @@ Additional rules:
 For the first protected live rollout on one server:
 
 - Keep `x` as the only live-publish channel.
+- Keep Ghost on the manual long-form handoff path.
 - Keep LinkedIn on the manual handoff path.
 - Keep Threads on the manual fallback path even though the product can support a later live Threads rollout.
 - Fill only the X publisher credential bundles in `.env.production.example`; leave the commented Threads bundles disabled unless you are intentionally preparing a later rollout.
