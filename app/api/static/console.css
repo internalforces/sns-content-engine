@@ -1190,7 +1190,7 @@ a {
 }
 
 @media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
-  [data-stack-card] {
+  .console-motion-ready [data-stack-card] {
     position: sticky;
     top: 7rem;
   }

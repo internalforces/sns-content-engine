@@ -365,8 +365,8 @@ def test_console_shell_loads_gsap_before_local_motion() -> None:
     assert core < trigger < local
 
 
-def test_console_motion_styles_leave_static_reduced_motion_fallbacks() -> None:
-    """Catch review hooks that become pinned or transformed without opt-in motion."""
+def test_console_motion_styles_require_ready_enhancement_and_reduced_fallbacks() -> None:
+    """Catch review cards that become sticky before JavaScript enables motion."""
 
     response = TestClient(create_app()).get("/console/static/console.css")
 
@@ -374,7 +374,8 @@ def test_console_motion_styles_leave_static_reduced_motion_fallbacks() -> None:
     assert re.search(r"\[data-stack-card\]\s*\{\s*position: relative;", response.text)
     assert re.search(
         r"@media \(min-width: 901px\) and \(prefers-reduced-motion: no-preference\)"
-        r"\s*\{[\s\S]*?\[data-stack-card\]\s*\{\s*position: sticky;\s*top: 7rem;",
+        r"\s*\{[\s\S]*?\.console-motion-ready\s+\[data-stack-card\]\s*"
+        r"\{\s*position: sticky;\s*top: 7rem;",
         response.text,
     )
     reduced_motion = response.text.split("@media (prefers-reduced-motion: reduce)")[-1]
@@ -384,6 +385,20 @@ def test_console_motion_styles_leave_static_reduced_motion_fallbacks() -> None:
     assert "position: static !important;" in reduced_motion
     assert "transform: none !important;" in reduced_motion
     assert "animation: none !important;" in reduced_motion
+
+
+def test_console_motion_asset_reverts_partial_setup_on_error() -> None:
+    """Catch failed GSAP setup that leaves pinned or transformed review content behind."""
+
+    response = TestClient(create_app()).get("/console/static/console.js")
+
+    assert response.status_code == 200
+    assert 'classList.add("console-motion-ready")' in response.text
+    assert 'classList.remove("console-motion-ready")' in response.text
+    assert "media.revert()" in response.text
+    assert "animation.kill()" in response.text
+    assert "trigger.kill()" in response.text
+    assert 'clearProps: "transform,zIndex"' in response.text
 
 
 def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
