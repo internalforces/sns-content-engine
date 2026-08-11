@@ -155,6 +155,28 @@ def test_console_stylesheet_exposes_minimal_tokens() -> None:
     assert "prefers-reduced-motion: reduce" in response.text
 
 
+def test_console_queue_stacks_before_four_columns_clip_workspace() -> None:
+    """Catch queue grids that stay multi-column through the unsafe 601–687px range."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert "@media (max-width: 700px)" in response.text
+    mobile_rules = response.text.split("@media (max-width: 700px)", maxsplit=1)[1]
+    mobile_rules = mobile_rules.split("@media (prefers-reduced-motion: reduce)", maxsplit=1)[0]
+    assert re.search(
+        r"\.priority-row,\s*\.queue-row-link\s*\{\s*"
+        r"grid-template-columns: 1fr;",
+        mobile_rules,
+    )
+    assert re.search(
+        r"\.priority-row \[data-label\]::before,\s*"
+        r"\.queue-row-link \[data-label\]::before,[\s\S]*?"
+        r"content: attr\(data-label\);",
+        mobile_rules,
+    )
+
+
 def test_console_pages_omit_numbered_task_labels(tmp_path: Path) -> None:
     """Catch operator pages that expose implementation-step badges to users."""
 
