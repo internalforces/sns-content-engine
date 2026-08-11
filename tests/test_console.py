@@ -73,6 +73,63 @@ def _build_empty_console_client() -> TestClient:
     )
 
 
+def _build_console_client_with_two_pending_drafts() -> TestClient:
+    now = datetime.now(timezone.utc)
+    drafts = (
+        PendingReviewDraft(
+            draft_id=42,
+            account_key="korea_news",
+            channel="x",
+            variant_index=0,
+            created_at=now - timedelta(hours=2),
+            title="Korea policy briefing",
+            body="Draft A",
+        ),
+        PendingReviewDraft(
+            draft_id=43,
+            account_key="japan_news",
+            channel="ghost",
+            variant_index=0,
+            created_at=now - timedelta(hours=1),
+            title="Japan industry update",
+            body="Draft B",
+        ),
+    )
+    return TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(
+                drafts=drafts
+            ),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+
+def test_console_home_renders_single_primary_review_action() -> None:
+    """Catch card-heavy home markup that buries the review-first action."""
+
+    response = _build_console_client_with_two_pending_drafts().get("/console/")
+
+    assert response.status_code == 200
+    assert "검토가 필요한 것만" in response.text
+    assert response.text.count("첫 검토 시작") == 1
+    assert 'class="priority-queue"' in response.text
+    assert "작업 01" not in response.text
+
+
+def test_pending_review_rows_include_mobile_labels() -> None:
+    """Catch queue rows that lose their responsive, labeled list structure."""
+
+    response = _build_console_client_with_two_pending_drafts().get(
+        "/console/reviews/pending"
+    )
+
+    assert response.status_code == 200
+    assert 'data-label="채널"' in response.text
+    assert 'data-label="확인 사항"' in response.text
+    assert 'class="queue-row-link"' in response.text
+
+
 def test_console_shell_uses_review_first_landmarks() -> None:
     """Catch a console shell that obscures review navigation or workspace landmarks."""
 
@@ -244,7 +301,7 @@ def test_console_shell_landing_page_renders_navigation_and_context() -> None:
     assert "전체 검토 큐" in response.text
     assert "실행" in response.text
     assert "/tmp/operator-config" in response.text
-    assert "sqlite:///tmp/operator.db" in response.text
+    assert "database_url=sqlite%3A%2F%2F%2Ftmp%2Foperator.db" in response.text
     assert "수동 검토 필수" in response.text
     assert "기본 발행은 드라이런" in response.text
     assert "built-in method copy" not in response.text
@@ -451,8 +508,8 @@ def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "검토 대기" in response.text
-    assert "각 대기열 행은 하나의 초안 작업공간으로 연결되어" in response.text
-    assert "현재 수동 검토를 기다리는 초안이 없습니다." in response.text
+    assert "검토 대기열이 비어 있습니다" in response.text
+    assert "스케줄러 열기" in response.text
 
 
 def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
@@ -485,7 +542,7 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
     assert f"초안 {pending_draft.id}" in response.text
     assert "버전 0" in response.text
     assert "ai_tools_daily" in response.text
-    assert "Useful AI automation workflows for operators" in response.text
+    assert "Brief for draft" in response.text
     assert f'/console/reviews/{pending_draft.id}' in response.text
     assert "Hidden approved draft" not in response.text
     assert "This approved draft should not appear in the pending queue" not in response.text
@@ -2052,7 +2109,7 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     pending_after_response = client.get("/console/reviews/pending", params=params)
     assert pending_after_response.status_code == 200
-    assert "현재 수동 검토를 기다리는 초안이 없습니다." in pending_after_response.text
+    assert "검토 대기열이 비어 있습니다" in pending_after_response.text
 
     publish_jobs_response = client.get("/console/publish-jobs", params=params)
     assert publish_jobs_response.status_code == 200

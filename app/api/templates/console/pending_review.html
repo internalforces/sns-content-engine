@@ -1,78 +1,31 @@
 {% extends "base.html" %}
+{% from "console/_macros.html" import empty_state, page_intro %}
 
 {% block content %}
-  <section class="console-card">
-    <div class="console-card-header">
-      <div>
-        <p class="console-card-label">수동 검토 대기열</p>
-        <h2>운영자 판단 대기 중</h2>
-      </div>
-      <span class="console-badge">검토 대기</span>
-    </div>
-    <p class="console-card-copy">
-      이 페이지는 기존 수동 검토 게이트를 그대로 유지하면서, 공용 검토 워크플로 헬퍼의 현재 대기열을 직접 보여줍니다.
-    </p>
-    <p class="console-card-copy">
-      각 대기열 행은 하나의 초안 작업공간으로 연결되어, 운영자가 콘솔을 벗어나지 않고도 출처 정보, 브리프 콘텍스트, 보강 상태, 감사 이력, 같은 브리프의 다른 버전을 함께 확인할 수 있습니다.
-    </p>
-  </section>
+  {{ page_intro(
+    "검토 대기",
+    "오래 기다린 초안부터 열어 출처와 민감 신호를 확인하세요."
+  ) }}
 
-  <section class="console-metric-grid">
-    {% for metric in pending_review_metrics %}
-      <article class="console-card console-metric-card">
-        <p class="console-metric-label">{{ metric.label }}</p>
-        <p class="console-metric-value">{{ metric.value }}</p>
-        <p class="console-card-copy">{{ metric.detail }}</p>
-      </article>
-    {% endfor %}
-  </section>
-
-  <section class="console-card">
-    <div class="console-card-header">
-      <div>
-        <p class="console-card-label">대기열 순서</p>
-        <h2>검토를 기다리는 초안</h2>
-      </div>
-    </div>
-    {% if pending_review_rows %}
-      <div class="console-table-wrap">
-        <table class="console-table">
-          <thead>
-            <tr>
-              <th>순번</th>
-              <th>초안</th>
-              <th>라우팅</th>
-              <th>제목</th>
-              <th>본문 미리보기</th>
-              <th>생성됨</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in pending_review_rows %}
-              <tr>
-                <td>#{{ row.queue_position }}</td>
-                <td>
-                  <div class="console-stack">
-                    <a class="console-link" href="{{ row.detail_href }}">{{ row.draft_label }}</a>
-                    <span>{{ row.variant_label }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.account_key }}</strong>
-                    <span>{{ row.channel }}</span>
-                  </div>
-                </td>
-                <td>{{ row.title }}</td>
-                <td>{{ row.body_preview }}</td>
-                <td>{{ row.created_at }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p class="console-empty">현재 수동 검토를 기다리는 초안이 없습니다.</p>
-    {% endif %}
-  </section>
+  {% if pending_review_rows %}
+    <section class="queue-list" aria-label="검토 대기열">
+      {% for row in pending_review_rows %}
+        <a class="queue-row-link" href="{{ row.detail_href }}">
+          <span>
+            <strong>{{ row.title }}</strong>
+            <small>대기열 {{ row.queue_position }} · {{ row.draft_label }} · {{ row.account_key }}</small>
+          </span>
+          <span data-label="채널">{{ row.channel }}</span>
+          <span data-label="확인 사항">{{ row.variant_label }}</span>
+          <span data-label="생성 시각">{{ row.created_at }}</span>
+        </a>
+      {% endfor %}
+    </section>
+  {% else %}
+    {{ empty_state(
+      "검토 대기열이 비어 있습니다",
+      "새 초안을 만들려면 안전한 실행 흐름을 시작하세요.",
+      pending_review_scheduler_href, "스케줄러 열기"
+    ) }}
+  {% endif %}
 {% endblock %}

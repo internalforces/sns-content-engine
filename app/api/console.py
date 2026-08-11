@@ -674,6 +674,9 @@ def get_console_pending_review(
     context.update(
         {
             "pending_review_metrics": _build_pending_review_metrics(result.drafts),
+            "pending_review_scheduler_href": _append_query_params(
+                str(request.url_for("console_scheduler")), query_params
+            ),
             "pending_review_rows": [
                 _build_pending_review_row(
                     request,
