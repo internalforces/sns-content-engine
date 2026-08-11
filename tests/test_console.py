@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
@@ -95,6 +96,61 @@ def test_console_stylesheet_exposes_minimal_tokens() -> None:
     assert "--sage: #738274" in response.text
     assert "overflow-x: hidden" in response.text
     assert "prefers-reduced-motion: reduce" in response.text
+
+
+def test_console_pages_omit_numbered_task_labels(tmp_path: Path) -> None:
+    """Catch operator pages that expose implementation-step badges to users."""
+
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        review_draft = _create_pending_review_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            brief_title="Review-ready brief",
+            body="A review-ready draft body.",
+        )
+        publish_job = _create_publish_job(
+            session,
+            variant_index=1,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc),
+        )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    client = TestClient(create_app())
+    paths = (
+        "/console/articles",
+        "/console/dashboard",
+        "/console/reviews/pending",
+        f"/console/reviews/{review_draft.id}",
+        "/console/publish-jobs",
+        f"/console/publish-jobs/{publish_job.id}",
+        "/console/scheduler",
+    )
+
+    for path in paths:
+        response = client.get(path, params={"database_url": database_url})
+
+        assert response.status_code == 200
+        assert re.search(
+            r'<span class="console-badge">\s*작업\s+\d+\s*</span>',
+            response.text,
+        ) is None
+
+
+def test_console_stylesheet_uses_only_binding_palette_colors() -> None:
+    """Catch visual styles that introduce a hex color outside the console palette."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+    allowed_colors = {"#151713", "#F2F0E9", "#738274", "#DFE4DC", "#CBC9C0"}
+    used_colors = {
+        color.upper()
+        for color in re.findall(r"#[0-9a-fA-F]{3,8}\b", response.text)
+    }
+
+    assert response.status_code == 200
+    assert used_colors <= allowed_colors
 
 
 def test_format_wait_duration_uses_operator_friendly_units() -> None:

@@ -11,7 +11,7 @@
           <h2>{{ review_detail.draft_label }} · {{ review_detail.variant_label }}</h2>
         {% endif %}
       </div>
-      <span class="console-badge">{% if review_detail_missing %}404{% else %}작업 05{% endif %}</span>
+      <span class="console-badge">{% if review_detail_missing %}404{% else %}검토 상태{% endif %}</span>
     </div>
     <p class="console-card-copy">
       <a class="console-link" href="{{ pending_review_href }}">검토 대기열로 돌아가기</a>

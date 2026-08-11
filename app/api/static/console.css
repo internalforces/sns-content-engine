@@ -4,9 +4,9 @@
   --sage: #738274;
   --sage-tint: #dfe4dc;
   --rule: #cbc9c0;
-  --muted: #666b64;
+  --muted: var(--sage);
   --rail-width: 13.5rem;
-  --surface: #faf9f4;
+  --surface: var(--ivory);
 }
 
 * {
@@ -367,7 +367,7 @@ a {
 
 .console-feedback-error {
   border-left-color: var(--ink);
-  background: #e8e6df;
+  background: var(--ivory);
 }
 
 .console-action-grid {
