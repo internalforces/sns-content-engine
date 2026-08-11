@@ -711,6 +711,36 @@ def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     assert "Different channel variant should stay hidden" not in response.text
 
 
+def test_review_detail_orders_content_evidence_and_judgment(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            include_provenance=True,
+        )
+
+    response = TestClient(create_app()).get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    content = response.text.index('id="review-content"')
+    evidence = response.text.index('id="review-evidence"')
+    judgment = response.text.index('id="review-judgment"')
+    assert content < evidence < judgment
+    assert "data-review-story" in response.text
+    assert "data-review-pin" in response.text
+    assert response.text.count("data-stack-card") >= 3
+    assert 'name="action" value="approve"' in response.text
+    assert 'name="action" value="reject"' in response.text
+    assert 'name="action" value="edit"' in response.text
+    assert 'name="reviewer"' in response.text
+
+
 def test_review_detail_page_renders_sensitive_topic_review_note(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)
