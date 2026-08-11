@@ -25,25 +25,6 @@ body {
   }
 }
 
-@supports not (overflow: clip) {
-  html {
-    overflow-x: hidden;
-  }
-
-  @media (min-width: 901px) {
-    .console-rail {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: var(--rail-width);
-    }
-
-    .console-workspace {
-      grid-column: 2;
-    }
-  }
-}
-
 body {
   margin: 0;
   color: var(--ink);
@@ -128,6 +109,25 @@ a {
 .console-workspace {
   width: min(100%, 80rem);
   padding: 0 2rem 3rem;
+}
+
+@supports not (overflow: clip) {
+  html {
+    overflow-x: hidden;
+  }
+
+  @media (min-width: 901px) {
+    .console-rail {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--rail-width);
+    }
+
+    .console-workspace {
+      grid-column: 2;
+    }
+  }
 }
 
 .console-utility {

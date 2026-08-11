@@ -389,6 +389,38 @@ def test_console_sticky_rail_does_not_inherit_a_hidden_overflow_scroll_ancestor(
     )
 
 
+def test_legacy_clip_fallback_overrides_sticky_rail_in_css_source_order() -> None:
+    """Keep the unsupported-clip desktop fallback effective after the base sticky rule."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    sticky_rail = re.search(
+        r"\.console-rail\s*\{(?P<rules>[^}]*display: flex;[^}]*position: sticky;[^}]*)\}",
+        stylesheet,
+    )
+    workspace = re.search(
+        r"\.console-workspace\s*\{(?P<rules>[^}]*width: min\(100%, 80rem\);[^}]*)\}",
+        stylesheet,
+    )
+    assert sticky_rail is not None
+    assert workspace is not None
+
+    fallback_start = stylesheet.index("@supports not (overflow: clip)")
+    fallback = stylesheet[fallback_start:]
+    fixed_rail = fallback.index("position: fixed;") + fallback_start
+    workspace_offset = fallback.index("grid-column: 2;") + fallback_start
+
+    assert sticky_rail.start() < fixed_rail
+    assert workspace.start() < workspace_offset
+    assert "@media (min-width: 901px)" in fallback
+    modern_clip = re.search(
+        r"@supports \(overflow: clip\)\s*\{\s*html\s*\{\s*overflow-x: clip;\s*\}\s*\}",
+        stylesheet,
+    )
+    assert modern_clip is not None
+    assert modern_clip.start() < fallback_start
+    assert ".console-rail" not in modern_clip.group(0)
+
+
 def test_console_queue_stacks_before_four_columns_clip_workspace() -> None:
     """Catch queue grids that stay multi-column through the unsafe 601–687px range."""
 
