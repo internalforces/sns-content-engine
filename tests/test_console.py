@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
 from textwrap import dedent
@@ -10,6 +10,7 @@ from textwrap import dedent
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.api.console_view_home import _format_wait_duration
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import (
     BackfillChannelResult,
@@ -47,6 +48,7 @@ from app.workflows import (
     EnrichArticleOutcome,
     EnrichArticlesResult,
     IngestSourcesResult,
+    PipelineRunHistoryResult,
     RunLocalPipelineResult,
     SourceIngestOutcome,
 )
@@ -59,6 +61,60 @@ from app.workflows.review_queue import (
 )
 
 _DRAFT_SOURCE_COUNTER = count()
+
+
+def test_format_wait_duration_uses_operator_friendly_units() -> None:
+    """Catch regressions that display review waits in unfriendly raw units."""
+
+    now = datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc)
+
+    assert _format_wait_duration(now - timedelta(minutes=37), now=now) == "37분"
+    assert _format_wait_duration(now - timedelta(hours=2, minutes=14), now=now) == "2시간 14분"
+    assert _format_wait_duration(now - timedelta(days=2, hours=3), now=now) == "2일 3시간"
+
+
+def test_console_home_prioritizes_oldest_review_and_sensitive_copy() -> None:
+    """Catch home pages that hide sensitive drafts or sort newest drafts first."""
+
+    now = datetime.now(timezone.utc)
+
+    def list_pending(*, database_url: str | None = None) -> PendingReviewDraftsResult:
+        return PendingReviewDraftsResult(
+            drafts=(
+                PendingReviewDraft(
+                    draft_id=42,
+                    account_key="korea_news",
+                    channel="x",
+                    variant_index=0,
+                    created_at=now - timedelta(hours=2),
+                    title="Defense ministry reports missile launch",
+                    body="Officials said security agencies are reviewing the launch.",
+                ),
+                PendingReviewDraft(
+                    draft_id=43,
+                    account_key="japan_news",
+                    channel="ghost",
+                    variant_index=0,
+                    created_at=now - timedelta(hours=1),
+                    title="Manufacturing investment update",
+                    body="A sourced industry summary.",
+                ),
+            )
+        )
+
+    client = TestClient(
+        create_app(
+            pending_review_drafts_lister=list_pending,
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+    response = client.get("/console/", params={"database_url": "sqlite:///demo.db"})
+
+    assert response.status_code == 200
+    assert response.text.index("Defense ministry") < response.text.index("Manufacturing")
+    assert "추가 확인 필요" in response.text
+    assert "/console/reviews/42?database_url=" in response.text
 
 
 def test_console_shell_root_redirects_to_canonical_landing() -> None:

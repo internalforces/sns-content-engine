@@ -53,16 +53,46 @@
   </section>
 
   <section class="console-grid">
-    {% for section in console_sections %}
+    {% for summary in home_summary %}
       <article class="console-card">
         <div class="console-card-header">
           <div>
-            <p class="console-card-label">구현 메모</p>
-            <h2>{{ section.title }}</h2>
+            <p class="console-card-label">검토 우선 현황</p>
+            <h2>{{ summary.label }}</h2>
           </div>
         </div>
-        <p class="console-card-copy">{{ section["copy"] }}</p>
+        <p class="console-card-copy">{{ summary.value }}</p>
       </article>
     {% endfor %}
   </section>
+
+  {% if home_data_error %}
+    <section class="console-card">
+      <p class="console-card-copy">{{ home_data_error }}</p>
+    </section>
+  {% else %}
+    <section class="console-card">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">검토 대기</p>
+          <h2>먼저 확인할 초안</h2>
+        </div>
+        <a class="console-link" href="{{ home_queue_href }}">전체 대기열</a>
+      </div>
+      {% if home_review_rows %}
+        <ul class="console-checklist">
+          {% for row in home_review_rows %}
+            <li>
+              <a class="console-link" href="{{ row.detail_href }}">{{ row.title }}</a>
+              — {{ row.review_flag }} · {{ row.wait_duration }} 대기
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="console-card-copy">현재 검토 대기 초안이 없습니다.</p>
+      {% endif %}
+      <p><a class="console-link" href="{{ home_first_review_href }}">첫 검토 열기</a></p>
+      <p><a class="console-link" href="{{ home_scheduler_href }}">스케줄러 열기</a></p>
+    </section>
+  {% endif %}
 {% endblock %}
