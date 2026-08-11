@@ -35,7 +35,12 @@
     media.add(
       "(min-width: 901px) and (prefers-reduced-motion: no-preference)",
       () => {
-        const setup = { animations: [], triggers: [], elements: [] };
+        const setup = {
+          animations: [],
+          triggers: [],
+          elements: [],
+          reviewStackReady: false,
+        };
 
         try {
           document.querySelectorAll("[data-review-story]").forEach((story) => {
@@ -78,6 +83,7 @@
                 setup.triggers.push(animation.scrollTrigger);
               }
             });
+            setup.reviewStackReady = true;
           });
 
           document.querySelectorAll("[data-marquee]").forEach((marquee) => {
@@ -92,7 +98,7 @@
             );
           });
 
-          if (setup.animations.length > 0 || setup.triggers.length > 0) {
+          if (setup.reviewStackReady) {
             root.classList.add("console-motion-ready");
           }
         } catch (_) {

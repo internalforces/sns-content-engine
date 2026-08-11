@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import subprocess
 from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
@@ -63,6 +66,79 @@ from app.workflows.review_queue import (
 )
 
 _DRAFT_SOURCE_COUNTER = count()
+
+
+def _run_console_motion_asset(*, stories: list[dict[str, int | bool]], marquee_count: int) -> dict[str, bool]:
+    """Run the served motion module against the smallest browser/GSAP contract."""
+
+    asset_path = Path(__file__).parents[1] / "app/api/static/console.js"
+    harness = dedent(
+        """
+        const fs = require("node:fs");
+        const scenario = JSON.parse(process.argv[1]);
+        const classes = new Set();
+        const makeTrigger = () => ({ kill: () => {} });
+        const makeAnimation = () => ({ kill: () => {}, scrollTrigger: makeTrigger() });
+        const stories = scenario.stories.map((story) => ({
+          querySelector: () => story.has_heading ? {} : null,
+          querySelectorAll: () => Array.from({ length: story.card_count }, () => ({})),
+        }));
+        global.document = {
+          documentElement: {
+            classList: {
+              add: (name) => classes.add(name),
+              remove: (name) => classes.delete(name),
+            },
+          },
+          querySelectorAll: (selector) => {
+            if (selector === "[data-review-story]") return stories;
+            if (selector === "[data-marquee]") {
+              return Array.from({ length: scenario.marquee_count }, () => ({}));
+            }
+            return [];
+          },
+        };
+        global.window = {
+          matchMedia: () => ({ matches: false }),
+          ScrollTrigger: { create: makeTrigger },
+          gsap: {
+            registerPlugin: () => {},
+            matchMedia: () => ({ add: (_query, setup) => setup(), revert: () => {} }),
+            fromTo: makeAnimation,
+            to: makeAnimation,
+            set: () => {},
+          },
+        };
+        eval(fs.readFileSync(process.env.CONSOLE_MOTION_PATH, "utf8"));
+        process.stdout.write(JSON.stringify({
+          ready: classes.has("console-motion-ready"),
+        }));
+        """
+    )
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            harness,
+            json.dumps(
+                {
+                    "stories": [
+                        {
+                            "has_heading": bool(story["has_heading"]),
+                            "card_count": int(story["card_count"]),
+                        }
+                        for story in stories
+                    ],
+                    "marquee_count": marquee_count,
+                }
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env={**os.environ, "CONSOLE_MOTION_PATH": str(asset_path)},
+        text=True,
+    )
+    return json.loads(result.stdout)
 
 
 def _build_empty_console_client() -> TestClient:
@@ -399,6 +475,34 @@ def test_console_motion_asset_reverts_partial_setup_on_error() -> None:
     assert "animation.kill()" in response.text
     assert "trigger.kill()" in response.text
     assert 'clearProps: "transform,zIndex"' in response.text
+
+
+def test_console_motion_marquee_alone_does_not_enable_review_readiness() -> None:
+    """Catch dashboard marquee motion enabling unrelated review-card sticky CSS."""
+
+    result = _run_console_motion_asset(stories=[], marquee_count=1)
+
+    assert result == {"ready": False}
+
+
+def test_console_motion_skips_malformed_review_story_before_enabling_readiness() -> None:
+    """Catch a marquee making a malformed review section sticky after it was skipped."""
+
+    result = _run_console_motion_asset(
+        stories=[{"has_heading": False, "card_count": 3}], marquee_count=1
+    )
+
+    assert result == {"ready": False}
+
+
+def test_console_motion_enables_readiness_for_a_successful_review_stack() -> None:
+    """Keep desktop sticky CSS available when a complete review stack initializes."""
+
+    result = _run_console_motion_asset(
+        stories=[{"has_heading": True, "card_count": 3}], marquee_count=0
+    )
+
+    assert result == {"ready": True}
 
 
 def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
