@@ -295,6 +295,32 @@ def test_console_pages_omit_numbered_task_labels(tmp_path: Path) -> None:
         ) is None
 
 
+def test_primary_pages_remove_numbered_labels_and_keep_context(tmp_path: Path) -> None:
+    """Keep primary console pages free of implementation labels and context loss."""
+
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+    params = {
+        "config_dir": "/tmp/operator-config",
+        "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+    }
+
+    for path in (
+        "/console/",
+        "/console/dashboard",
+        "/console/articles",
+        "/console/reviews/pending",
+        "/console/publish-jobs",
+        "/console/scheduler",
+    ):
+        response = client.get(path, params=params)
+
+        assert response.status_code == 200
+        assert not re.search(r"작업\s+0?[1-9]", response.text)
+        assert "config_dir=%2Ftmp%2Foperator-config" in response.text
+        assert "database_url=" in response.text
+
+
 def test_console_stylesheet_uses_only_binding_palette_colors() -> None:
     """Catch visual styles that introduce a hex color outside the console palette."""
 
