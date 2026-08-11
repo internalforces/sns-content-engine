@@ -535,6 +535,32 @@ def test_articles_page_renders_recent_article_rows(tmp_path: Path) -> None:
     assert 'data-label="보강 상태"' in response.text
 
 
+def test_article_rows_wrap_long_unbroken_source_urls(tmp_path: Path) -> None:
+    long_source_url = f"https://example.com/{'unbroken-url-segment-' * 24}article"
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        SourceItemRepository(session).add(
+            SourceItem(
+                source_key="long_url_feed",
+                external_id="long-url-entry",
+                source_url=long_source_url,
+                title="Long URL article",
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        "/console/articles",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+    stylesheet = client.get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert f'href="{long_source_url}"' in response.text
+    assert stylesheet.status_code == 200
+    assert ".data-list-row .console-link {\n  overflow-wrap: anywhere;\n}" in stylesheet.text
+
+
 def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
     _build_session_factory(tmp_path)
     client = TestClient(create_app())

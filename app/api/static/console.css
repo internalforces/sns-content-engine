@@ -428,6 +428,10 @@ a {
   overflow-wrap: anywhere;
 }
 
+.data-list-row .console-link {
+  overflow-wrap: anywhere;
+}
+
 .data-list-row-open {
   padding-left: 0.7rem;
   border-left: 3px solid var(--ink);
