@@ -63,6 +63,40 @@ from app.workflows.review_queue import (
 _DRAFT_SOURCE_COUNTER = count()
 
 
+def _build_empty_console_client() -> TestClient:
+    return TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(drafts=()),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+
+def test_console_shell_uses_review_first_landmarks() -> None:
+    """Catch a console shell that obscures review navigation or workspace landmarks."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    assert 'class="console-rail"' in response.text
+    assert 'aria-label="운영 콘솔 탐색"' in response.text
+    assert 'class="console-workspace"' in response.text
+    assert "작업 01" not in response.text
+
+
+def test_console_stylesheet_exposes_minimal_tokens() -> None:
+    """Catch a console stylesheet that loses the neutral, responsive shell tokens."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert "--ink: #151713" in response.text
+    assert "--ivory: #f2f0e9" in response.text
+    assert "--sage: #738274" in response.text
+    assert "overflow-x: hidden" in response.text
+    assert "prefers-reduced-motion: reduce" in response.text
+
+
 def test_format_wait_duration_uses_operator_friendly_units() -> None:
     """Catch regressions that display review waits in unfriendly raw units."""
 
@@ -150,13 +184,13 @@ def test_console_shell_landing_page_renders_navigation_and_context() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "운영 콘솔" in response.text
-    assert "콘솔 홈" in response.text
-    assert "실행 및 실패" in response.text
-    assert "검토 대기" in response.text
+    assert "검토 홈" in response.text
+    assert "전체 검토 큐" in response.text
+    assert "실행" in response.text
     assert "/tmp/operator-config" in response.text
     assert "sqlite:///tmp/operator.db" in response.text
     assert "수동 검토 필수" in response.text
-    assert "브라우저 기본 발행 경로는 드라이런입니다" in response.text
+    assert "기본 발행은 드라이런" in response.text
     assert "built-in method copy" not in response.text
 
 
@@ -167,8 +201,8 @@ def test_console_shell_static_asset_is_served() -> None:
 
     assert response.status_code == 200
     assert "text/css" in response.headers["content-type"]
-    assert "--console-bg" in response.text
-    assert ".console-shell" in response.text
+    assert "--ink" in response.text
+    assert ".console-shell-grid" in response.text
 
 
 def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
@@ -1834,8 +1868,8 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
     home_response = client.get("/console/", params=params)
     assert home_response.status_code == 200
     assert "운영 콘솔" in home_response.text
-    assert "실행 및 실패" in home_response.text
-    assert "발행 작업" in home_response.text
+    assert "실행" in home_response.text
+    assert "발행" in home_response.text
     assert "수동 검토 필수" in home_response.text
 
     dashboard_response = client.get("/console/dashboard", params=params)

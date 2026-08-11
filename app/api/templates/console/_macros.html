@@ -1,0 +1,27 @@
+{% macro page_intro(title, description, action_href=None, action_label=None) -%}
+  <header class="page-intro">
+    <div>
+      <h1>{{ title }}</h1>
+      {% if description %}<p>{{ description }}</p>{% endif %}
+    </div>
+    {% if action_href and action_label %}
+      <a class="console-button" href="{{ action_href }}">{{ action_label }}</a>
+    {% endif %}
+  </header>
+{%- endmacro %}
+
+{% macro summary_item(item) -%}
+  <article class="summary-item">
+    <p>{{ item.label }}</p>
+    <strong>{{ item.value }}</strong>
+    {% if item.detail %}<span>{{ item.detail }}</span>{% endif %}
+  </article>
+{%- endmacro %}
+
+{% macro empty_state(title, copy, href=None, label=None) -%}
+  <section class="empty-state">
+    <h2>{{ title }}</h2>
+    <p>{{ copy }}</p>
+    {% if href and label %}<a class="console-link" href="{{ href }}">{{ label }}</a>{% endif %}
+  </section>
+{%- endmacro %}
