@@ -345,12 +345,97 @@ a {
   font-weight: 700;
 }
 
+.run-summary,
+.data-list-section {
+  margin-top: 2rem;
+}
+
+.run-summary {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem 0;
+  border-block: 1px solid var(--rule);
+}
+
+.run-summary h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.4rem);
+  line-height: 1.1;
+}
+
+.run-summary > strong {
+  font-size: 1rem;
+}
+
+.run-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.status-strip {
+  display: flex;
+  gap: 3rem;
+  margin-top: 1rem;
+  padding: 0.65rem 0;
+  overflow: hidden;
+  border-block: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-strip span {
+  flex: 0 0 auto;
+  animation: status-marquee 20s linear infinite;
+}
+
+@keyframes status-marquee {
+  to {
+    transform: translateX(calc(-100% - 3rem));
+  }
+}
+
 .data-list-row {
   display: grid;
-  grid-template-columns: minmax(8rem, 0.6fr) minmax(0, 1.4fr);
+  grid-template-columns: minmax(13rem, 2fr) repeat(auto-fit, minmax(7rem, 1fr));
   gap: 1rem;
   padding: 0.85rem 0;
   border-top: 1px solid var(--rule);
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.data-list-row:is(:hover, :focus-within) {
+  background: var(--sage-tint);
+  transform: translateX(0.25rem);
+}
+
+.data-list-row > * {
+  min-width: 0;
+}
+
+.data-list-row span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.data-list-row small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.data-list-row-open {
+  padding-left: 0.7rem;
+  border-left: 3px solid var(--ink);
+}
+
+.data-list-row-open > :first-child strong,
+.data-list-row-open > [data-label="전달 상태"] strong {
+  font-weight: 800;
 }
 
 .console-feedback {
@@ -638,6 +723,18 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .data-list-row {
+    transition: none;
+  }
+
+  .data-list-row:is(:hover, :focus-within) {
+    transform: none;
+  }
+
+  .status-strip span {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

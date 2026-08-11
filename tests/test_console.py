@@ -357,6 +357,21 @@ def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
     assert "현재 표시할 정책상 건너뜀이 없습니다." in response.text
 
 
+def test_dashboard_separates_failures_from_policy_skips(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+
+    def _console_db_params(tmp_path: Path) -> dict[str, str]:
+        return {"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"}
+
+    response = TestClient(create_app()).get(
+        "/console/dashboard", params=_console_db_params(tmp_path)
+    )
+
+    assert 'id="technical-failures"' in response.text
+    assert 'id="policy-skips"' in response.text
+    assert "작업 02" not in response.text
+
+
 def test_dashboard_page_renders_recent_runs_and_failures(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     with session_scope(session_factory) as session:
@@ -517,6 +532,7 @@ def test_articles_page_renders_recent_article_rows(tmp_path: Path) -> None:
     assert "site blocked" in response.text
     assert "Operator checklist update" in response.text
     assert "해결된 아티클 URL이 아직 기록되지 않았습니다." in response.text
+    assert 'data-label="보강 상태"' in response.text
 
 
 def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
@@ -1238,6 +1254,7 @@ def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
     assert f"/console/publish-jobs/{failed_job_id}" in response.text
     assert f"/console/publish-jobs/{published_job_id}" in response.text
     assert f"/console/reviews/{scheduled_draft_id}" in response.text
+    assert 'data-label="전달 상태"' in response.text
 
 
 def test_publish_jobs_detail_page_renders_published_timeline(tmp_path: Path) -> None:
