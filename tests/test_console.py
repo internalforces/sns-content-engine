@@ -327,7 +327,7 @@ def test_console_stylesheet_exposes_minimal_tokens() -> None:
     assert "--ink: #151713" in response.text
     assert "--ivory: #f2f0e9" in response.text
     assert "--sage: #738274" in response.text
-    assert "overflow-x: hidden" in response.text
+    assert "overflow-x: clip" in response.text
     assert "prefers-reduced-motion: reduce" in response.text
 
 
@@ -355,13 +355,38 @@ def test_console_rail_stays_sticky_and_scrollable_without_stretching_long_pages(
     """Keep desktop navigation and safety state available beside long detail pages."""
 
     stylesheet = TestClient(create_app()).get("/console/static/console.css").text
-    rail = stylesheet.split(".console-rail {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+    rail_match = re.search(
+        r"\.console-rail\s*\{(?P<rules>[^}]*display: flex;[^}]*)\}", stylesheet
+    )
+    assert rail_match is not None
+    rail = rail_match.group("rules")
 
     assert "position: sticky;" in rail
     assert "align-self: start;" in rail
     assert "height: 100vh;" in rail
     assert "max-height: 100vh;" in rail
     assert "overflow-y: auto;" in rail
+
+
+def test_console_sticky_rail_does_not_inherit_a_hidden_overflow_scroll_ancestor() -> None:
+    """Keep the desktop rail pinned to the viewport after the workspace becomes taller than it."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    body_match = re.search(r"\nbody\s*\{(?P<rules>[^}]*)\}", stylesheet)
+    assert body_match is not None
+    body_rules = body_match.group("rules")
+
+    assert "overflow-x" not in body_rules
+    assert re.search(
+        r"@supports \(overflow: clip\)\s*\{\s*html\s*\{\s*overflow-x: clip;",
+        stylesheet,
+    )
+    assert re.search(
+        r"@supports not \(overflow: clip\)\s*\{[\s\S]*?"
+        r"@media \(min-width: 901px\)\s*\{[\s\S]*?\.console-rail\s*\{\s*"
+        r"position: fixed;\s*top: 0;\s*left: 0;",
+        stylesheet,
+    )
 
 
 def test_console_queue_stacks_before_four_columns_clip_workspace() -> None:

@@ -17,7 +17,31 @@ html,
 body {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+}
+
+@supports (overflow: clip) {
+  html {
+    overflow-x: clip;
+  }
+}
+
+@supports not (overflow: clip) {
+  html {
+    overflow-x: hidden;
+  }
+
+  @media (min-width: 901px) {
+    .console-rail {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--rail-width);
+    }
+
+    .console-workspace {
+      grid-column: 2;
+    }
+  }
 }
 
 body {
