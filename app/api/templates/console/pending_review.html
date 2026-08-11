@@ -11,13 +11,14 @@
     <section class="queue-list" aria-label="검토 대기열">
       {% for row in pending_review_rows %}
         <a class="queue-row-link" href="{{ row.detail_href }}">
-          <span aria-label="초안 제목">
+          <span>
+            <span class="visually-hidden">초안 제목: </span>
             <strong>{{ row.title }}</strong>
             <small>대기열 {{ row.queue_position }} · {{ row.draft_label }} · {{ row.account_key }}</small>
           </span>
-          <span data-label="채널" aria-label="채널">{{ row.channel }}</span>
-          <span data-label="확인 사항" aria-label="확인 사항">{{ row.variant_label }}</span>
-          <span data-label="생성 시각" aria-label="생성 시각">{{ row.created_at }}</span>
+          <span data-label="채널"><span class="visually-hidden">채널: </span>{{ row.channel }}</span>
+          <span data-label="확인 사항"><span class="visually-hidden">확인 사항: </span>{{ row.variant_label }}</span>
+          <span data-label="생성 시각"><span class="visually-hidden">생성 시각: </span>{{ row.created_at }}</span>
         </a>
       {% endfor %}
     </section>

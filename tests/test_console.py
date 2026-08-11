@@ -10,10 +10,12 @@ from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
 from textwrap import dedent
+from typing import get_type_hints
 
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.api.console import _build_manual_publish_action_feedback
 from app.api.console_view_home import _format_wait_duration
 from app.config import ConfigError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
@@ -214,19 +216,40 @@ def test_console_monitoring_rows_expose_field_names_without_mobile_css() -> None
     home = client.get("/console/")
     pending = client.get("/console/reviews/pending")
 
-    assert 'aria-label="초안 제목"' in home.text
-    assert 'aria-label="채널"' in home.text
-    assert 'aria-label="확인 사항"' in home.text
-    assert 'aria-label="대기 시간"' in home.text
-    assert 'aria-label="초안 제목"' in pending.text
-    assert 'aria-label="생성 시각"' in pending.text
+    for label in ("초안 제목", "채널", "확인 사항", "대기 시간"):
+        assert f'<span class="visually-hidden">{label}: </span>' in home.text
+    for label in ("초안 제목", "채널", "확인 사항", "생성 시각"):
+        assert f'<span class="visually-hidden">{label}: </span>' in pending.text
+    home_row = home.text.split('class="priority-row"', maxsplit=1)[1].split("</a>", maxsplit=1)[0]
+    home_row_text = re.sub(r"<[^>]+>", " ", home_row)
+    assert home_row_text.index("초안 제목:") < home_row_text.index("채널:")
+    assert home_row_text.index("채널:") < home_row_text.index("확인 사항:")
+    assert home_row_text.index("확인 사항:") < home_row_text.index("대기 시간:")
     templates = "\n".join(
         (Path(__file__).parents[1] / "app/api/templates/console" / name).read_text()
         for name in ("articles.html", "dashboard.html", "publish_jobs.html")
     )
-    assert 'aria-label="제목"' in templates
-    assert 'aria-label="상태"' in templates
-    assert 'aria-label="발행 시각"' in templates
+    assert templates.count('class="visually-hidden"') >= 20
+    assert '<span class="visually-hidden">제목: </span>' in templates
+    assert '<span class="visually-hidden">상태: </span>' in templates
+    assert '<span class="visually-hidden">발행 시각: </span>' in templates
+    assert 'aria-label="제목"' not in templates
+    assert 'aria-label="상태"' not in templates
+    assert 'aria-label="발행 시각"' not in templates
+
+
+def test_manual_publish_feedback_annotation_includes_nullable_action() -> None:
+    """Keep the feedback contract aligned with unsupported/global form submissions."""
+
+    feedback = _build_manual_publish_action_feedback(
+        kind="error",
+        action=None,
+        action_label="수동 발행 기록",
+        message="지원되지 않는 작업입니다.",
+    )
+
+    assert feedback["action"] is None
+    assert get_type_hints(_build_manual_publish_action_feedback)["return"] == dict[str, str | None]
 
 
 def test_review_detail_explains_that_edit_text_is_not_saved_by_approval_or_rejection() -> None:

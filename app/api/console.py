@@ -1104,7 +1104,7 @@ def _build_manual_publish_action_feedback(
     action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
         "action": action,

@@ -32,16 +32,17 @@
       <div class="data-list">
         {% for row in publish_job_rows %}
           <div class="data-list-row{% if row.state in ('예약됨', '발행 중') %} data-list-row-open{% endif %}">
-            <span aria-label="제목">
+            <span>
+              <span class="visually-hidden">제목: </span>
               <strong>{{ row.brief_title }}</strong>
               <small>{{ row.source_title }} · {{ row.brief_label }}</small>
               <a class="console-link" href="{{ row.review_detail_href }}">{{ row.draft_label }} · {{ row.variant_label }} / {{ row.draft_state }}</a>
             </span>
-            <span data-label="전달 상태" aria-label="전달 상태"><strong>{{ row.state }}</strong><small>시도 {{ row.attempt_count }}회 · {{ row.last_error }}</small></span>
-            <span data-label="채널" aria-label="채널">{{ row.channel }}<small>{{ row.account_key }}</small></span>
-            <span data-label="시각" aria-label="시각">예약 {{ row.scheduled_for }}<small>발행 {{ row.published_at }} · 생성 {{ row.created_at }}</small></span>
-            <span data-label="출력" aria-label="출력">외부 게시물 {{ row.external_post_id }}<small>업데이트 {{ row.updated_at }}</small></span>
-            <a class="console-link" data-label="발행 작업" aria-label="발행 작업 {{ row.publish_job_label }}" href="{{ row.detail_href }}">{{ row.publish_job_label }}</a>
+            <span data-label="전달 상태"><span class="visually-hidden">전달 상태: </span><strong>{{ row.state }}</strong><small>시도 {{ row.attempt_count }}회 · {{ row.last_error }}</small></span>
+            <span data-label="채널"><span class="visually-hidden">채널: </span>{{ row.channel }}<small>{{ row.account_key }}</small></span>
+            <span data-label="시각"><span class="visually-hidden">시각: </span>예약 {{ row.scheduled_for }}<small>발행 {{ row.published_at }} · 생성 {{ row.created_at }}</small></span>
+            <span data-label="출력"><span class="visually-hidden">출력: </span>외부 게시물 {{ row.external_post_id }}<small>업데이트 {{ row.updated_at }}</small></span>
+            <a class="console-link" data-label="발행 작업" href="{{ row.detail_href }}"><span class="visually-hidden">발행 작업: </span>{{ row.publish_job_label }}</a>
           </div>
         {% endfor %}
       </div>
