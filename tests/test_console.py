@@ -741,6 +741,156 @@ def test_review_detail_orders_content_evidence_and_judgment(tmp_path: Path) -> N
     assert 'name="reviewer"' in response.text
 
 
+def test_review_validation_feedback_precedes_only_reject_form(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="reject",
+        reviewer="editor-a",
+        reason="",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count('data-review-feedback-for="reject"') == 1
+    assert 'data-review-feedback-for="edit"' not in response.text
+    assert re.search(
+        r'<div[^>]*data-review-feedback-for="reject"[^>]*>.*?</div>\s*'
+        r'<form[^>]*data-review-action="reject"',
+        response.text,
+        re.DOTALL,
+    )
+
+
+def test_review_validation_feedback_precedes_only_edit_form(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="edit",
+        reviewer="editor-a",
+        body="",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count('data-review-feedback-for="edit"') == 1
+    assert 'data-review-feedback-for="reject"' not in response.text
+    assert re.search(
+        r'<div[^>]*data-review-feedback-for="edit"[^>]*>.*?</div>\s*'
+        r'<form[^>]*data-review-action="edit"',
+        response.text,
+        re.DOTALL,
+    )
+
+
+def test_review_detail_omits_rejection_reason_when_none(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = TestClient(create_app()).get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "반려 사유 없음" not in response.text
+
+
+def test_review_detail_renders_rejection_reason_for_rejected_draft(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="reject",
+        reviewer="editor-a",
+        reason="Needs a source correction",
+    )
+
+    assert response.status_code == 200
+    assert "반려 사유 Needs a source correction" in response.text
+
+
+def test_review_detail_secondary_references_are_mobile_safe_lists(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    edit_draft(
+        draft.id,
+        body="Edited review reference body",
+        reviewer="editor-a",
+        session_factory=session_factory,
+    )
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+        assert stored_draft is not None
+        sibling = DraftVariantRepository(session).add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel=stored_draft.channel,
+                variant_index=1,
+                body="Sibling review reference body",
+                created_at=datetime(2026, 8, 11, 9, 5, tzinfo=timezone.utc),
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+    stylesheet = client.get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert stylesheet.status_code == 200
+    secondary_references = response.text[response.text.index('class="review-secondary"') :]
+    assert '<ul class="review-reference-list"' in secondary_references
+    assert "console-table-wrap" not in secondary_references
+    assert "<table" not in secondary_references
+    assert "Edited review reference body" in secondary_references
+    assert "Sibling review reference body" in secondary_references
+    assert f'/console/reviews/{sibling.id}' in secondary_references
+    assert re.search(
+        r"@media \(max-width: 700px\) \{.*?\.review-reference-item \{\s*"
+        r"grid-template-columns: 1fr;",
+        stylesheet.text,
+        re.DOTALL,
+    )
+
+
 def test_review_detail_page_renders_sensitive_topic_review_note(tmp_path: Path) -> None:
     _write_minimal_project_config(tmp_path)
     session_factory = _build_session_factory(tmp_path)

@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% macro action_feedback(feedback) -%}
+    <div class="console-feedback console-feedback-{{ feedback.kind }}" role="status" data-review-feedback-for="{{ feedback.action or 'general' }}">
+      <strong>{{ feedback.title }}</strong>
+      <p>{{ feedback.message }}</p>
+    </div>
+  {%- endmacro %}
+
   {% if review_detail_missing %}
     <section class="console-card review-missing">
       <p class="console-card-label">검토 작업공간</p>
@@ -260,55 +267,69 @@
         <p class="console-card-copy">{{ review_action_forms.state_hint }}</p>
       </div>
 
-      {% if review_action_feedback %}
-        <div class="console-feedback console-feedback-{{ review_action_feedback.kind }}" role="status">
-          <strong>{{ review_action_feedback.title }}</strong>
-          <p>{{ review_action_feedback.message }}</p>
-        </div>
-      {% endif %}
-
       {% if review_action_forms.show_pending_actions %}
         <div class="review-action-forms">
-          <form class="action-form" method="post" action="{{ review_action_forms.action_href }}">
-            <input type="hidden" name="action" value="approve">
-            <h3>초안 승인</h3>
-            <label class="console-field" for="approve-reviewer">
-              <span>검토자</span>
-              <input class="console-input" id="approve-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
-            </label>
-            <button class="console-button" type="submit">예약 가능 상태로 승인</button>
-          </form>
+          {% if review_action_feedback and review_action_feedback.action not in ["approve", "reject", "edit"] %}
+            {{ action_feedback(review_action_feedback) }}
+          {% endif %}
+          <div class="review-action-slot">
+            {% if review_action_feedback and review_action_feedback.action == "approve" %}
+              {{ action_feedback(review_action_feedback) }}
+            {% endif %}
+            <form class="action-form" data-review-action="approve" method="post" action="{{ review_action_forms.action_href }}">
+              <input type="hidden" name="action" value="approve">
+              <h3>초안 승인</h3>
+              <label class="console-field" for="approve-reviewer">
+                <span>검토자</span>
+                <input class="console-input" id="approve-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+              </label>
+              <button class="console-button" type="submit">예약 가능 상태로 승인</button>
+            </form>
+          </div>
 
-          <form class="action-form is-destructive" method="post" action="{{ review_action_forms.action_href }}">
-            <input type="hidden" name="action" value="reject">
-            <h3>초안 반려</h3>
-            <label class="console-field" for="reject-reviewer">
-              <span>검토자</span>
-              <input class="console-input" id="reject-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
-            </label>
-            <label class="console-field" for="reject-reason">
-              <span>사유</span>
-              <input class="console-input" id="reject-reason" name="reason" type="text" value="{{ review_action_forms.reject_reason }}">
-            </label>
-            <button class="console-button" type="submit">초안 반려</button>
-          </form>
+          <div class="review-action-slot">
+            {% if review_action_feedback and review_action_feedback.action == "reject" %}
+              {{ action_feedback(review_action_feedback) }}
+            {% endif %}
+            <form class="action-form is-destructive" data-review-action="reject" method="post" action="{{ review_action_forms.action_href }}">
+              <input type="hidden" name="action" value="reject">
+              <h3>초안 반려</h3>
+              <label class="console-field" for="reject-reviewer">
+                <span>검토자</span>
+                <input class="console-input" id="reject-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+              </label>
+              <label class="console-field" for="reject-reason">
+                <span>사유</span>
+                <input class="console-input" id="reject-reason" name="reason" type="text" value="{{ review_action_forms.reject_reason }}">
+              </label>
+              <button class="console-button" type="submit">초안 반려</button>
+            </form>
+          </div>
 
-          <form class="action-form action-form-wide" method="post" action="{{ review_action_forms.action_href }}">
-            <input type="hidden" name="action" value="edit">
-            <h3>초안 본문 수정</h3>
-            <label class="console-field" for="edit-reviewer">
-              <span>검토자</span>
-              <input class="console-input" id="edit-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
-            </label>
-            <label class="console-field" for="edit-body">
-              <span>수정된 본문</span>
-              <textarea class="console-textarea" id="edit-body" name="body">{{ review_action_forms.edit_body }}</textarea>
-            </label>
-            <button class="console-button" type="submit">수정한 초안 저장</button>
-          </form>
+          <div class="review-action-slot review-action-slot-wide">
+            {% if review_action_feedback and review_action_feedback.action == "edit" %}
+              {{ action_feedback(review_action_feedback) }}
+            {% endif %}
+            <form class="action-form" data-review-action="edit" method="post" action="{{ review_action_forms.action_href }}">
+              <input type="hidden" name="action" value="edit">
+              <h3>초안 본문 수정</h3>
+              <label class="console-field" for="edit-reviewer">
+                <span>검토자</span>
+                <input class="console-input" id="edit-reviewer" name="reviewer" type="text" value="{{ review_action_forms.reviewer }}">
+              </label>
+              <label class="console-field" for="edit-body">
+                <span>수정된 본문</span>
+                <textarea class="console-textarea" id="edit-body" name="body">{{ review_action_forms.edit_body }}</textarea>
+              </label>
+              <button class="console-button" type="submit">수정한 초안 저장</button>
+            </form>
+          </div>
         </div>
       {% elif review_action_forms.show_schedule_action %}
-        <form class="action-form action-form-wide" method="post" action="{{ review_action_forms.action_href }}">
+        {% if review_action_feedback %}
+          {{ action_feedback(review_action_feedback) }}
+        {% endif %}
+        <form class="action-form action-form-wide" data-review-action="schedule" method="post" action="{{ review_action_forms.action_href }}">
           <input type="hidden" name="action" value="schedule">
           <h3>발행 작업 만들기</h3>
           <div class="console-form-grid">
@@ -325,6 +346,9 @@
           <button class="console-button" type="submit">초안 예약</button>
         </form>
       {% elif review_action_forms.show_manual_upload_guidance %}
+        {% if review_action_feedback %}
+          {{ action_feedback(review_action_feedback) }}
+        {% endif %}
         <article class="action-form action-form-wide">
           <h3>{{ review_action_forms.manual_upload_title }}</h3>
           <p class="console-card-copy">{{ review_action_forms.manual_upload_copy }}</p>
@@ -335,6 +359,9 @@
           <p class="console-card-copy">{{ review_action_forms.manual_upload_helper }}</p>
         </article>
       {% else %}
+        {% if review_action_feedback %}
+          {{ action_feedback(review_action_feedback) }}
+        {% endif %}
         <p class="console-empty">{{ review_action_forms.read_only_notice }}</p>
       {% endif %}
     </section>
@@ -348,55 +375,47 @@
           </div>
         </div>
         {% if review_detail.review_actions %}
-          <div class="console-table-wrap">
-            <table class="console-table">
-              <thead>
-                <tr>
-                  <th>작업</th>
-                  <th>검토자</th>
-                  <th>상태 변경</th>
-                  <th>본문 변경</th>
-                  <th>예약</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for action in review_detail.review_actions %}
-                  <tr>
-                    <td>
-                      <div class="console-stack">
-                        <strong>{{ action.action_type }}</strong>
-                        <span>ID {{ action.action_id }}</span>
-                        <span>{{ action.created_at }}</span>
-                      </div>
-                    </td>
-                    <td>{{ action.reviewer }}</td>
-                    <td>
-                      <div class="console-stack">
-                        <span>{{ action.draft_state_before }} → {{ action.draft_state_after }}</span>
-                        <span>{{ action.rejection_reason }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="console-stack">
-                        <span>이전: {{ action.before_text }}</span>
-                        <span>이후: {{ action.after_text }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="console-stack">
-                        <span>예약 {{ action.scheduled_for }}</span>
-                        {% if action.publish_job_href %}
-                          <a class="console-link" href="{{ action.publish_job_href }}">{{ action.publish_job_label }}</a>
-                        {% else %}
-                          <span>{{ action.publish_job_label }}</span>
-                        {% endif %}
-                      </div>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          <ul class="review-reference-list">
+            {% for action in review_detail.review_actions %}
+              <li class="review-reference-item">
+                <dl class="console-definition-list">
+                  <div>
+                    <dt>작업</dt>
+                    <dd>
+                      <strong>{{ action.action_type }}</strong><br>
+                      ID {{ action.action_id }} · {{ action.created_at }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>검토자</dt>
+                    <dd>{{ action.reviewer }}</dd>
+                  </div>
+                  <div>
+                    <dt>상태 변경</dt>
+                    <dd>
+                      {{ action.draft_state_before }} → {{ action.draft_state_after }}
+                      {% if action.rejection_reason %}<br>반려 사유 {{ action.rejection_reason }}{% endif %}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>본문 변경</dt>
+                    <dd>이전: {{ action.before_text }}<br>이후: {{ action.after_text }}</dd>
+                  </div>
+                  <div>
+                    <dt>예약</dt>
+                    <dd>
+                      예약 {{ action.scheduled_for }}<br>
+                      {% if action.publish_job_href %}
+                        <a class="console-link" href="{{ action.publish_job_href }}">{{ action.publish_job_label }}</a>
+                      {% else %}
+                        {{ action.publish_job_label }}
+                      {% endif %}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            {% endfor %}
+          </ul>
         {% else %}
           <p class="console-empty">이 초안에 기록된 검토 작업이 아직 없습니다.</p>
         {% endif %}
@@ -410,43 +429,36 @@
           </div>
         </div>
         {% if review_detail.sibling_variants %}
-          <div class="console-table-wrap">
-            <table class="console-table">
-              <thead>
-                <tr>
-                  <th>초안</th>
-                  <th>상태</th>
-                  <th>본문</th>
-                  <th>시각</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for variant in review_detail.sibling_variants %}
-                  <tr>
-                    <td>
-                      <div class="console-stack">
-                        <a class="console-link" href="{{ variant.detail_href }}">{{ variant.draft_label }}</a>
-                        <span>{{ variant.variant_label }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div class="console-stack">
-                        <strong>{{ variant.draft_state }}</strong>
-                        <span>{{ variant.rejection_reason }}</span>
-                      </div>
-                    </td>
-                    <td>{{ variant.body }}</td>
-                    <td>
-                      <div class="console-stack">
-                        <span>생성 {{ variant.created_at }}</span>
-                        <span>검토 {{ variant.reviewed_at }}</span>
-                      </div>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          <ul class="review-reference-list">
+            {% for variant in review_detail.sibling_variants %}
+              <li class="review-reference-item">
+                <dl class="console-definition-list">
+                  <div>
+                    <dt>초안</dt>
+                    <dd>
+                      <a class="console-link" href="{{ variant.detail_href }}">{{ variant.draft_label }}</a><br>
+                      {{ variant.variant_label }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>상태</dt>
+                    <dd>
+                      <strong>{{ variant.draft_state }}</strong>
+                      {% if variant.rejection_reason %}<br>반려 사유 {{ variant.rejection_reason }}{% endif %}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>본문</dt>
+                    <dd>{{ variant.body }}</dd>
+                  </div>
+                  <div>
+                    <dt>시각</dt>
+                    <dd>생성 {{ variant.created_at }}<br>검토 {{ variant.reviewed_at }}</dd>
+                  </div>
+                </dl>
+              </li>
+            {% endfor %}
+          </ul>
         {% else %}
           <p class="console-empty">이 브리프와 채널 조합에 다른 버전 초안이 아직 없습니다.</p>
         {% endif %}

@@ -89,7 +89,7 @@ def _build_review_detail(
         "variant_label": f"버전 {draft.variant_index}",
         "account_key": content_brief.account_key,
         "draft_state": _humanize_label(draft.state.value),
-        "rejection_reason": draft.rejection_reason or "반려 사유 없음",
+        "rejection_reason": draft.rejection_reason,
         "created_at": _format_datetime(draft.created_at, none_label="기록 없음"),
         "reviewed_at": _format_datetime(draft.reviewed_at, none_label="아직 검토되지 않음"),
         "body": draft.body,
@@ -186,7 +186,7 @@ def _build_review_action_row(
         "after_text": action.after_text,
         "draft_state_before": _humanize_label(action.draft_state_before.value),
         "draft_state_after": _humanize_label(action.draft_state_after.value),
-        "rejection_reason": action.rejection_reason or "반려 사유 없음",
+        "rejection_reason": action.rejection_reason,
         "scheduled_for": _format_datetime(action.scheduled_for, none_label="예약되지 않음"),
         "publish_job_label": (
             f"발행 작업 {action.publish_job_id}"
@@ -313,7 +313,7 @@ def _build_sibling_variant_row(
     request: Request,
     query_params: dict[str, str],
     draft,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "draft_label": f"초안 {draft.id}",
         "detail_href": _append_query_params(
@@ -322,7 +322,7 @@ def _build_sibling_variant_row(
         ),
         "variant_label": f"버전 {draft.variant_index}",
         "draft_state": _humanize_label(draft.state.value),
-        "rejection_reason": draft.rejection_reason or "반려 사유 없음",
+        "rejection_reason": draft.rejection_reason,
         "created_at": _format_datetime(draft.created_at, none_label="기록 없음"),
         "reviewed_at": _format_datetime(draft.reviewed_at, none_label="아직 검토되지 않음"),
         "body": draft.body,

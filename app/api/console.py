@@ -742,6 +742,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=None,
                 action_label="검토 작업",
                 message="폼을 제출하기 전에 지원되는 검토 작업을 선택하세요.",
             ),
@@ -775,6 +776,7 @@ async def post_console_review_detail_action(
             status_code=409,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -789,6 +791,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -804,6 +807,7 @@ async def post_console_review_detail_action(
             status_code=409 if "already has an active publish job" in message else 422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=message,
             ),
@@ -818,6 +822,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -840,7 +845,7 @@ def _render_console_review_detail_page(
     config_dir: str,
     database_url: str | None,
     status_code: int = 200,
-    feedback: dict[str, str] | None = None,
+    feedback: dict[str, str | None] | None = None,
     form_values: dict[str, str] | None = None,
 ) -> HTMLResponse:
     """Render the shared review detail page for both GET and POST flows."""
@@ -1016,7 +1021,7 @@ def _normalize_manual_publish_action_form_data(form_data: dict[str, str]) -> dic
     }
 
 
-def _build_review_action_success_feedback(result) -> dict[str, str]:
+def _build_review_action_success_feedback(result) -> dict[str, str | None]:
     action_label = _humanize_label(result.action_type.value)
     created_manual_handoff = (
         getattr(result, "publish_job_id", None) is not None
@@ -1038,6 +1043,7 @@ def _build_review_action_success_feedback(result) -> dict[str, str]:
     }
     return _build_review_action_feedback(
         kind="success",
+        action=result.action_type.value,
         action_label=action_label,
         message=messages[result.action_type.value],
     )
@@ -1046,11 +1052,13 @@ def _build_review_action_success_feedback(result) -> dict[str, str]:
 def _build_review_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }
