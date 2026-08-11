@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -27,6 +28,8 @@ from app.api.console_views import (
     _build_dashboard_metrics,
     _build_dashboard_policy_skip_row,
     _build_dashboard_run_row,
+    _build_home_review_rows,
+    _build_home_summary,
     _build_manual_publish_action_form_state,
     _build_pending_review_metrics,
     _build_pending_review_row,
@@ -90,7 +93,22 @@ def get_console_home(
     config_dir: str = Query(default="config"),
     database_url: str | None = Query(default=None),
 ) -> HTMLResponse:
-    """Render the initial operator console shell."""
+    """Render the review-first operator console home."""
+
+    query_params = _extract_console_query_params(request)
+    try:
+        pending_result = request.app.state.console_pending_review_drafts_lister(
+            database_url=database_url
+        )
+        runs_result = request.app.state.console_pipeline_runs_lister(
+            database_url=database_url,
+            limit=1,
+        )
+    except DatabaseSchemaError as exc:
+        pending_result = runs_result = None
+        home_data_error: str | None = str(exc)
+    else:
+        home_data_error = None
 
     context = _build_console_context(
         request,
@@ -100,22 +118,39 @@ def get_console_home(
         config_dir=config_dir,
         database_url=database_url,
     )
+    home_queue_href = _append_query_params(
+        str(request.url_for("console_pending_review")), query_params
+    )
+    home_scheduler_href = _append_query_params(
+        str(request.url_for("console_scheduler")), query_params
+    )
+    if pending_result is None or runs_result is None:
+        home_review_rows: list[dict[str, str | bool]] = []
+        home_summary: list[dict[str, str]] = []
+    else:
+        now = datetime.now(timezone.utc)
+        home_review_rows = _build_home_review_rows(
+            request,
+            query_params,
+            pending_result.drafts,
+            now=now,
+        )
+        home_summary = _build_home_summary(
+            pending_result.drafts,
+            runs_result.runs[0] if runs_result.runs else None,
+        )
     context.update(
         {
-            "console_sections": [
-                {
-                    "title": "읽기 전용 첫 배포",
-                    "copy": "초기 콘솔 셸은 브라우저 레이어를 추가 전용으로 유지하면서, 실행 이력과 실패, 아티클, 검토 대기열을 같은 레이아웃에 점진적으로 연결합니다.",
-                },
-                {
-                    "title": "안전 기본값",
-                    "copy": "수동 검토는 계속 필수이며 발행 예정 처리는 기본적으로 드라이런으로 실행됩니다. 이 콘솔은 가시성을 높일 뿐 기존 워크플로 보호 장치를 우회하지 않습니다.",
-                },
-                {
-                    "title": "구현 구조",
-                    "copy": "FastAPI가 Jinja 템플릿과 가벼운 정적 자산을 직접 제공하므로, 별도 프런트엔드 빌드 체인 없이 기존 백엔드를 그대로 재사용할 수 있습니다.",
-                },
-            ],
+            "home_review_rows": home_review_rows,
+            "home_summary": home_summary,
+            "home_first_review_href": (
+                str(home_review_rows[0]["detail_href"])
+                if home_review_rows
+                else home_queue_href
+            ),
+            "home_queue_href": home_queue_href,
+            "home_scheduler_href": home_scheduler_href,
+            "home_data_error": home_data_error,
         }
     )
     return _TEMPLATES.TemplateResponse(
@@ -331,6 +366,7 @@ async def post_console_publish_job_detail_action(
             status_code=422,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=None,
                 action_label="수동 발행 기록",
                 message="폼을 제출하기 전에 지원되는 수동 발행 작업을 선택하세요.",
             ),
@@ -371,6 +407,7 @@ async def post_console_publish_job_detail_action(
             status_code=409,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_manual_publish_action_label(action),
                 message=str(exc),
             ),
@@ -389,6 +426,7 @@ async def post_console_publish_job_detail_action(
             status_code=422,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_manual_publish_action_label(action),
                 message=str(exc),
             ),
@@ -544,6 +582,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=None,
                 action_label="운영 작업",
                 message="폼을 제출하기 전에 지원되는 운영 작업을 선택하세요.",
             ),
@@ -566,6 +605,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -578,6 +618,7 @@ async def post_console_scheduler_action(
             status_code=503,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -590,6 +631,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -639,6 +681,9 @@ def get_console_pending_review(
     context.update(
         {
             "pending_review_metrics": _build_pending_review_metrics(result.drafts),
+            "pending_review_scheduler_href": _append_query_params(
+                str(request.url_for("console_scheduler")), query_params
+            ),
             "pending_review_rows": [
                 _build_pending_review_row(
                     request,
@@ -704,6 +749,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=None,
                 action_label="검토 작업",
                 message="폼을 제출하기 전에 지원되는 검토 작업을 선택하세요.",
             ),
@@ -737,6 +783,7 @@ async def post_console_review_detail_action(
             status_code=409,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -751,6 +798,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -766,6 +814,7 @@ async def post_console_review_detail_action(
             status_code=409 if "already has an active publish job" in message else 422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=message,
             ),
@@ -780,6 +829,7 @@ async def post_console_review_detail_action(
             status_code=422,
             feedback=_build_review_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -802,7 +852,7 @@ def _render_console_review_detail_page(
     config_dir: str,
     database_url: str | None,
     status_code: int = 200,
-    feedback: dict[str, str] | None = None,
+    feedback: dict[str, str | None] | None = None,
     form_values: dict[str, str] | None = None,
 ) -> HTMLResponse:
     """Render the shared review detail page for both GET and POST flows."""
@@ -978,7 +1028,7 @@ def _normalize_manual_publish_action_form_data(form_data: dict[str, str]) -> dic
     }
 
 
-def _build_review_action_success_feedback(result) -> dict[str, str]:
+def _build_review_action_success_feedback(result) -> dict[str, str | None]:
     action_label = _humanize_label(result.action_type.value)
     created_manual_handoff = (
         getattr(result, "publish_job_id", None) is not None
@@ -1000,6 +1050,7 @@ def _build_review_action_success_feedback(result) -> dict[str, str]:
     }
     return _build_review_action_feedback(
         kind="success",
+        action=result.action_type.value,
         action_label=action_label,
         message=messages[result.action_type.value],
     )
@@ -1008,11 +1059,13 @@ def _build_review_action_success_feedback(result) -> dict[str, str]:
 def _build_review_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }
@@ -1039,6 +1092,7 @@ def _build_manual_publish_success_feedback(action: str, result) -> dict[str, str
         )
     return _build_manual_publish_action_feedback(
         kind="success",
+        action=action,
         action_label=_manual_publish_action_label(action),
         message=message,
     )
@@ -1047,11 +1101,13 @@ def _build_manual_publish_success_feedback(action: str, result) -> dict[str, str
 def _build_manual_publish_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }
@@ -1189,6 +1245,7 @@ def _build_scheduler_action_success_feedback(
         )
     return _build_scheduler_action_feedback(
         kind="success",
+        action=action,
         action_label=action_label,
         message=message,
     )
@@ -1197,11 +1254,13 @@ def _build_scheduler_action_success_feedback(
 def _build_scheduler_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }
