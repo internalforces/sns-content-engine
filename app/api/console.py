@@ -579,6 +579,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=None,
                 action_label="운영 작업",
                 message="폼을 제출하기 전에 지원되는 운영 작업을 선택하세요.",
             ),
@@ -601,6 +602,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -613,6 +615,7 @@ async def post_console_scheduler_action(
             status_code=503,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -625,6 +628,7 @@ async def post_console_scheduler_action(
             status_code=422,
             feedback=_build_scheduler_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_humanize_label(action),
                 message=str(exc),
             ),
@@ -1235,6 +1239,7 @@ def _build_scheduler_action_success_feedback(
         )
     return _build_scheduler_action_feedback(
         kind="success",
+        action=action,
         action_label=action_label,
         message=message,
     )
@@ -1243,11 +1248,13 @@ def _build_scheduler_action_success_feedback(
 def _build_scheduler_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
-) -> dict[str, str]:
+) -> dict[str, str | None]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }

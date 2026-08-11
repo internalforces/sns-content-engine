@@ -1064,6 +1064,20 @@ a {
   border-bottom: 1px solid var(--rule);
 }
 
+.scheduler-result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.scheduler-result-heading h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  line-height: 1.15;
+}
+
 .scheduler-action-result .console-panel-grid {
   margin-bottom: 0;
 }

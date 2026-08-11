@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 
 {% macro scheduler_result(kind) %}
-  {% if scheduler_action_result and scheduler_action_result.kind == kind %}
+  {% set has_local_result = scheduler_action_result and scheduler_action_result.kind == kind %}
+  {% set has_local_feedback = scheduler_action_feedback and scheduler_action_feedback.action == kind %}
+  {% if has_local_result or has_local_feedback %}
     <div class="scheduler-action-result">
-      {% if scheduler_action_feedback %}
+      {% if has_local_feedback %}
         <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}">
           <strong>{{ scheduler_action_feedback.title }}</strong>
           <p>{{ scheduler_action_feedback.message }}</p>
         </div>
       {% endif %}
+      {% if has_local_result %}
+        <div class="scheduler-result-heading">
+          <h2>{{ scheduler_action_result.title }}</h2>
+          <span class="console-badge scheduler-result-badge">{{ scheduler_action_result.badge }}</span>
+        </div>
       <p class="console-card-copy">{{ scheduler_action_result.summary }}</p>
       {% if scheduler_action_result.mode_label %}
         <p class="console-card-copy"><strong>발행 모드:</strong> {{ scheduler_action_result.mode_label }}</p>
@@ -121,6 +128,7 @@
           </ul>
         {% else %}<p class="console-empty">이번 실행에서 처리된 도래 발행 작업이 없습니다.</p>{% endif %}
       {% endif %}
+      {% endif %}
     </div>
   {% endif %}
 {% endmacro %}
@@ -152,7 +160,7 @@
     {% if not scheduler_action_result and not scheduler_action_feedback %}
       <p class="console-empty">이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다.</p>
     {% endif %}
-    {% if scheduler_action_feedback and not scheduler_action_result %}
+    {% if scheduler_action_feedback and not scheduler_action_feedback.action %}
       <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}"><strong>{{ scheduler_action_feedback.title }}</strong><p>{{ scheduler_action_feedback.message }}</p></div>
     {% endif %}
 

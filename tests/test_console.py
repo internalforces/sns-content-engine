@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.api.console_view_home import _format_wait_duration
+from app.config import ConfigError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import (
     BackfillChannelResult,
@@ -1783,8 +1784,30 @@ def test_scheduler_actions_discover_post_renders_summary() -> None:
     assert captured == {"config_dir": "/tmp/operator-config"}
     assert "수집 완료" in response.text
     assert "후보 수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
+    assert "후보 수집 요약" in response.text
+    assert 'class="console-badge scheduler-result-badge">후보 수집</span>' in response.text
     assert "ai_tools_rss" in response.text
     assert "manual_csv: feed parse failed" in response.text
+
+
+def test_scheduler_discover_config_error_stays_with_discover_action() -> None:
+    def stub_scheduler_discover(*, config_dir: str) -> SchedulerDiscoverResult:
+        raise ConfigError(f"discover configuration is unavailable: {config_dir}")
+
+    client = TestClient(create_app(scheduler_discover_runner=stub_scheduler_discover))
+    response = _post_console_scheduler_action(
+        client,
+        action="discover",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count("discover configuration is unavailable") == 1
+    discover_form = response.text.index('name="action" value="discover"')
+    feedback = response.text.index("discover configuration is unavailable")
+    ingest_form = response.text.index('name="action" value="ingest"')
+    assert discover_form < feedback < ingest_form
 
 
 def test_scheduler_actions_ingest_post_renders_summary() -> None:
