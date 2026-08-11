@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="console-card">
+  <section class="publish-summary">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">발행 작업 상세</p>
         {% if publish_job_detail_missing %}
-          <h2>발행 작업을 불러올 수 없습니다</h2>
+          <h1>발행 작업을 불러올 수 없습니다</h1>
         {% else %}
-          <h2>{{ publish_job_detail.job_label }}</h2>
+          <h1>{{ publish_job_detail.job_label }}</h1>
         {% endif %}
       </div>
       <span class="console-badge">{% if publish_job_detail_missing %}404{% else %}발행 상태{% endif %}</span>
@@ -22,8 +22,8 @@
         이 발행 작업은 현재 데이터베이스에 없거나, 현재 쿼리 파라미터와 다른 운영 콘텍스트에 속해 있을 수 있습니다.
       </p>
     {% else %}
-      <div class="console-panel-grid">
-        <article class="console-panel">
+      <div class="publish-overview">
+        <article class="publish-status">
           <p class="console-card-label">전달 상태</p>
           <h3>{{ publish_job_detail.job_label }}</h3>
           <dl class="console-definition-list">
@@ -70,7 +70,7 @@
           </dl>
         </article>
 
-        <article class="console-panel">
+        <article class="linked-draft">
           <p class="console-card-label">연결된 초안</p>
           <h3>{{ publish_job_detail.draft.draft_label }} · {{ publish_job_detail.draft.variant_label }}</h3>
           <p class="console-card-copy">
@@ -104,7 +104,32 @@
   </section>
 
   {% if publish_job_detail %}
-    <section class="console-card">
+    <section class="delivery-history">
+      <div class="console-card-header">
+        <div>
+          <p class="console-card-label">발행 로그</p>
+          <h2>기록된 전달 타임라인</h2>
+        </div>
+      </div>
+      {% if publish_job_detail.publish_logs %}
+        <ol class="publish-timeline">
+          {% for log in publish_job_detail.publish_logs %}
+            <li>
+              <div>
+                <strong>{{ log.event_type }}</strong>
+                <span>{{ log.log_label }} · {{ log.created_at }}</span>
+              </div>
+              <p>{{ log.message }}</p>
+              <small>{{ log.payload }}</small>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="console-empty">이 작업에 기록된 발행 로그 이벤트가 아직 없습니다.</p>
+      {% endif %}
+    </section>
+
+    <section class="handoff-workspace">
       <div class="console-card-header">
         <div>
           <p class="console-card-label">수동 발행 기록</p>
@@ -172,7 +197,7 @@
       {% endif %}
     </section>
 
-    <section class="console-grid">
+    <section class="publish-reference">
       <article class="console-card">
         <div class="console-card-header">
           <div>
@@ -259,7 +284,7 @@
       </article>
     </section>
 
-    <section class="console-grid">
+    <section class="publish-reference publish-source-reference">
       <article class="console-card">
         <div class="console-card-header">
           <div>
@@ -301,46 +326,6 @@
             <dd>{{ publish_job_detail.source_item.policy_mode }} / 출처 표기 {{ publish_job_detail.source_item.require_attribution }}</dd>
           </div>
         </dl>
-      </article>
-
-      <article class="console-card">
-        <div class="console-card-header">
-          <div>
-            <p class="console-card-label">발행 로그</p>
-            <h2>기록된 전달 타임라인</h2>
-          </div>
-        </div>
-        {% if publish_job_detail.publish_logs %}
-          <div class="console-table-wrap">
-            <table class="console-table">
-              <thead>
-                <tr>
-                  <th>이벤트</th>
-                  <th>메시지</th>
-                  <th>페이로드</th>
-                  <th>생성됨</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for log in publish_job_detail.publish_logs %}
-                  <tr>
-                    <td>
-                      <div class="console-stack">
-                        <strong>{{ log.event_type }}</strong>
-                        <span>{{ log.log_label }}</span>
-                      </div>
-                    </td>
-                    <td>{{ log.message }}</td>
-                    <td>{{ log.payload }}</td>
-                    <td>{{ log.created_at }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="console-empty">이 작업에 기록된 발행 로그 이벤트가 아직 없습니다.</p>
-        {% endif %}
       </article>
     </section>
   {% endif %}

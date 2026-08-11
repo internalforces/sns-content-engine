@@ -1657,6 +1657,10 @@ def test_publish_jobs_detail_action_complete_records_manual_publish_outcome(
     assert "발행 완료 기록 완료" in response.text
     assert "linkedin-post-456" in response.text
     assert "이 작업은 이미 종료되어 추가 브라우저 액션을 숨깁니다." in response.text
+    assert 'class="publish-timeline"' in response.text
+    assert 'name="action" value="complete"' not in response.text
+    assert 'name="action" value="fail"' not in response.text
+    assert 'name="action" value="cancel"' not in response.text
 
     with session_scope(session_factory) as session:
         stored_job = PublishJobRepository(session).get(approval.publish_job_id)
@@ -1743,6 +1747,17 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
     assert "발행 예정 처리 실행" in response.text
     assert "이번 실행에만 실발행 허용" in response.text
     assert "/tmp/operator-config" in response.text
+
+
+def test_scheduler_keeps_live_confirmation_inside_publish_due_action() -> None:
+    response = TestClient(create_app()).get("/console/scheduler")
+
+    assert response.status_code == 200
+    assert 'class="scheduler-action publish-due-action"' in response.text
+    assert 'class="live-confirmation"' in response.text
+    assert 'name="live"' in response.text
+    assert 'name="live" checked' not in response.text
+    assert "작업 07" not in response.text
 
 
 def test_scheduler_actions_discover_post_renders_summary() -> None:

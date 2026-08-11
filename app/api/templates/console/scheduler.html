@@ -1,5 +1,130 @@
 {% extends "base.html" %}
 
+{% macro scheduler_result(kind) %}
+  {% if scheduler_action_result and scheduler_action_result.kind == kind %}
+    <div class="scheduler-action-result">
+      {% if scheduler_action_feedback %}
+        <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}">
+          <strong>{{ scheduler_action_feedback.title }}</strong>
+          <p>{{ scheduler_action_feedback.message }}</p>
+        </div>
+      {% endif %}
+      <p class="console-card-copy">{{ scheduler_action_result.summary }}</p>
+      {% if scheduler_action_result.mode_label %}
+        <p class="console-card-copy"><strong>발행 모드:</strong> {{ scheduler_action_result.mode_label }}</p>
+      {% endif %}
+      <section class="console-metric-grid console-metric-grid-compact">
+        {% for metric in scheduler_action_result.metrics %}
+          <article class="console-metric-card console-metric-card-compact">
+            <p class="console-metric-label">{{ metric.label }}</p>
+            <p class="console-metric-value">{{ metric.value }}</p>
+          </article>
+        {% endfor %}
+      </section>
+
+      {% if kind == "discover" %}
+        <div class="console-panel-grid">
+          <article class="console-panel">
+            <p class="console-card-label">처리한 소스</p>
+            <h3>실행에 포함된 설정 경로</h3>
+            {% if scheduler_action_result.processed_sources %}
+              <ul class="console-checklist">
+                {% for source_key in scheduler_action_result.processed_sources %}<li>{{ source_key }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">처리된 소스가 없습니다.</p>{% endif %}
+          </article>
+          <article class="console-panel">
+            <p class="console-card-label">실패</p>
+            <h3>읽기 쉬운 스케줄러 오류</h3>
+            {% if scheduler_action_result.failure_messages %}
+              <ul class="console-checklist">
+                {% for message in scheduler_action_result.failure_messages %}<li>{{ message }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">보고된 수집 실패가 없습니다.</p>{% endif %}
+          </article>
+        </div>
+      {% elif kind == "ingest" %}
+        <div class="console-panel-grid">
+          <article class="console-panel">
+            <p class="console-card-label">처리한 소스</p>
+            <h3>저장 경로에 포함된 설정 소스</h3>
+            {% if scheduler_action_result.processed_sources %}
+              <ul class="console-checklist">
+                {% for source_key in scheduler_action_result.processed_sources %}<li>{{ source_key }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">처리된 소스가 없습니다.</p>{% endif %}
+          </article>
+          <article class="console-panel">
+            <p class="console-card-label">결과 세부</p>
+            <h3>중복 차단과 실패</h3>
+            {% if scheduler_action_result.duplicate_reasons %}
+              <ul class="console-checklist">
+                {% for item in scheduler_action_result.duplicate_reasons %}<li>{{ item.label }} {{ item.value }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">보고된 중복 차단 사유가 없습니다.</p>{% endif %}
+            {% if scheduler_action_result.failure_messages %}
+              <ul class="console-checklist">
+                {% for message in scheduler_action_result.failure_messages %}<li>{{ message }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">보고된 수집 저장 실패가 없습니다.</p>{% endif %}
+          </article>
+        </div>
+      {% elif kind == "enrich" %}
+        <article class="console-panel">
+          <p class="console-card-label">실패 단계</p>
+          <h3>기술 실패가 발생한 단계</h3>
+          {% if scheduler_action_result.failure_stages %}
+            <ul class="console-checklist">
+              {% for item in scheduler_action_result.failure_stages %}<li>{{ item.label }} {{ item.value }}</li>{% endfor %}
+            </ul>
+          {% else %}<p class="console-empty">보고된 기사 보강 기술 실패가 없습니다.</p>{% endif %}
+        </article>
+      {% elif kind == "run_local" %}
+        <div class="console-panel-grid">
+          <article class="console-panel">
+            <p class="console-card-label">저장 결과</p>
+            <h3>검토 대기열과 중복 차단 사유</h3>
+            <p class="console-card-copy">생성된 초안은 데이터베이스에 저장되며 기존 검토 대기 워크플로에서 바로 열 수 있습니다.</p>
+            <p class="console-card-copy"><a class="console-link" href="{{ scheduler_action_result.pending_review_href }}">검토 대기열 열기</a></p>
+            {% if scheduler_action_result.duplicate_reasons %}
+              <ul class="console-checklist">
+                {% for item in scheduler_action_result.duplicate_reasons %}<li>{{ item.label }} {{ item.value }}</li>{% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">이번 실행에서 보고된 중복 차단이 없습니다.</p>{% endif %}
+          </article>
+          <article class="console-panel">
+            <p class="console-card-label">이번 실행에서 만든 초안</p>
+            <h3>방금 생성된 초안 링크</h3>
+            {% if scheduler_action_result.created_drafts %}
+              <ul class="console-checklist">
+                {% for draft in scheduler_action_result.created_drafts %}
+                  <li><a class="console-link" href="{{ draft.detail_href }}">{{ draft.draft_label }}</a>: {{ draft.title }} · {{ draft.body_preview }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}<p class="console-empty">이번 실행에서 새로 저장된 초안이 없습니다. 이미 있던 초안은 검토 대기열에서 확인할 수 있습니다.</p>{% endif %}
+          </article>
+        </div>
+      {% elif kind == "backfill" %}
+        {% if scheduler_action_result.outcomes %}
+          <ul class="console-checklist">
+            {% for outcome in scheduler_action_result.outcomes %}
+              <li>{{ outcome.route_label }} · 백로그 목표 {{ outcome.backlog_target }} · 기존 미래 작업 {{ outcome.existing_future_job_count }} · 예약 가능 초안 {{ outcome.eligible_draft_count }} · 계획한 슬롯 {{ outcome.planned_slot_count }} · 생성한 작업 {{ outcome.created_job_ids }} · 생성 건수 {{ outcome.created_count }} / 건너뛴 슬롯 {{ outcome.skipped_slot_count }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="console-empty">이번 실행에서 처리된 백로그 경로가 없습니다.</p>{% endif %}
+      {% elif kind == "publish_due" %}
+        {% if scheduler_action_result.outcomes %}
+          <ul class="console-checklist">
+            {% for outcome in scheduler_action_result.outcomes %}
+              <li>{{ outcome.publish_job_label }} · {{ outcome.status }} · {{ outcome.state }} · {{ outcome.message }} · {{ outcome.external_post_id }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="console-empty">이번 실행에서 처리된 도래 발행 작업이 없습니다.</p>{% endif %}
+      {% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
 {% block content %}
   <section class="console-card">
     <div class="console-card-header">
@@ -9,326 +134,75 @@
       </div>
       <span class="console-badge">드라이런 기본</span>
     </div>
-    <p class="console-card-copy">
-      브라우저에서 현재 구현된 운영 워크플로를 직접 실행하되 기존 백엔드 로직과 안전 모델은 바꾸지 않습니다. 발행 예정 처리는 해당 요청에서 실발행 체크박스를 명시적으로 선택하지 않는 한 드라이런으로 유지됩니다.
-    </p>
+    <p class="console-card-copy">브라우저에서 현재 구현된 운영 워크플로를 직접 실행하되 기존 백엔드 로직과 안전 모델은 바꾸지 않습니다. 발행 예정 처리는 해당 요청에서 실발행 체크박스를 명시적으로 선택하지 않는 한 드라이런으로 유지됩니다.</p>
   </section>
 
   <section class="console-grid">
     <article class="console-card">
-      <div class="console-card-header">
-        <div>
-          <p class="console-card-label">실행 콘텍스트</p>
-          <h2>현재 운영자 입력값</h2>
-        </div>
-      </div>
+      <div class="console-card-header"><div><p class="console-card-label">실행 콘텍스트</p><h2>현재 운영자 입력값</h2></div></div>
       <dl class="console-definition-list">
-        <div>
-          <dt>설정 디렉터리</dt>
-          <dd>{{ operator_context.config_dir }}</dd>
-        </div>
-        <div>
-          <dt>데이터베이스 URL</dt>
-          <dd>{{ operator_context.database_url or "기본 애플리케이션 데이터베이스" }}</dd>
-        </div>
-        <div>
-          <dt>발행 안전성</dt>
-          <dd>브라우저 기본 경로는 드라이런입니다. 실발행은 아래 발행 예정 처리 폼의 체크박스를 명시적으로 선택해야 합니다.</dd>
-        </div>
+        <div><dt>설정 디렉터리</dt><dd>{{ operator_context.config_dir }}</dd></div>
+        <div><dt>데이터베이스 URL</dt><dd>{{ operator_context.database_url or "기본 애플리케이션 데이터베이스" }}</dd></div>
+        <div><dt>발행 안전성</dt><dd>브라우저 기본 경로는 드라이런입니다. 실발행은 아래 발행 예정 처리 폼의 체크박스를 명시적으로 선택해야 합니다.</dd></div>
       </dl>
-    </article>
-
-    <article class="console-card">
-      <div class="console-card-header">
-        <div>
-          <p class="console-card-label">최근 브라우저 작업</p>
-          <h2>{% if scheduler_action_result %}{{ scheduler_action_result.title }}{% else %}작업 대기 중{% endif %}</h2>
-        </div>
-        {% if scheduler_action_result %}
-          <span class="console-badge">{{ scheduler_action_result.badge }}</span>
-        {% endif %}
-      </div>
-
-      {% if scheduler_action_feedback %}
-        <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}">
-          <strong>{{ scheduler_action_feedback.title }}</strong>
-          <p>{{ scheduler_action_feedback.message }}</p>
-        </div>
-      {% endif %}
-
-      {% if scheduler_action_result %}
-        <p class="console-card-copy">{{ scheduler_action_result.summary }}</p>
-
-        {% if scheduler_action_result.mode_label %}
-          <p class="console-card-copy"><strong>발행 모드:</strong> {{ scheduler_action_result.mode_label }}</p>
-        {% endif %}
-
-        <section class="console-metric-grid console-metric-grid-compact">
-          {% for metric in scheduler_action_result.metrics %}
-            <article class="console-metric-card console-metric-card-compact">
-              <p class="console-metric-label">{{ metric.label }}</p>
-              <p class="console-metric-value">{{ metric.value }}</p>
-            </article>
-          {% endfor %}
-        </section>
-
-        {% if scheduler_action_result.kind == "discover" %}
-          <div class="console-panel-grid">
-            <article class="console-panel">
-              <p class="console-card-label">처리한 소스</p>
-              <h3>실행에 포함된 설정 경로</h3>
-              {% if scheduler_action_result.processed_sources %}
-                <ul class="console-checklist">
-                  {% for source_key in scheduler_action_result.processed_sources %}
-                    <li>{{ source_key }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">처리된 소스가 없습니다.</p>
-              {% endif %}
-            </article>
-
-            <article class="console-panel">
-              <p class="console-card-label">실패</p>
-              <h3>읽기 쉬운 스케줄러 오류</h3>
-              {% if scheduler_action_result.failure_messages %}
-                <ul class="console-checklist">
-                  {% for message in scheduler_action_result.failure_messages %}
-                    <li>{{ message }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">보고된 수집 실패가 없습니다.</p>
-              {% endif %}
-            </article>
-          </div>
-        {% elif scheduler_action_result.kind == "ingest" %}
-          <div class="console-panel-grid">
-            <article class="console-panel">
-              <p class="console-card-label">처리한 소스</p>
-              <h3>저장 경로에 포함된 설정 소스</h3>
-              {% if scheduler_action_result.processed_sources %}
-                <ul class="console-checklist">
-                  {% for source_key in scheduler_action_result.processed_sources %}
-                    <li>{{ source_key }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">처리된 소스가 없습니다.</p>
-              {% endif %}
-            </article>
-
-            <article class="console-panel">
-              <p class="console-card-label">결과 세부</p>
-              <h3>중복 차단과 실패</h3>
-              {% if scheduler_action_result.duplicate_reasons %}
-                <ul class="console-checklist">
-                  {% for item in scheduler_action_result.duplicate_reasons %}
-                    <li>{{ item.label }} {{ item.value }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">보고된 중복 차단 사유가 없습니다.</p>
-              {% endif %}
-
-              {% if scheduler_action_result.failure_messages %}
-                <ul class="console-checklist">
-                  {% for message in scheduler_action_result.failure_messages %}
-                    <li>{{ message }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">보고된 수집 저장 실패가 없습니다.</p>
-              {% endif %}
-            </article>
-          </div>
-        {% elif scheduler_action_result.kind == "enrich" %}
-          <article class="console-panel">
-            <p class="console-card-label">실패 단계</p>
-            <h3>기술 실패가 발생한 단계</h3>
-            {% if scheduler_action_result.failure_stages %}
-              <ul class="console-checklist">
-                {% for item in scheduler_action_result.failure_stages %}
-                  <li>{{ item.label }} {{ item.value }}</li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <p class="console-empty">보고된 기사 보강 기술 실패가 없습니다.</p>
-            {% endif %}
-          </article>
-        {% elif scheduler_action_result.kind == "run_local" %}
-          <div class="console-panel-grid">
-            <article class="console-panel">
-              <p class="console-card-label">저장 결과</p>
-              <h3>검토 대기열과 중복 차단 사유</h3>
-              <p class="console-card-copy">
-                생성된 초안은 데이터베이스에 저장되며 기존 검토 대기 워크플로에서 바로 열 수 있습니다.
-              </p>
-              <p class="console-card-copy">
-                <a class="console-link" href="{{ scheduler_action_result.pending_review_href }}">검토 대기열 열기</a>
-              </p>
-              {% if scheduler_action_result.duplicate_reasons %}
-                <ul class="console-checklist">
-                  {% for item in scheduler_action_result.duplicate_reasons %}
-                    <li>{{ item.label }} {{ item.value }}</li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">이번 실행에서 보고된 중복 차단이 없습니다.</p>
-              {% endif %}
-            </article>
-
-            <article class="console-panel">
-              <p class="console-card-label">이번 실행에서 만든 초안</p>
-              <h3>방금 생성된 초안 링크</h3>
-              {% if scheduler_action_result.created_drafts %}
-                <ul class="console-checklist">
-                  {% for draft in scheduler_action_result.created_drafts %}
-                    <li>
-                      <a class="console-link" href="{{ draft.detail_href }}">{{ draft.draft_label }}</a>
-                      : {{ draft.title }} · {{ draft.body_preview }}
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% else %}
-                <p class="console-empty">이번 실행에서 새로 저장된 초안이 없습니다. 이미 있던 초안은 검토 대기열에서 확인할 수 있습니다.</p>
-              {% endif %}
-            </article>
-          </div>
-        {% elif scheduler_action_result.kind == "backfill" %}
-          {% if scheduler_action_result.outcomes %}
-            <div class="console-table-wrap">
-              <table class="console-table">
-                <thead>
-                  <tr>
-                    <th>경로</th>
-                    <th>백로그 목표</th>
-                    <th>기존 미래 작업</th>
-                    <th>예약 가능 초안</th>
-                    <th>계획</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for outcome in scheduler_action_result.outcomes %}
-                    <tr>
-                      <td>{{ outcome.route_label }}</td>
-                      <td>{{ outcome.backlog_target }}</td>
-                      <td>{{ outcome.existing_future_job_count }}</td>
-                      <td>{{ outcome.eligible_draft_count }}</td>
-                      <td>
-                        <div class="console-stack">
-                          <span>계획한 슬롯 {{ outcome.planned_slot_count }}</span>
-                          <span>생성한 작업 {{ outcome.created_job_ids }}</span>
-                          <span>생성 건수 {{ outcome.created_count }} / 건너뛴 슬롯 {{ outcome.skipped_slot_count }}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="console-empty">이번 실행에서 처리된 백로그 경로가 없습니다.</p>
-          {% endif %}
-        {% elif scheduler_action_result.kind == "publish_due" %}
-          {% if scheduler_action_result.outcomes %}
-            <div class="console-table-wrap">
-              <table class="console-table">
-                <thead>
-                  <tr>
-                    <th>발행 작업</th>
-                    <th>상태</th>
-                    <th>저장된 상태</th>
-                    <th>결과</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for outcome in scheduler_action_result.outcomes %}
-                    <tr>
-                      <td>{{ outcome.publish_job_label }}</td>
-                      <td>{{ outcome.status }}</td>
-                      <td>{{ outcome.state }}</td>
-                      <td>
-                        <div class="console-stack">
-                          <span>{{ outcome.message }}</span>
-                          <span>{{ outcome.external_post_id }}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="console-empty">이번 실행에서 처리된 도래 발행 작업이 없습니다.</p>
-          {% endif %}
-        {% endif %}
-      {% else %}
-        <p class="console-empty">이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다.</p>
-      {% endif %}
     </article>
   </section>
 
-  <section class="console-card">
-    <div class="console-card-header">
-      <div>
-        <p class="console-card-label">실행 작업</p>
-        <h2>운영 워크플로 실행</h2>
-      </div>
-    </div>
+  <section class="scheduler-actions" aria-label="운영 워크플로 실행">
+    {% if not scheduler_action_result and not scheduler_action_feedback %}
+      <p class="console-empty">이 브라우저 세션에서 아직 실행된 운영 작업이 없습니다.</p>
+    {% endif %}
+    {% if scheduler_action_feedback and not scheduler_action_result %}
+      <div class="console-feedback console-feedback-{{ scheduler_action_feedback.kind }}"><strong>{{ scheduler_action_feedback.title }}</strong><p>{{ scheduler_action_feedback.message }}</p></div>
+    {% endif %}
 
-    <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
+    <form class="scheduler-action" method="post" action="{{ scheduler_action_href }}">
       <input type="hidden" name="action" value="run_local">
-      <p class="console-card-label">뉴스 수집</p>
-      <h3>발견부터 초안 저장까지 한 번에</h3>
+      <p class="console-card-label">뉴스 수집</p><h2>발견부터 초안 저장까지 한 번에</h2>
       <p class="console-card-copy">현재 로컬 파이프라인 경로를 그대로 실행해 수집 저장, 기사 보강, 브리프 생성, 초안 생성을 한 번에 진행합니다. 생성된 초안은 기존 정책대로 검토 대기에 저장됩니다.</p>
       <button class="console-button" type="submit">뉴스 수집 실행</button>
     </form>
+    {{ scheduler_result("run_local") }}
 
-    <div class="console-action-grid">
-      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
-        <input type="hidden" name="action" value="discover">
-        <p class="console-card-label">발견만 확인</p>
-        <h3>새 소스 후보만 점검</h3>
-        <p class="console-card-copy">현재 스케줄러 discover 경로를 그대로 실행합니다. 이 작업은 후보를 찾기만 하고 데이터베이스에는 저장하지 않습니다.</p>
-        <button class="console-button" type="submit">발견만 실행</button>
-      </form>
+    <form class="scheduler-action" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="discover">
+      <p class="console-card-label">발견만 확인</p><h2>새 소스 후보만 점검</h2>
+      <p class="console-card-copy">현재 스케줄러 discover 경로를 그대로 실행합니다. 이 작업은 후보를 찾기만 하고 데이터베이스에는 저장하지 않습니다.</p>
+      <button class="console-button" type="submit">발견만 실행</button>
+    </form>
+    {{ scheduler_result("discover") }}
 
-      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
-        <input type="hidden" name="action" value="ingest">
-        <p class="console-card-label">수집 저장</p>
-        <h3>새 항목 저장까지 진행</h3>
-        <p class="console-card-copy">발견한 후보를 중복 검사 후 저장해 아티클 상태 화면과 이후 보강 단계에서 바로 사용할 수 있게 만듭니다.</p>
-        <button class="console-button" type="submit">수집 저장 실행</button>
-      </form>
+    <form class="scheduler-action" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="ingest">
+      <p class="console-card-label">수집 저장</p><h2>새 항목 저장까지 진행</h2>
+      <p class="console-card-copy">발견한 후보를 중복 검사 후 저장해 아티클 상태 화면과 이후 보강 단계에서 바로 사용할 수 있게 만듭니다.</p>
+      <button class="console-button" type="submit">수집 저장 실행</button>
+    </form>
+    {{ scheduler_result("ingest") }}
 
-      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
-        <input type="hidden" name="action" value="enrich">
-        <p class="console-card-label">기사 보강</p>
-        <h3>저장된 기사 본문 보강</h3>
-        <p class="console-card-copy">이미 저장된 소스 항목에 대해 HTML 수집, 본문 추출, 요약 재생성을 실행합니다. 정책상 막힌 항목은 그대로 건너뜁니다.</p>
-        <button class="console-button" type="submit">기사 보강 실행</button>
-      </form>
+    <form class="scheduler-action" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="enrich">
+      <p class="console-card-label">기사 보강</p><h2>저장된 기사 본문 보강</h2>
+      <p class="console-card-copy">이미 저장된 소스 항목에 대해 HTML 수집, 본문 추출, 요약 재생성을 실행합니다. 정책상 막힌 항목은 그대로 건너뜁니다.</p>
+      <button class="console-button" type="submit">기사 보강 실행</button>
+    </form>
+    {{ scheduler_result("enrich") }}
 
-      <form class="console-action-card" method="post" action="{{ scheduler_action_href }}">
-        <input type="hidden" name="action" value="backfill">
-        <p class="console-card-label">백필</p>
-        <h3>미래 발행 슬롯 채우기</h3>
-        <p class="console-card-copy">기존 플래너와 승인된 초안을 사용해 각 경로의 백로그 목표치까지 부족한 예약 발행 작업을 만듭니다.</p>
-        <button class="console-button" type="submit">백필 실행</button>
-      </form>
-    </div>
+    <form class="scheduler-action" method="post" action="{{ scheduler_action_href }}">
+      <input type="hidden" name="action" value="backfill">
+      <p class="console-card-label">백필</p><h2>미래 발행 슬롯 채우기</h2>
+      <p class="console-card-copy">기존 플래너와 승인된 초안을 사용해 각 경로의 백로그 목표치까지 부족한 예약 발행 작업을 만듭니다.</p>
+      <button class="console-button" type="submit">백필 실행</button>
+    </form>
+    {{ scheduler_result("backfill") }}
 
-    <form class="console-action-card console-action-card-wide" method="post" action="{{ scheduler_action_href }}">
+    <form class="scheduler-action publish-due-action" method="post" action="{{ scheduler_action_href }}">
       <input type="hidden" name="action" value="publish_due">
-      <p class="console-card-label">발행 예정 처리</p>
-      <h3>도래한 발행 작업 처리</h3>
+      <p class="console-card-label">발행 예정 처리</p><h2>도래한 발행 작업 처리</h2>
       <p class="console-card-copy">이 요청을 드라이런으로 유지하려면 체크박스를 끈 상태로 두세요. 브라우저에서 의도적으로 실발행을 시도할 때만 체크하세요.</p>
-      <label class="console-checkbox-row" for="publish-due-live">
-        <input id="publish-due-live" name="live" type="checkbox" value="true">
-        <span>이번 실행에만 실발행 허용</span>
-      </label>
+      <label class="live-confirmation" for="publish-due-live"><input id="publish-due-live" name="live" type="checkbox" value="true"><span>이번 실행에만 실발행 허용</span></label>
       <button class="console-button console-button-muted" type="submit">발행 예정 처리 실행</button>
     </form>
+    {{ scheduler_result("publish_due") }}
   </section>
 {% endblock %}

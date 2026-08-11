@@ -933,6 +933,141 @@ a {
   background: var(--sage);
 }
 
+.publish-summary,
+.handoff-workspace,
+.delivery-history {
+  padding: clamp(1rem, 3vw, 2rem) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.publish-summary h1 {
+  max-width: 18ch;
+  margin: 0;
+  font-size: clamp(3rem, 5vw, 5.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+.publish-overview,
+.publish-reference {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.publish-status,
+.linked-draft {
+  padding: 1.25rem;
+  border-top: 2px solid var(--ink);
+  background: var(--sage-tint);
+}
+
+.delivery-history,
+.handoff-workspace,
+.scheduler-actions {
+  margin-top: clamp(2rem, 5vw, 4rem);
+}
+
+.publish-timeline {
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--rule);
+}
+
+.publish-timeline li {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.7fr) minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.publish-timeline div,
+.publish-timeline span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.publish-timeline span,
+.publish-timeline p,
+.publish-timeline small {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.publish-source-reference {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scheduler-actions {
+  border-top: 2px solid var(--ink);
+}
+
+.scheduler-action {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(11rem, 0.85fr) minmax(0, 1.7fr) auto;
+  gap: 1rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.scheduler-action .console-card-label,
+.scheduler-action h2,
+.scheduler-action .console-card-copy {
+  margin: 0;
+}
+
+.scheduler-action h2 {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  line-height: 1.15;
+}
+
+.scheduler-action .console-card-copy {
+  grid-column: 2;
+}
+
+.scheduler-action .console-button,
+.scheduler-action .live-confirmation {
+  grid-column: 3;
+}
+
+.scheduler-action .console-button {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.live-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.live-confirmation input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--sage);
+}
+
+.publish-due-action .console-button {
+  grid-row: 1 / span 3;
+}
+
+.scheduler-action-result {
+  padding: 0 0 1.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.scheduler-action-result .console-panel-grid {
+  margin-bottom: 0;
+}
+
 .review-judgment > .action-form,
 .review-judgment > .console-empty {
   margin-top: 1.5rem;
@@ -992,6 +1127,23 @@ a {
   .review-evidence-image {
     max-width: 26rem;
   }
+
+  .publish-overview,
+  .publish-reference,
+  .scheduler-action {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduler-action .console-card-copy,
+  .scheduler-action .console-button,
+  .scheduler-action .live-confirmation {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .scheduler-action .console-button {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1018,5 +1170,10 @@ a {
 
   .review-reference-item .console-definition-list {
     grid-template-columns: 1fr;
+  }
+
+  .publish-timeline li {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
 }
