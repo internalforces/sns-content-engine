@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% macro manual_action_feedback(feedback) -%}
+    <div class="console-feedback console-feedback-{{ feedback.kind }}" role="status" data-manual-feedback-for="{{ feedback.action or 'general' }}">
+      <strong>{{ feedback.title }}</strong>
+      <p>{{ feedback.message }}</p>
+    </div>
+  {%- endmacro %}
+
   <section class="publish-summary">
     <div class="console-card-header">
       <div>
@@ -137,17 +144,18 @@
         </div>
       </div>
       <p class="console-card-copy">{{ publish_job_action_forms.state_hint }}</p>
-      {% if publish_job_action_feedback %}
-        <div class="console-feedback console-feedback-{{ publish_job_action_feedback.kind }}">
-          <strong>{{ publish_job_action_feedback.title }}</strong>
-          <p>{{ publish_job_action_feedback.message }}</p>
-        </div>
-      {% endif %}
 
       {% if publish_job_action_forms.show_manual_publish_actions %}
+        {% if publish_job_action_feedback and publish_job_action_feedback.action not in ["complete", "fail", "cancel"] %}
+          {{ manual_action_feedback(publish_job_action_feedback) }}
+        {% endif %}
         <p class="console-card-copy">상단에 표시된 초안 본문을 외부 플랫폼에 게시한 뒤, 아래에서 결과를 운영 기록으로 남기세요.</p>
         <div class="console-action-grid">
-          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+          <div class="manual-action-slot">
+            {% if publish_job_action_feedback and publish_job_action_feedback.action == "complete" %}
+              {{ manual_action_feedback(publish_job_action_feedback) }}
+            {% endif %}
+            <form class="console-action-card" data-manual-action="complete" method="post" action="{{ publish_job_action_forms.action_href }}">
             <input type="hidden" name="action" value="complete">
             <p class="console-card-label">완료</p>
             <h3>발행 완료 기록</h3>
@@ -160,9 +168,14 @@
               <input class="console-input" id="manual-complete-external-post-id" name="external_post_id" type="text" value="{{ publish_job_action_forms.external_post_id }}">
             </label>
             <button class="console-button" type="submit">발행 완료로 기록</button>
-          </form>
+            </form>
+          </div>
 
-          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+          <div class="manual-action-slot">
+            {% if publish_job_action_feedback and publish_job_action_feedback.action == "fail" %}
+              {{ manual_action_feedback(publish_job_action_feedback) }}
+            {% endif %}
+            <form class="console-action-card" data-manual-action="fail" method="post" action="{{ publish_job_action_forms.action_href }}">
             <input type="hidden" name="action" value="fail">
             <p class="console-card-label">실패</p>
             <h3>발행 실패 기록</h3>
@@ -175,9 +188,14 @@
               <input class="console-input" id="manual-fail-error-message" name="error_message" type="text" value="{{ publish_job_action_forms.error_message }}">
             </label>
             <button class="console-button console-button-muted" type="submit">실패로 기록</button>
-          </form>
+            </form>
+          </div>
 
-          <form class="console-action-card" method="post" action="{{ publish_job_action_forms.action_href }}">
+          <div class="manual-action-slot">
+            {% if publish_job_action_feedback and publish_job_action_feedback.action == "cancel" %}
+              {{ manual_action_feedback(publish_job_action_feedback) }}
+            {% endif %}
+            <form class="console-action-card" data-manual-action="cancel" method="post" action="{{ publish_job_action_forms.action_href }}">
             <input type="hidden" name="action" value="cancel">
             <p class="console-card-label">취소</p>
             <h3>전달 취소</h3>
@@ -190,9 +208,13 @@
               <input class="console-input" id="manual-cancel-reason" name="reason" type="text" value="{{ publish_job_action_forms.cancel_reason }}">
             </label>
             <button class="console-button console-button-muted" type="submit">전달 취소</button>
-          </form>
+            </form>
+          </div>
         </div>
       {% else %}
+        {% if publish_job_action_feedback %}
+          {{ manual_action_feedback(publish_job_action_feedback) }}
+        {% endif %}
         <p class="console-empty">{{ publish_job_action_forms.read_only_notice }}</p>
       {% endif %}
     </section>

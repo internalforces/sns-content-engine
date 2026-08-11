@@ -35,7 +35,7 @@
       <div class="data-list">
         {% for row in article_rows %}
           <div class="data-list-row">
-            <span>
+            <span aria-label="제목">
               <strong>{{ row.title }}</strong>
               <small>{{ row.source_name }} · {{ row.source_item_label }} · {{ row.article_enrichment_label }}</small>
               <a class="console-link" href="{{ row.original_url }}">{{ row.original_url }}</a>
@@ -45,10 +45,10 @@
                 <small>해결된 아티클 URL이 아직 기록되지 않았습니다.</small>
               {% endif %}
             </span>
-            <span data-label="발행 시각">{{ row.published_at }}</span>
-            <span data-label="발견 시각">{{ row.discovered_at }}</span>
-            <span data-label="보강 상태"><strong>{{ row.enrichment_state }}</strong><small>{{ row.stage_summary }}</small></span>
-            <span data-label="실패">{{ row.last_failure_message }}</span>
+            <span data-label="발행 시각" aria-label="발행 시각">{{ row.published_at }}</span>
+            <span data-label="발견 시각" aria-label="발견 시각">{{ row.discovered_at }}</span>
+            <span data-label="보강 상태" aria-label="보강 상태"><strong>{{ row.enrichment_state }}</strong><small>{{ row.stage_summary }}</small></span>
+            <span data-label="실패" aria-label="실패">{{ row.last_failure_message }}</span>
           </div>
         {% endfor %}
       </div>

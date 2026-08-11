@@ -366,6 +366,7 @@ async def post_console_publish_job_detail_action(
             status_code=422,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=None,
                 action_label="수동 발행 기록",
                 message="폼을 제출하기 전에 지원되는 수동 발행 작업을 선택하세요.",
             ),
@@ -406,6 +407,7 @@ async def post_console_publish_job_detail_action(
             status_code=409,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_manual_publish_action_label(action),
                 message=str(exc),
             ),
@@ -424,6 +426,7 @@ async def post_console_publish_job_detail_action(
             status_code=422,
             feedback=_build_manual_publish_action_feedback(
                 kind="error",
+                action=action,
                 action_label=_manual_publish_action_label(action),
                 message=str(exc),
             ),
@@ -1089,6 +1092,7 @@ def _build_manual_publish_success_feedback(action: str, result) -> dict[str, str
         )
     return _build_manual_publish_action_feedback(
         kind="success",
+        action=action,
         action_label=_manual_publish_action_label(action),
         message=message,
     )
@@ -1097,11 +1101,13 @@ def _build_manual_publish_success_feedback(action: str, result) -> dict[str, str
 def _build_manual_publish_action_feedback(
     *,
     kind: str,
+    action: str | None,
     action_label: str,
     message: str,
 ) -> dict[str, str]:
     return {
         "kind": kind,
+        "action": action,
         "title": f"{action_label} {'완료' if kind == 'success' else '불가'}",
         "message": message,
     }

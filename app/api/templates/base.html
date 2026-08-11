@@ -3,11 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/; style-src 'self'; img-src 'self' https://picsum.photos https://fastly.picsum.photos; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'">
     <title>{% if page_title %}{{ page_title }} · {% endif %}sns-content-engine</title>
     <link rel="stylesheet" href="{{ console_asset_css_url }}">
   </head>
   <body class="console-shell">
     <main class="console-shell-grid">
+      <div class="console-mobile-context" aria-label="현재 운영 콘텍스트">
+        <span>현재 페이지 {{ page_title }}</span>
+        <span>기본 발행은 드라이런</span>
+        <span>수동 검토 필수</span>
+      </div>
       <details class="console-mobile-nav">
         <summary>운영 메뉴</summary>
         <nav aria-label="모바일 운영 콘솔 탐색">
@@ -39,8 +45,8 @@
         {% block content %}{% endblock %}
       </section>
     </main>
-    <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" integrity="sha384-HOvlOYPIs/zjoIkWUGXkVmXsjr8GuZLV+Q+rcPwmJOVZVpvTSXQChiN4t9Euv9Vc" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" integrity="sha384-P8VzCVnT9NBUkMrpcIZrJbA7EBjJvh/fJS6PmP+4nLIM284DtsImIv8D0fFjIkeh" crossorigin="anonymous"></script>
     <script defer src="{{ console_asset_js_url }}"></script>
   </body>
 </html>

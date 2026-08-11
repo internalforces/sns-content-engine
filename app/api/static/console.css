@@ -4,7 +4,7 @@
   --sage: #738274;
   --sage-tint: #dfe4dc;
   --rule: #cbc9c0;
-  --muted: var(--sage);
+  --muted: var(--ink);
   --rail-width: 13.5rem;
   --surface: var(--ivory);
 }
@@ -47,8 +47,11 @@ a {
   display: flex;
   position: sticky;
   top: 0;
+  align-self: start;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   padding: 1.5rem 1rem;
   border-right: 1px solid var(--rule);
   background: var(--surface);
@@ -123,6 +126,22 @@ a {
 
 .console-mobile-nav {
   display: none;
+}
+
+.console-mobile-context {
+  display: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .console-card,
@@ -318,7 +337,7 @@ a {
 }
 
 .console-link:hover {
-  color: var(--sage);
+  color: var(--ink);
 }
 
 .console-table-wrap {
@@ -457,6 +476,16 @@ a {
   margin-top: 1.25rem;
 }
 
+.manual-action-slot {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.manual-action-slot .console-feedback {
+  margin: 0;
+}
+
 .console-action-card-wide {
   margin-top: 1rem;
 }
@@ -524,8 +553,9 @@ a {
 
 .console-button:hover,
 .console-button-muted {
-  background: var(--sage);
-  border-color: var(--sage);
+  background: var(--sage-tint);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .page-intro {
@@ -590,7 +620,7 @@ a {
 
 .priority-row:hover,
 .queue-row-link:hover {
-  color: var(--sage);
+  color: var(--ink);
 }
 
 .priority-row span:first-child,
@@ -638,6 +668,22 @@ a {
     display: block;
     border-bottom: 1px solid var(--rule);
     background: var(--surface);
+  }
+
+  .console-mobile-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    min-height: 44px;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink);
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .console-mobile-context span:first-child {
+    flex-basis: 100%;
   }
 
   .console-mobile-nav summary {
@@ -922,8 +968,9 @@ a {
 }
 
 .is-destructive .console-button {
-  border-color: var(--sage);
-  background: var(--sage);
+  border-color: var(--ink);
+  background: var(--sage-tint);
+  color: var(--ink);
 }
 
 .publish-summary,

@@ -47,11 +47,11 @@
       <div class="data-list">
         {% for row in dashboard_runs %}
           <div class="data-list-row">
-            <span><strong>{{ row.workflow_name }}</strong><small>{{ row.trigger_mode }}</small></span>
-            <span data-label="상태"><strong>{{ row.status }}</strong><small>최신 오류 {{ row.latest_error_code }}</small></span>
-            <span data-label="처리 건수">{{ row.counts_summary }}</span>
-            <span data-label="정책">{{ row.policy_summary }}<small>{{ row.policy_guardrails }} · 재작성 제공자 {{ row.rewrite_providers }}</small></span>
-            <span data-label="시각">시작 {{ row.started_at }}<small>완료 {{ row.completed_at }}</small></span>
+            <span aria-label="실행 이름"><strong>{{ row.workflow_name }}</strong><small>{{ row.trigger_mode }}</small></span>
+            <span data-label="상태" aria-label="상태"><strong>{{ row.status }}</strong><small>최신 오류 {{ row.latest_error_code }}</small></span>
+            <span data-label="처리 건수" aria-label="처리 건수">{{ row.counts_summary }}</span>
+            <span data-label="정책" aria-label="정책">{{ row.policy_summary }}<small>{{ row.policy_guardrails }} · 재작성 제공자 {{ row.rewrite_providers }}</small></span>
+            <span data-label="시각" aria-label="시각">시작 {{ row.started_at }}<small>완료 {{ row.completed_at }}</small></span>
           </div>
         {% endfor %}
       </div>
@@ -70,10 +70,10 @@
     {% if dashboard_failures %}
       {% for row in dashboard_failures %}
         <div class="data-list-row data-list-row-compact">
-          <span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
-          <span data-label="실패"><strong>{{ row.failure_code }}</strong><small>{{ row.failure_stage }} · {{ row.failure_message }}</small></span>
-          <span data-label="정책">{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
-          <span data-label="업데이트됨">{{ row.updated_at }}</span>
+          <span aria-label="제목"><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
+          <span data-label="실패" aria-label="실패"><strong>{{ row.failure_code }}</strong><small>{{ row.failure_stage }} · {{ row.failure_message }}</small></span>
+          <span data-label="정책" aria-label="정책">{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
+          <span data-label="업데이트됨" aria-label="업데이트됨">{{ row.updated_at }}</span>
         </div>
       {% endfor %}
     {% else %}
@@ -91,10 +91,10 @@
     {% if dashboard_policy_skips %}
       {% for row in dashboard_policy_skips %}
         <div class="data-list-row data-list-row-compact">
-          <span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
-          <span data-label="판단"><strong>{{ row.skipped_stage }}</strong><small>{{ row.policy_decision_reason }}</small></span>
-          <span data-label="정책">{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
-          <span data-label="업데이트됨">{{ row.updated_at }}</span>
+          <span aria-label="제목"><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
+          <span data-label="판단" aria-label="판단"><strong>{{ row.skipped_stage }}</strong><small>{{ row.policy_decision_reason }}</small></span>
+          <span data-label="정책" aria-label="정책">{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
+          <span data-label="업데이트됨" aria-label="업데이트됨">{{ row.updated_at }}</span>
         </div>
       {% endfor %}
     {% else %}

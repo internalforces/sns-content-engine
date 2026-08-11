@@ -207,6 +207,37 @@ def test_pending_review_rows_include_mobile_labels() -> None:
     assert 'class="queue-row-link"' in response.text
 
 
+def test_console_monitoring_rows_expose_field_names_without_mobile_css() -> None:
+    """Make desktop list cells understandable to assistive technology as well as mobile CSS."""
+
+    client = _build_console_client_with_two_pending_drafts()
+    home = client.get("/console/")
+    pending = client.get("/console/reviews/pending")
+
+    assert 'aria-label="초안 제목"' in home.text
+    assert 'aria-label="채널"' in home.text
+    assert 'aria-label="확인 사항"' in home.text
+    assert 'aria-label="대기 시간"' in home.text
+    assert 'aria-label="초안 제목"' in pending.text
+    assert 'aria-label="생성 시각"' in pending.text
+    templates = "\n".join(
+        (Path(__file__).parents[1] / "app/api/templates/console" / name).read_text()
+        for name in ("articles.html", "dashboard.html", "publish_jobs.html")
+    )
+    assert 'aria-label="제목"' in templates
+    assert 'aria-label="상태"' in templates
+    assert 'aria-label="발행 시각"' in templates
+
+
+def test_review_detail_explains_that_edit_text_is_not_saved_by_approval_or_rejection() -> None:
+    """Keep no-JavaScript review actions explicit about their independent form submissions."""
+
+    template = (Path(__file__).parents[1] / "app/api/templates/console/review_detail.html").read_text()
+
+    assert "각 작업은 서로 독립적입니다." in template
+    assert "승인이나 반려를 선택해도 입력 중인 본문은 저장되지 않습니다." in template
+
+
 def test_console_shell_uses_review_first_landmarks() -> None:
     """Catch a console shell that obscures review navigation or workspace landmarks."""
 
@@ -217,6 +248,51 @@ def test_console_shell_uses_review_first_landmarks() -> None:
     assert 'aria-label="운영 콘솔 탐색"' in response.text
     assert 'class="console-workspace"' in response.text
     assert "작업 01" not in response.text
+
+
+def test_console_shell_pins_verified_motion_assets_and_restricts_content_sources() -> None:
+    """Keep third-party motion executable only from the pinned, integrity-checked files."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    gsap = (
+        '<script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" '
+        'integrity="sha384-HOvlOYPIs/zjoIkWUGXkVmXsjr8GuZLV+Q+rcPwmJOVZVpvTSXQChiN4t9Euv9Vc" '
+        'crossorigin="anonymous"></script>'
+    )
+    scroll_trigger = (
+        '<script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" '
+        'integrity="sha384-P8VzCVnT9NBUkMrpcIZrJbA7EBjJvh/fJS6PmP+4nLIM284DtsImIv8D0fFjIkeh" '
+        'crossorigin="anonymous"></script>'
+    )
+    assert gsap in response.text
+    assert scroll_trigger in response.text
+    assert '/console/static/console.js"></script>' in response.text
+    assert response.text.index(gsap) < response.text.index(scroll_trigger) < response.text.index("/console/static/console.js")
+    assert (
+        'default-src \'self\'; script-src \'self\' https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/; '
+        'style-src \'self\'; img-src \'self\' https://picsum.photos https://fastly.picsum.photos; '
+        'font-src \'self\'; connect-src \'self\'; form-action \'self\'; base-uri \'self\'; object-src \'none\''
+    ) in response.text
+
+
+def test_console_mobile_shell_keeps_current_page_and_safety_state_visible_when_closed() -> None:
+    """Keep the contextual mobile header useful without opening native details navigation."""
+
+    response = _build_empty_console_client().get(
+        "/console/",
+        params={"config_dir": "/tmp/operator-config", "database_url": "sqlite:///operator.db"},
+    )
+
+    assert response.status_code == 200
+    assert '<div class="console-mobile-context"' in response.text
+    assert "현재 페이지 운영 콘솔" in response.text
+    assert "기본 발행은 드라이런" in response.text
+    assert "수동 검토 필수" in response.text
+    assert response.text.index('class="console-mobile-context"') < response.text.index('class="console-mobile-nav"')
+    assert "config_dir=%2Ftmp%2Foperator-config" in response.text
+    assert "database_url=sqlite%3A%2F%2F%2Foperator.db" in response.text
 
 
 def test_console_stylesheet_exposes_minimal_tokens() -> None:
@@ -230,6 +306,39 @@ def test_console_stylesheet_exposes_minimal_tokens() -> None:
     assert "--sage: #738274" in response.text
     assert "overflow-x: hidden" in response.text
     assert "prefers-reduced-motion: reduce" in response.text
+
+
+def test_console_stylesheet_keeps_normal_text_and_muted_buttons_aa_safe() -> None:
+    """Prevent low-contrast sage text/buttons from returning to the five-color console."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+
+    assert "--muted: var(--ink);" in stylesheet
+    assert re.search(
+        r"\.console-button-muted\s*\{\s*background: var\(--sage-tint\);\s*"
+        r"border-color: var\(--ink\);\s*color: var\(--ink\);",
+        stylesheet,
+    )
+    assert re.search(
+        r"\.is-destructive \.console-button\s*\{\s*border-color: var\(--ink\);\s*"
+        r"background: var\(--sage-tint\);\s*color: var\(--ink\);",
+        stylesheet,
+    )
+    assert ".visually-hidden" in stylesheet
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\\b", re.sub(r"#151713|#f2f0e9|#738274|#dfe4dc|#cbc9c0", "", stylesheet))
+
+
+def test_console_rail_stays_sticky_and_scrollable_without_stretching_long_pages() -> None:
+    """Keep desktop navigation and safety state available beside long detail pages."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    rail = stylesheet.split(".console-rail {", maxsplit=1)[1].split("}", maxsplit=1)[0]
+
+    assert "position: sticky;" in rail
+    assert "align-self: start;" in rail
+    assert "height: 100vh;" in rail
+    assert "max-height: 100vh;" in rail
+    assert "overflow-y: auto;" in rail
 
 
 def test_console_queue_stacks_before_four_columns_clip_workspace() -> None:
@@ -1847,6 +1956,8 @@ def test_publish_jobs_detail_action_complete_records_manual_publish_outcome(
     assert response.status_code == 200
     assert "발행 완료 기록 완료" in response.text
     assert "linkedin-post-456" in response.text
+    assert 'data-manual-feedback-for="complete"' in response.text
+    assert response.text.count("발행 완료 기록 완료") == 1
     assert "이 작업은 이미 종료되어 추가 브라우저 액션을 숨깁니다." in response.text
     assert 'class="publish-timeline"' in response.text
     assert 'name="action" value="complete"' not in response.text
@@ -1898,6 +2009,11 @@ def test_publish_jobs_detail_action_fail_validation_error_stays_browser_readable
     assert "발행 실패 기록 불가" in response.text
     assert "manual publish failure message must not be empty" in response.text
     assert 'value="publisher-b"' in response.text
+    feedback = response.text.index('data-manual-feedback-for="fail"')
+    fail_form = response.text.index('data-manual-action="fail"')
+    assert feedback < fail_form
+    assert response.text[feedback:fail_form].count("발행 실패 기록 불가") == 1
+    assert "발행 실패 기록 불가" not in response.text[:feedback]
 
 
 def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:

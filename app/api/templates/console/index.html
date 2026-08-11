@@ -17,10 +17,10 @@
       <h2 id="priority-heading">먼저 볼 초안</h2>
       {% for row in home_review_rows %}
         <a class="priority-row" href="{{ row.detail_href }}">
-          <span><strong>{{ row.title }}</strong><small>{{ row.account_key }}</small></span>
-          <span data-label="채널">{{ row.channel }}</span>
-          <span data-label="확인 사항">{{ row.review_flag }}</span>
-          <span data-label="대기 시간">{{ row.wait_duration }}</span>
+          <span aria-label="초안 제목"><strong>{{ row.title }}</strong><small>{{ row.account_key }}</small></span>
+          <span data-label="채널" aria-label="채널">{{ row.channel }}</span>
+          <span data-label="확인 사항" aria-label="확인 사항">{{ row.review_flag }}</span>
+          <span data-label="대기 시간" aria-label="대기 시간">{{ row.wait_duration }}</span>
           <span aria-hidden="true">→</span>
         </a>
       {% endfor %}
