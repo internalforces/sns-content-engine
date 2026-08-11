@@ -341,6 +341,51 @@ def test_console_shell_static_asset_is_served() -> None:
     assert ".console-shell-grid" in response.text
 
 
+def test_console_motion_asset_is_served_and_defensive() -> None:
+    """Catch motion that removes the functional server-rendered fallback."""
+
+    response = TestClient(create_app()).get("/console/static/console.js")
+
+    assert response.status_code == 200
+    assert "prefers-reduced-motion: reduce" in response.text
+    assert "window.gsap" in response.text
+    assert "window.ScrollTrigger" in response.text
+    assert "data-review-story" in response.text
+
+
+def test_console_shell_loads_gsap_before_local_motion() -> None:
+    """Catch local motion loading before its optional GSAP dependencies."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    core = response.text.index("gsap@3.13.0/dist/gsap.min.js")
+    trigger = response.text.index("gsap@3.13.0/dist/ScrollTrigger.min.js")
+    local = response.text.index("/console/static/console.js")
+    assert core < trigger < local
+
+
+def test_console_motion_styles_leave_static_reduced_motion_fallbacks() -> None:
+    """Catch review hooks that become pinned or transformed without opt-in motion."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert re.search(r"\[data-stack-card\]\s*\{\s*position: relative;", response.text)
+    assert re.search(
+        r"@media \(min-width: 901px\) and \(prefers-reduced-motion: no-preference\)"
+        r"\s*\{[\s\S]*?\[data-stack-card\]\s*\{\s*position: sticky;\s*top: 7rem;",
+        response.text,
+    )
+    reduced_motion = response.text.split("@media (prefers-reduced-motion: reduce)")[-1]
+    assert "[data-review-pin]," in reduced_motion
+    assert "[data-stack-card]," in reduced_motion
+    assert "[data-marquee]" in reduced_motion
+    assert "position: static !important;" in reduced_motion
+    assert "transform: none !important;" in reduced_motion
+    assert "animation: none !important;" in reduced_motion
+
+
 def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
     _build_session_factory(tmp_path)
     client = TestClient(create_app())

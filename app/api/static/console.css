@@ -390,13 +390,6 @@ a {
 
 .status-strip span {
   flex: 0 0 auto;
-  animation: status-marquee 20s linear infinite;
-}
-
-@keyframes status-marquee {
-  to {
-    transform: translateX(calc(-100% - 3rem));
-  }
 }
 
 .data-list-row {
@@ -1189,5 +1182,26 @@ a {
   .publish-timeline li {
     grid-template-columns: 1fr;
     gap: 0.5rem;
+  }
+}
+
+[data-stack-card] {
+  position: relative;
+}
+
+@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
+  [data-stack-card] {
+    position: sticky;
+    top: 7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-review-pin],
+  [data-stack-card],
+  [data-marquee] {
+    position: static !important;
+    transform: none !important;
+    animation: none !important;
   }
 }
