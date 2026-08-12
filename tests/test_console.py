@@ -664,7 +664,7 @@ def test_console_utility_shows_redacted_database_identifier() -> None:
     response = _build_empty_console_client().get(
         "/console/",
         params={
-            "database_url": "postgresql+psycopg://operator:secret@db.internal/operator",
+            "database_url": "postgresql+psycopg://operator:secret@db.internal/operator",  # pragma: allowlist secret
         },
     )
 
