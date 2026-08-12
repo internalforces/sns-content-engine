@@ -1125,6 +1125,50 @@ def test_publish_job_repository_detects_only_active_jobs_for_draft(session_facto
         assert repository.has_active_job_for_draft(active_draft_id) is True
 
 
+def test_publish_job_operator_list_prioritizes_active_jobs_before_limit(
+    session_factory,
+) -> None:
+    """Keep older scheduled work visible ahead of newer completed history."""
+
+    with session_scope(session_factory) as session:
+        repository = PublishJobRepository(session)
+        active_job = repository.add(
+            PublishJob(
+                draft_variant=_create_draft_variant(
+                    session,
+                    draft_state=DraftVariantState.APPROVED,
+                ),
+                channel="x",
+                idempotency_key="older-active-job",
+                scheduled_for=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 17, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        completed_job = repository.add(
+            PublishJob(
+                draft_variant=_create_draft_variant(
+                    session,
+                    draft_state=DraftVariantState.APPROVED,
+                ),
+                channel="x",
+                idempotency_key="newer-completed-job",
+                scheduled_for=datetime(2026, 3, 19, 9, 0, tzinfo=timezone.utc),
+                created_at=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+            )
+        )
+        repository.transition_state(completed_job, PublishJobState.PUBLISHING)
+        repository.transition_state(completed_job, PublishJobState.PUBLISHED)
+        active_job_id = active_job.id
+
+    with session_scope(session_factory) as session:
+        jobs = PublishJobRepository(session).list_for_operator(
+            limit=1,
+            prioritize_active=True,
+        )
+
+    assert [job.id for job in jobs] == [active_job_id]
+
+
 def test_publish_job_active_unique_index_rejects_duplicate_active_jobs(session_factory) -> None:
     with session_scope(session_factory) as session:
         repository = PublishJobRepository(session)

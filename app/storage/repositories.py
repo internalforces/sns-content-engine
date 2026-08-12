@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -591,9 +591,28 @@ class PublishJobRepository:
         account_key: str | None = None,
         channel: str | None = None,
         limit: int = 50,
+        prioritize_active: bool = False,
     ) -> list[PublishJob]:
         normalized_account_key = account_key.strip() if account_key is not None else None
         normalized_channel = channel.strip() if channel is not None else None
+
+        ordering = [PublishJob.created_at.desc(), PublishJob.id.desc()]
+        if prioritize_active:
+            ordering.insert(
+                0,
+                case(
+                    (
+                        PublishJob.state.in_(
+                            (
+                                PublishJobState.SCHEDULED,
+                                PublishJobState.PUBLISHING,
+                            )
+                        ),
+                        0,
+                    ),
+                    else_=1,
+                ),
+            )
 
         statement = (
             select(PublishJob)
@@ -604,7 +623,7 @@ class PublishJobRepository:
             )
             .join(PublishJob.draft_variant)
             .join(DraftVariant.content_brief)
-            .order_by(PublishJob.created_at.desc(), PublishJob.id.desc())
+            .order_by(*ordering)
         )
 
         if state is not None:

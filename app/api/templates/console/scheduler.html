@@ -150,7 +150,7 @@
       <div class="console-card-header"><div><p class="console-card-label">실행 콘텍스트</p><h2>현재 운영자 입력값</h2></div></div>
       <dl class="console-definition-list">
         <div><dt>설정 디렉터리</dt><dd>{{ operator_context.config_dir }}</dd></div>
-        <div><dt>데이터베이스 URL</dt><dd>{{ operator_context.database_url or "기본 애플리케이션 데이터베이스" }}</dd></div>
+        <div><dt>데이터베이스</dt><dd>{{ operator_context.database_label }}</dd></div>
         <div><dt>발행 안전성</dt><dd>브라우저 기본 경로는 드라이런입니다. 실발행은 아래 발행 예정 처리 폼의 체크박스를 명시적으로 선택해야 합니다.</dd></div>
       </dl>
     </article>

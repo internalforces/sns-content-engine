@@ -40,7 +40,8 @@
       </aside>
       <section class="console-workspace">
         <header class="console-utility">
-          <span>{{ page_title }}</span><span>{{ operator_context.config_dir }}</span>
+          <span>{{ page_title }}</span>
+          <span>{{ operator_context.config_dir }} · {{ operator_context.database_label }}</span>
         </header>
         {% block content %}{% endblock %}
       </section>

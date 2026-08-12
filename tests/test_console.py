@@ -31,6 +31,7 @@ from app.storage import (
     ArticleEnrichmentRepository,
     ContentBrief,
     ContentBriefRepository,
+    DatabaseSchemaError,
     DraftVariant,
     DraftVariantRepository,
     DraftVariantState,
@@ -578,6 +579,106 @@ def test_console_home_prioritizes_oldest_review_and_sensitive_copy() -> None:
     assert "/console/reviews/42?database_url=" in response.text
 
 
+def test_console_review_surfaces_use_brief_metadata_for_the_same_sensitivity_signal() -> None:
+    """Keep home and pending review signals aligned with review-detail evidence."""
+
+    now = datetime.now(timezone.utc)
+    drafts = (
+        PendingReviewDraft(
+            draft_id=43,
+            account_key="japan_news",
+            channel="ghost",
+            variant_index=1,
+            created_at=now - timedelta(hours=1),
+            title="Manufacturing investment update",
+            body="A sourced industry summary.",
+            summary="A routine economic development.",
+            tags=("industry",),
+        ),
+        PendingReviewDraft(
+            draft_id=42,
+            account_key="korea_news",
+            channel="x",
+            variant_index=0,
+            created_at=now - timedelta(hours=2),
+            title="Regional policy briefing",
+            body="Officials released a short public statement.",
+            summary="National security agencies are reviewing a missile launch.",
+            tags=("security", "defense"),
+        ),
+        PendingReviewDraft(
+            draft_id=44,
+            account_key="korea_news",
+            channel="x",
+            variant_index=2,
+            created_at=now - timedelta(minutes=30),
+            title="Routine transport briefing",
+            body="A draft mentions national security and missile defense.",
+            summary="A local road maintenance notice.",
+            tags=("transport",),
+        ),
+    )
+    client = TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(
+                drafts=drafts
+            ),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+    home = client.get("/console/")
+    pending = client.get("/console/reviews/pending")
+
+    assert home.status_code == 200
+    assert pending.status_code == 200
+    assert "안보 추가 확인" in home.text
+    assert "안보 추가 확인" in pending.text
+    assert re.search(r"<p>추가 확인 필요</p>\s*<strong>1</strong>", home.text)
+    assert pending.text.index("Regional policy briefing") < pending.text.index(
+        "Manufacturing investment update"
+    )
+    assert "대기열 1 · 초안 42 · 버전 0 · korea_news" in pending.text
+
+
+def test_console_home_returns_service_unavailable_for_schema_errors() -> None:
+    """Do not report a healthy HTTP response when the console database is unusable."""
+
+    def raise_schema_error(**_):
+        raise DatabaseSchemaError("database schema is outdated")
+
+    response = TestClient(
+        create_app(
+            pending_review_drafts_lister=raise_schema_error,
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    ).get("/console/")
+
+    assert response.status_code == 503
+    assert "데이터 연결이 필요합니다" in response.text
+
+
+def test_console_utility_shows_redacted_database_identifier() -> None:
+    """Expose the active database without rendering credentials in the utility bar."""
+
+    response = _build_empty_console_client().get(
+        "/console/",
+        params={
+            "database_url": "postgresql+psycopg://operator:secret@db.internal/operator",  # pragma: allowlist secret
+        },
+    )
+
+    assert response.status_code == 200
+    utility = re.search(
+        r'<header class="console-utility">(.*?)</header>',
+        response.text,
+        re.DOTALL,
+    )
+    assert utility is not None
+    assert "postgresql · db.internal/operator" in utility.group(1)
+    assert "operator:secret" not in utility.group(1)
+
+
 def test_console_shell_root_redirects_to_canonical_landing() -> None:
     client = TestClient(create_app())
 
@@ -598,7 +699,7 @@ def test_console_shell_root_redirects_to_canonical_landing() -> None:
 
 
 def test_console_shell_landing_page_renders_navigation_and_context() -> None:
-    client = TestClient(create_app())
+    client = _build_empty_console_client()
 
     response = client.get(
         "/console/",
@@ -1841,6 +1942,17 @@ def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
     assert f"/console/publish-jobs/{published_job_id}" in response.text
     assert f"/console/reviews/{scheduled_draft_id}" in response.text
     assert 'data-label="전달 상태"' in response.text
+
+    limited_response = client.get(
+        "/console/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+            "limit": 1,
+        },
+    )
+    assert limited_response.status_code == 200
+    assert "Queued AI brief" in limited_response.text
+    assert "Published finance brief" not in limited_response.text
 
 
 def test_publish_jobs_detail_page_renders_published_timeline(tmp_path: Path) -> None:

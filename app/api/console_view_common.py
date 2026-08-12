@@ -8,8 +8,11 @@ from datetime import datetime
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import Request
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.api.console_constants import _CONTEXT_QUERY_KEYS, _KOREAN_LABELS
+from app.storage.database import resolve_database_url
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,8 +49,28 @@ def _build_console_context(
         "operator_context": {
             "config_dir": config_dir,
             "database_url": database_url,
+            "database_label": _format_database_label(database_url),
         },
     }
+
+
+def _format_database_label(database_url: str | None) -> str:
+    """Return an operationally useful database identifier without credentials."""
+
+    try:
+        url = make_url(resolve_database_url(database_url))
+        driver = url.drivername.split("+", maxsplit=1)[0]
+        if driver == "sqlite":
+            identifier = url.database or ":memory:"
+        else:
+            host = url.host or "호스트 미지정"
+            if url.port is not None:
+                host = f"{host}:{url.port}"
+            database = (url.database or "").lstrip("/")
+            identifier = f"{host}/{database}" if database else host
+        return f"{driver} · {identifier}"
+    except (ArgumentError, ValueError):
+        return "사용자 지정 데이터베이스"
 
 
 def _build_console_nav_items(
