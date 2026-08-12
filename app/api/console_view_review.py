@@ -17,6 +17,16 @@ from app.connectors.publishers.resolver import channel_requires_manual_publish_h
 from app.services.prompt_renderer import build_domain_sensitivity
 
 
+def _build_pending_review_sensitivity(row):
+    """Build the same brief-based sensitivity signal used by review detail."""
+
+    return build_domain_sensitivity(
+        title=row.title,
+        summary=row.summary,
+        tags=tuple(row.tags),
+    )
+
+
 def _build_pending_review_metrics(rows) -> list[dict[str, str]]:
     account_keys = sorted({row.account_key for row in rows})
     channels = sorted({row.channel.upper() for row in rows if row.channel})
@@ -52,11 +62,18 @@ def _build_pending_review_row(
     query_params: dict[str, str],
     position: int,
     row,
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
+    sensitivity = _build_pending_review_sensitivity(row)
     return {
         "queue_position": str(position),
         "draft_label": f"초안 {row.draft_id}",
         "variant_label": f"버전 {row.variant_index}",
+        "review_flag": (
+            f"{_humanize_label(sensitivity.domain)} 추가 확인"
+            if sensitivity.is_high_risk
+            else "일반 검토"
+        ),
+        "needs_attention": sensitivity.is_high_risk,
         "account_key": row.account_key,
         "channel": row.channel.upper(),
         "created_at": _format_datetime(row.created_at, none_label="기록 없음"),

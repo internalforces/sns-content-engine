@@ -157,6 +157,7 @@ def get_console_home(
         request=request,
         name="console/index.html",
         context=context,
+        status_code=503 if home_data_error is not None else 200,
     )
 
 
@@ -268,6 +269,7 @@ def get_console_publish_jobs(
         account_key=account_key,
         channel=channel,
         limit=limit,
+        prioritize_active=True,
     )
     context = _build_console_context(
         request,
@@ -678,9 +680,15 @@ def get_console_pending_review(
         config_dir=config_dir,
         database_url=database_url,
     )
+    ordered_drafts = tuple(
+        sorted(
+            result.drafts,
+            key=lambda row: (row.created_at, row.draft_id),
+        )
+    )
     context.update(
         {
-            "pending_review_metrics": _build_pending_review_metrics(result.drafts),
+            "pending_review_metrics": _build_pending_review_metrics(ordered_drafts),
             "pending_review_scheduler_href": _append_query_params(
                 str(request.url_for("console_scheduler")), query_params
             ),
@@ -691,7 +699,7 @@ def get_console_pending_review(
                     position,
                     row,
                 )
-                for position, row in enumerate(result.drafts, start=1)
+                for position, row in enumerate(ordered_drafts, start=1)
             ],
         }
     )

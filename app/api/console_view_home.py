@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import Request
 
 from app.api.console_view_common import _append_query_params, _humanize_label
-from app.services.prompt_renderer import build_domain_sensitivity
+from app.api.console_view_review import _build_pending_review_sensitivity
 
 
 def _format_wait_duration(created_at: datetime, *, now: datetime) -> str:
@@ -34,7 +34,7 @@ def _build_home_review_rows(
 
     items: list[dict[str, str | bool]] = []
     for row in sorted(rows, key=lambda item: item.created_at)[:limit]:
-        sensitivity = build_domain_sensitivity(title=row.title, summary=row.body, tags=())
+        sensitivity = _build_pending_review_sensitivity(row)
         items.append(
             {
                 "draft_id": str(row.draft_id),
@@ -61,7 +61,7 @@ def _build_home_summary(rows, latest_run) -> list[dict[str, str]]:
     """Build the small set of review-first home summary values."""
 
     sensitive_count = sum(
-        build_domain_sensitivity(title=row.title, summary=row.body, tags=()).is_high_risk
+        _build_pending_review_sensitivity(row).is_high_risk
         for row in rows
     )
     return [

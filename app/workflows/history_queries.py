@@ -286,6 +286,7 @@ def list_publish_jobs(
     account_key: str | None = None,
     channel: str | None = None,
     limit: int = 50,
+    prioritize_active: bool = False,
 ) -> PublishJobListResult:
     owned_engine = None
     if session_factory is None:
@@ -324,6 +325,7 @@ def list_publish_jobs(
                     account_key=account_key,
                     channel=channel,
                     limit=limit,
+                    prioritize_active=prioritize_active,
                 )
             )
     finally:
