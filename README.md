@@ -102,7 +102,7 @@ uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 | `config/providers.yaml` | LLM route 순서와 모델 override |
 | `.env` | API 키, DB URL, 게시자 credential bundle |
 
-`.env.example`을 시작점으로 사용하되 실제 키는 Git에 커밋하지 않습니다. 생성 provider 자격 증명이 없고 별도 route 설정도 없으면 개발 환경에서 deterministic fake provider를 사용합니다. `providers.yaml`이 있으면 route를 우선순위대로 시도하므로, 명시적으로 `fake` route를 활성화한 경우에는 live provider 실패 후 fake 생성으로 이어질 수 있습니다. 운영에서 live 실패를 오류로 중단하려면 `fake` route를 활성화하지 마세요. 설정된 route가 모두 실패하면 오류를 반환합니다.
+`.env.example`을 시작점으로 사용하되 실제 키는 Git에 커밋하지 않습니다. route 해석 결과 사용 가능한 `draft_generate` provider가 없으면 deterministic fake provider를 사용합니다. 따라서 `providers.yaml`의 live route가 자격 증명 누락으로 모두 제외되고 환경 자동 탐색에서도 지원 provider를 찾지 못하면 fake 초안을 생성합니다. 현재 resolver는 이 자격 증명 누락 경로에서 fail-closed하지 않으므로 운영 실행 전에 필요한 환경변수가 실제로 설정됐는지 별도로 확인해야 합니다. 사용 가능한 route가 여러 개면 우선순위대로 시도하며, 명시적으로 `fake` route를 활성화한 경우에는 live provider 실패 후 fake 생성으로 이어질 수 있습니다. live provider의 실행 실패를 오류로 중단하려면 `fake` route를 활성화하지 마세요. 실행된 route가 모두 실패하면 오류를 반환합니다.
 
 예제 설정은 다음 디렉터리에 있습니다.
 
