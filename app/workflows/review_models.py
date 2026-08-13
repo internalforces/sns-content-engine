@@ -60,6 +60,8 @@ class PendingReviewDraft:
     created_at: datetime
     title: str
     body: str
+    summary: str | None = None
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

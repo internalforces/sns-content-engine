@@ -73,8 +73,13 @@ def list_pending_review_drafts(
                     created_at=draft.created_at,
                     title=draft.content_brief.title,
                     body=draft.body,
+                    summary=draft.content_brief.summary,
+                    tags=tuple(draft.content_brief.tags),
                 )
-                for draft in drafts
+                for draft in sorted(
+                    drafts,
+                    key=lambda draft: (draft.created_at, draft.id),
+                )
             )
     finally:
         _dispose_engine(owned_engine)

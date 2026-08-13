@@ -1,13 +1,14 @@
 {% extends "base.html" %}
+{% from "console/_macros.html" import summary_item %}
 
 {% block content %}
-  <section class="console-card">
+  <section class="data-list-section">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">아티클 현황</p>
         <h2>저장된 아티클 및 보강 상태</h2>
       </div>
-      <span class="console-badge">작업 03</span>
+      <span class="console-badge">읽기 전용</span>
     </div>
     <p class="console-card-copy">
       이 페이지는 읽기 전용으로 유지되며, 운영자 API 뒤에서 쓰는 동일한 아티클 상태 헬퍼를 재사용합니다. 별도 데이터 경로를 추가하지 않고도 브라우저에서 저장된 소스 항목과 보강 상태를 확인할 수 있습니다.
@@ -17,73 +18,40 @@
     </p>
   </section>
 
-  <section class="console-metric-grid">
+  <section class="summary-strip" aria-label="아티클 현황 요약">
     {% for metric in article_metrics %}
-      <article class="console-card console-metric-card">
-        <p class="console-metric-label">{{ metric.label }}</p>
-        <p class="console-metric-value">{{ metric.value }}</p>
-        <p class="console-card-copy">{{ metric.detail }}</p>
-      </article>
+      {{ summary_item(metric) }}
     {% endfor %}
   </section>
 
-  <section class="console-card">
+  <section class="data-list-section" aria-labelledby="article-list-heading">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">아티클 행</p>
-        <h2>최근 저장된 소스 항목</h2>
+        <h2 id="article-list-heading">최근 저장된 소스 항목</h2>
       </div>
     </div>
     {% if article_rows %}
-      <div class="console-table-wrap">
-        <table class="console-table">
-          <thead>
-            <tr>
-              <th>소스</th>
-              <th>아티클</th>
-              <th>시각</th>
-              <th>보강</th>
-              <th>실패</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in article_rows %}
-              <tr>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.source_name }}</strong>
-                    <span>{{ row.source_item_label }}</span>
-                    <span>{{ row.article_enrichment_label }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.title }}</strong>
-                    <a class="console-link" href="{{ row.original_url }}">{{ row.original_url }}</a>
-                    {% if row.article_url %}
-                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
-                    {% else %}
-                      <span>해결된 아티클 URL이 아직 기록되지 않았습니다.</span>
-                    {% endif %}
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <span>발행 {{ row.published_at }}</span>
-                    <span>발견 {{ row.discovered_at }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.enrichment_state }}</strong>
-                    <span>{{ row.stage_summary }}</span>
-                  </div>
-                </td>
-                <td>{{ row.last_failure_message }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="data-list">
+        {% for row in article_rows %}
+          <div class="data-list-row">
+            <span>
+              <span class="visually-hidden">제목: </span>
+              <strong>{{ row.title }}</strong>
+              <small>{{ row.source_name }} · {{ row.source_item_label }} · {{ row.article_enrichment_label }}</small>
+              <a class="console-link" href="{{ row.original_url }}">{{ row.original_url }}</a>
+              {% if row.article_url %}
+                <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
+              {% else %}
+                <small>해결된 아티클 URL이 아직 기록되지 않았습니다.</small>
+              {% endif %}
+            </span>
+            <span data-label="발행 시각"><span class="visually-hidden">발행 시각: </span>{{ row.published_at }}</span>
+            <span data-label="발견 시각"><span class="visually-hidden">발견 시각: </span>{{ row.discovered_at }}</span>
+            <span data-label="보강 상태"><span class="visually-hidden">보강 상태: </span><strong>{{ row.enrichment_state }}</strong><small>{{ row.stage_summary }}</small></span>
+            <span data-label="실패"><span class="visually-hidden">실패: </span>{{ row.last_failure_message }}</span>
+          </div>
+        {% endfor %}
       </div>
     {% else %}
       <p class="console-empty">현재 운영 콘텍스트에 표시할 저장된 아티클 행이 아직 없습니다.</p>

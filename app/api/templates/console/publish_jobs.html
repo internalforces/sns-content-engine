@@ -1,90 +1,50 @@
 {% extends "base.html" %}
+{% from "console/_macros.html" import summary_item %}
 
 {% block content %}
-  <section class="console-card">
+  <section class="data-list-section">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">발행 현황</p>
         <h2>대기 중이거나 완료된 발행 작업</h2>
       </div>
-      <span class="console-badge">작업 06</span>
+      <span class="console-badge">발행 현황</span>
     </div>
     <p class="console-card-copy">
       상태 {{ publish_job_filters.state }}, 계정 {{ publish_job_filters.account_key }}, 채널 {{ publish_job_filters.channel }} 조건으로 발행 작업을 최대 {{ publish_job_filters.limit }}개까지 보여줍니다.
     </p>
   </section>
 
-  <section class="console-metric-grid">
+  <section class="summary-strip" aria-label="발행 현황 요약">
     {% for metric in publish_job_metrics %}
-      <article class="console-card console-metric-card">
-        <p class="console-metric-label">{{ metric.label }}</p>
-        <p class="console-metric-value">{{ metric.value }}</p>
-        <p class="console-card-copy">{{ metric.detail }}</p>
-      </article>
+      {{ summary_item(metric) }}
     {% endfor %}
   </section>
 
-  <section class="console-card">
+  <section class="data-list-section" aria-labelledby="publish-list-heading">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">발행 대기열</p>
-        <h2>저장된 운영자 발행 이력</h2>
+        <h2 id="publish-list-heading">저장된 운영자 발행 이력</h2>
       </div>
     </div>
     {% if publish_job_rows %}
-      <div class="console-table-wrap">
-        <table class="console-table">
-          <thead>
-            <tr>
-              <th>발행 작업</th>
-              <th>초안</th>
-              <th>전달 상태</th>
-              <th>시각</th>
-              <th>출력</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in publish_job_rows %}
-              <tr>
-                <td>
-                  <div class="console-stack">
-                    <a class="console-link" href="{{ row.detail_href }}">{{ row.publish_job_label }}</a>
-                    <span>{{ row.account_key }} / {{ row.channel }}</span>
-                    <span>{{ row.brief_label }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <a class="console-link" href="{{ row.review_detail_href }}">{{ row.draft_label }}</a>
-                    <span>{{ row.variant_label }} / {{ row.draft_state }}</span>
-                    <strong>{{ row.brief_title }}</strong>
-                    <span>{{ row.source_title }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.state }}</strong>
-                    <span>시도 {{ row.attempt_count }}회</span>
-                    <span>{{ row.last_error }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <span>예약 {{ row.scheduled_for }}</span>
-                    <span>발행 {{ row.published_at }}</span>
-                    <span>생성 {{ row.created_at }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <span>외부 게시물 {{ row.external_post_id }}</span>
-                    <span>업데이트 {{ row.updated_at }}</span>
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="data-list">
+        {% for row in publish_job_rows %}
+          <div class="data-list-row{% if row.state in ('예약됨', '발행 중') %} data-list-row-open{% endif %}">
+            <span>
+              <span class="visually-hidden">제목: </span>
+              <strong>{{ row.brief_title }}</strong>
+              <small>{{ row.source_title }} · {{ row.brief_label }}</small>
+              <a class="console-link" href="{{ row.review_detail_href }}">{{ row.draft_label }} · {{ row.variant_label }} / {{ row.draft_state }}</a>
+            </span>
+            <span data-label="전달 상태"><span class="visually-hidden">전달 상태: </span><strong>{{ row.state }}</strong><small>시도 {{ row.attempt_count }}회 · {{ row.last_error }}</small></span>
+            <span data-label="채널"><span class="visually-hidden">채널: </span>{{ row.channel }}<small>{{ row.account_key }}</small></span>
+            <span data-label="시각"><span class="visually-hidden">시각: </span>예약 {{ row.scheduled_for }}<small>발행 {{ row.published_at }} · 생성 {{ row.created_at }}</small></span>
+            <span data-label="출력"><span class="visually-hidden">출력: </span>외부 게시물 {{ row.external_post_id }}<small>업데이트 {{ row.updated_at }}</small></span>
+            <a class="console-link" data-label="발행 작업" href="{{ row.detail_href }}"><span class="visually-hidden">발행 작업: </span>{{ row.publish_job_label }}</a>
+          </div>
+        {% endfor %}
       </div>
     {% else %}
       <p class="console-empty">현재 운영 콘텍스트에 저장된 발행 작업이 아직 없습니다.</p>

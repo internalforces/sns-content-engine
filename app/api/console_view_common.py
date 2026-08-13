@@ -8,8 +8,11 @@ from datetime import datetime
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import Request
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.api.console_constants import _CONTEXT_QUERY_KEYS, _KOREAN_LABELS
+from app.storage.database import resolve_database_url
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +40,7 @@ def _build_console_context(
         "page_title": page_title,
         "page_description": page_description,
         "console_asset_css_url": str(request.url_for("console_static", path="/console.css")),
+        "console_asset_js_url": str(request.url_for("console_static", path="/console.js")),
         "console_nav_items": _build_console_nav_items(
             request,
             query_params,
@@ -45,8 +49,28 @@ def _build_console_context(
         "operator_context": {
             "config_dir": config_dir,
             "database_url": database_url,
+            "database_label": _format_database_label(database_url),
         },
     }
+
+
+def _format_database_label(database_url: str | None) -> str:
+    """Return an operationally useful database identifier without credentials."""
+
+    try:
+        url = make_url(resolve_database_url(database_url))
+        driver = url.drivername.split("+", maxsplit=1)[0]
+        if driver == "sqlite":
+            identifier = url.database or ":memory:"
+        else:
+            host = url.host or "호스트 미지정"
+            if url.port is not None:
+                host = f"{host}:{url.port}"
+            database = (url.database or "").lstrip("/")
+            identifier = f"{host}/{database}" if database else host
+        return f"{driver} · {identifier}"
+    except (ArgumentError, ValueError):
+        return "사용자 지정 데이터베이스"
 
 
 def _build_console_nav_items(
@@ -55,49 +79,23 @@ def _build_console_nav_items(
     *,
     active_nav_key: str,
 ) -> list[ConsoleNavItem]:
+    nav_specs = (
+        ("검토 홈", "console_home", "home"),
+        ("전체 검토 큐", "console_pending_review", "pending_review"),
+        ("실행", "console_dashboard", "dashboard"),
+        ("아티클", "console_articles", "articles"),
+        ("발행", "console_publish_jobs", "publish_jobs"),
+        ("스케줄러", "console_scheduler", "scheduler"),
+    )
     return [
         ConsoleNavItem(
-            label="콘솔 홈",
-            description="브라우저 콘솔의 공통 셸, 운영 콘텍스트, 진행 방향을 보여줍니다.",
+            label=label,
+            description="운영 콘솔 화면",
             status="준비됨",
-            href=_append_query_params(str(request.url_for("console_home")), query_params),
-            active=active_nav_key == "home",
-        ),
-        ConsoleNavItem(
-            label="실행 및 실패",
-            description="최근 파이프라인 실행, 기술 실패, 정책상 건너뜀을 읽기 전용으로 확인합니다.",
-            status="준비됨",
-            href=_append_query_params(str(request.url_for("console_dashboard")), query_params),
-            active=active_nav_key == "dashboard",
-        ),
-        ConsoleNavItem(
-            label="아티클",
-            description="공용 운영자 아티클 상태 헬퍼를 기반으로 한 읽기 전용 상태 표입니다.",
-            status="준비됨",
-            href=_append_query_params(str(request.url_for("console_articles")), query_params),
-            active=active_nav_key == "articles",
-        ),
-        ConsoleNavItem(
-            label="검토 대기",
-            description="현재 검토 대기열과 수동 검토용 초안 상세 작업공간을 제공합니다.",
-            status="준비됨",
-            href=_append_query_params(str(request.url_for("console_pending_review")), query_params),
-            active=active_nav_key == "pending_review",
-        ),
-        ConsoleNavItem(
-            label="발행 작업",
-            description="발행 대기열, 전달 상태, 수동 업로드 결과 기록이 가능한 개별 작업 화면을 제공합니다.",
-            status="준비됨",
-            href=_append_query_params(str(request.url_for("console_publish_jobs")), query_params),
-            active=active_nav_key == "publish_jobs",
-        ),
-        ConsoleNavItem(
-            label="스케줄러",
-            description="뉴스 수집, 발견만 확인, 저장, 기사 보강, 백필, 드라이런 우선 발행을 실행하는 제어 화면입니다.",
-            status="준비됨",
-            href=_append_query_params(str(request.url_for("console_scheduler")), query_params),
-            active=active_nav_key == "scheduler",
-        ),
+            href=_append_query_params(str(request.url_for(route_name)), query_params),
+            active=active_nav_key == nav_key,
+        )
+        for label, route_name, nav_key in nav_specs
     ]
 
 
