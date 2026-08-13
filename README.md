@@ -102,7 +102,7 @@ uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 | `config/providers.yaml` | LLM route 순서와 모델 override |
 | `.env` | API 키, DB URL, 게시자 credential bundle |
 
-`.env.example`을 시작점으로 사용하되 실제 키는 Git에 커밋하지 않습니다. 생성 provider 자격 증명이 없으면 개발 환경에서 deterministic fake provider를 사용합니다. `providers.yaml`에 지정한 live provider가 선택된 뒤 실패한 경우에는 fake 출력으로 조용히 대체하지 않고 오류를 반환합니다.
+`.env.example`을 시작점으로 사용하되 실제 키는 Git에 커밋하지 않습니다. 생성 provider 자격 증명이 없고 별도 route 설정도 없으면 개발 환경에서 deterministic fake provider를 사용합니다. `providers.yaml`이 있으면 route를 우선순위대로 시도하므로, 명시적으로 `fake` route를 활성화한 경우에는 live provider 실패 후 fake 생성으로 이어질 수 있습니다. 운영에서 live 실패를 오류로 중단하려면 `fake` route를 활성화하지 마세요. 설정된 route가 모두 실패하면 오류를 반환합니다.
 
 예제 설정은 다음 디렉터리에 있습니다.
 
@@ -139,7 +139,7 @@ uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 - 실발행은 환경변수로 publisher 자격 증명을 제공하고 `--live`를 명시해야 합니다.
 - Ghost와 LinkedIn은 수동 업로드 후 결과를 기록하는 handoff 경로입니다.
 - Threads는 계정 설정과 credential bundle이 모두 유효할 때만 live 경로를 사용하며, 그 외에는 수동 handoff로 돌아갑니다.
-- 실패한 발행 작업은 자동 재시도하지 않습니다. 원인을 수정한 뒤 승인된 초안을 다시 예약합니다.
+- 실패한 발행 작업은 자동 재시도하지 않습니다. 예약 발행 X와 live Threads는 원인을 수정한 뒤 같은 승인 초안을 다시 예약해 새 작업을 만듭니다. Ghost, LinkedIn, manual-fallback Threads의 실패한 수동 handoff는 종료 상태이므로, 수정된 새 초안을 생성·승인해 새 handoff를 만듭니다.
 - 원격 서버에서는 FastAPI 앱을 `127.0.0.1:8000`에 유지하고 Caddy와 Basic Auth 경계 뒤에서 제공합니다. 앱을 공개 `0.0.0.0` 주소로 직접 노출하지 않습니다.
 
 배포나 재시작 후에는 보호된 edge 경로와 dry-run 동작을 확인합니다.
