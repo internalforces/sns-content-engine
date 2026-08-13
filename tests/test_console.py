@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+import os
+import re
+import subprocess
+from datetime import datetime, timedelta, timezone
 from itertools import count
 from pathlib import Path
 from textwrap import dedent
+from typing import get_type_hints
 
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.api.console import _build_manual_publish_action_feedback
+from app.api.console_view_home import _format_wait_duration
+from app.config import ConfigError
 from app.domain import DuplicateReason, SourceDiscoveryFailure, SourceItemCandidate
 from app.scheduler import (
     BackfillChannelResult,
@@ -23,6 +31,7 @@ from app.storage import (
     ArticleEnrichmentRepository,
     ContentBrief,
     ContentBriefRepository,
+    DatabaseSchemaError,
     DraftVariant,
     DraftVariantRepository,
     DraftVariantState,
@@ -47,6 +56,7 @@ from app.workflows import (
     EnrichArticleOutcome,
     EnrichArticlesResult,
     IngestSourcesResult,
+    PipelineRunHistoryResult,
     RunLocalPipelineResult,
     SourceIngestOutcome,
 )
@@ -59,6 +69,614 @@ from app.workflows.review_queue import (
 )
 
 _DRAFT_SOURCE_COUNTER = count()
+
+
+def _run_console_motion_asset(*, stories: list[dict[str, int | bool]], marquee_count: int) -> dict[str, bool]:
+    """Run the served motion module against the smallest browser/GSAP contract."""
+
+    asset_path = Path(__file__).parents[1] / "app/api/static/console.js"
+    harness = dedent(
+        """
+        const fs = require("node:fs");
+        const scenario = JSON.parse(process.argv[1]);
+        const classes = new Set();
+        const makeTrigger = () => ({ kill: () => {} });
+        const makeAnimation = () => ({ kill: () => {}, scrollTrigger: makeTrigger() });
+        const stories = scenario.stories.map((story) => ({
+          querySelector: () => story.has_heading ? {} : null,
+          querySelectorAll: () => Array.from({ length: story.card_count }, () => ({})),
+        }));
+        global.document = {
+          documentElement: {
+            classList: {
+              add: (name) => classes.add(name),
+              remove: (name) => classes.delete(name),
+            },
+          },
+          querySelectorAll: (selector) => {
+            if (selector === "[data-review-story]") return stories;
+            if (selector === "[data-marquee]") {
+              return Array.from({ length: scenario.marquee_count }, () => ({}));
+            }
+            return [];
+          },
+        };
+        global.window = {
+          matchMedia: () => ({ matches: false }),
+          ScrollTrigger: { create: makeTrigger },
+          gsap: {
+            registerPlugin: () => {},
+            matchMedia: () => ({ add: (_query, setup) => setup(), revert: () => {} }),
+            fromTo: makeAnimation,
+            to: makeAnimation,
+            set: () => {},
+          },
+        };
+        eval(fs.readFileSync(process.env.CONSOLE_MOTION_PATH, "utf8"));
+        process.stdout.write(JSON.stringify({
+          ready: classes.has("console-motion-ready"),
+        }));
+        """
+    )
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            harness,
+            json.dumps(
+                {
+                    "stories": [
+                        {
+                            "has_heading": bool(story["has_heading"]),
+                            "card_count": int(story["card_count"]),
+                        }
+                        for story in stories
+                    ],
+                    "marquee_count": marquee_count,
+                }
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        env={**os.environ, "CONSOLE_MOTION_PATH": str(asset_path)},
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def _build_empty_console_client() -> TestClient:
+    return TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(drafts=()),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+
+def _build_console_client_with_two_pending_drafts() -> TestClient:
+    now = datetime.now(timezone.utc)
+    drafts = (
+        PendingReviewDraft(
+            draft_id=42,
+            account_key="korea_news",
+            channel="x",
+            variant_index=0,
+            created_at=now - timedelta(hours=2),
+            title="Korea policy briefing",
+            body="Draft A",
+        ),
+        PendingReviewDraft(
+            draft_id=43,
+            account_key="japan_news",
+            channel="ghost",
+            variant_index=0,
+            created_at=now - timedelta(hours=1),
+            title="Japan industry update",
+            body="Draft B",
+        ),
+    )
+    return TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(
+                drafts=drafts
+            ),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+
+def test_console_home_renders_single_primary_review_action() -> None:
+    """Catch card-heavy home markup that buries the review-first action."""
+
+    response = _build_console_client_with_two_pending_drafts().get("/console/")
+
+    assert response.status_code == 200
+    assert "검토가 필요한 것만" in response.text
+    assert response.text.count("첫 검토 시작") == 1
+    assert 'class="priority-queue"' in response.text
+    assert "작업 01" not in response.text
+
+
+def test_pending_review_rows_include_mobile_labels() -> None:
+    """Catch queue rows that lose their responsive, labeled list structure."""
+
+    response = _build_console_client_with_two_pending_drafts().get(
+        "/console/reviews/pending"
+    )
+
+    assert response.status_code == 200
+    assert 'data-label="채널"' in response.text
+    assert 'data-label="확인 사항"' in response.text
+    assert 'class="queue-row-link"' in response.text
+
+
+def test_console_monitoring_rows_expose_field_names_without_mobile_css() -> None:
+    """Make desktop list cells understandable to assistive technology as well as mobile CSS."""
+
+    client = _build_console_client_with_two_pending_drafts()
+    home = client.get("/console/")
+    pending = client.get("/console/reviews/pending")
+
+    for label in ("초안 제목", "채널", "확인 사항", "대기 시간"):
+        assert f'<span class="visually-hidden">{label}: </span>' in home.text
+    for label in ("초안 제목", "채널", "확인 사항", "생성 시각"):
+        assert f'<span class="visually-hidden">{label}: </span>' in pending.text
+    home_row = home.text.split('class="priority-row"', maxsplit=1)[1].split("</a>", maxsplit=1)[0]
+    home_row_text = re.sub(r"<[^>]+>", " ", home_row)
+    assert home_row_text.index("초안 제목:") < home_row_text.index("채널:")
+    assert home_row_text.index("채널:") < home_row_text.index("확인 사항:")
+    assert home_row_text.index("확인 사항:") < home_row_text.index("대기 시간:")
+    templates = "\n".join(
+        (Path(__file__).parents[1] / "app/api/templates/console" / name).read_text()
+        for name in ("articles.html", "dashboard.html", "publish_jobs.html")
+    )
+    assert templates.count('class="visually-hidden"') >= 20
+    assert '<span class="visually-hidden">제목: </span>' in templates
+    assert '<span class="visually-hidden">상태: </span>' in templates
+    assert '<span class="visually-hidden">발행 시각: </span>' in templates
+    assert 'aria-label="제목"' not in templates
+    assert 'aria-label="상태"' not in templates
+    assert 'aria-label="발행 시각"' not in templates
+
+
+def test_manual_publish_feedback_annotation_includes_nullable_action() -> None:
+    """Keep the feedback contract aligned with unsupported/global form submissions."""
+
+    feedback = _build_manual_publish_action_feedback(
+        kind="error",
+        action=None,
+        action_label="수동 발행 기록",
+        message="지원되지 않는 작업입니다.",
+    )
+
+    assert feedback["action"] is None
+    assert get_type_hints(_build_manual_publish_action_feedback)["return"] == dict[str, str | None]
+
+
+def test_review_detail_explains_that_edit_text_is_not_saved_by_approval_or_rejection() -> None:
+    """Keep no-JavaScript review actions explicit about their independent form submissions."""
+
+    template = (Path(__file__).parents[1] / "app/api/templates/console/review_detail.html").read_text()
+
+    assert "각 작업은 서로 독립적입니다." in template
+    assert "승인이나 반려를 선택해도 입력 중인 본문은 저장되지 않습니다." in template
+
+
+def test_console_shell_uses_review_first_landmarks() -> None:
+    """Catch a console shell that obscures review navigation or workspace landmarks."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    assert 'class="console-rail"' in response.text
+    assert 'aria-label="운영 콘솔 탐색"' in response.text
+    assert 'class="console-workspace"' in response.text
+    assert "작업 01" not in response.text
+
+
+def test_console_shell_pins_verified_motion_assets_and_restricts_content_sources() -> None:
+    """Keep third-party motion executable only from the pinned, integrity-checked files."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    gsap = (
+        '<script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" '
+        'integrity="sha384-HOvlOYPIs/zjoIkWUGXkVmXsjr8GuZLV+Q+rcPwmJOVZVpvTSXQChiN4t9Euv9Vc" '
+        'crossorigin="anonymous"></script>'
+    )
+    scroll_trigger = (
+        '<script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/ScrollTrigger.min.js" '
+        'integrity="sha384-P8VzCVnT9NBUkMrpcIZrJbA7EBjJvh/fJS6PmP+4nLIM284DtsImIv8D0fFjIkeh" '
+        'crossorigin="anonymous"></script>'
+    )
+    assert gsap in response.text
+    assert scroll_trigger in response.text
+    assert '/console/static/console.js"></script>' in response.text
+    assert response.text.index(gsap) < response.text.index(scroll_trigger) < response.text.index("/console/static/console.js")
+    assert (
+        'default-src \'self\'; script-src \'self\' https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/; '
+        'style-src \'self\'; img-src \'self\' https://picsum.photos https://fastly.picsum.photos; '
+        'font-src \'self\'; connect-src \'self\'; form-action \'self\'; base-uri \'self\'; object-src \'none\''
+    ) in response.text
+
+
+def test_console_mobile_shell_keeps_current_page_and_safety_state_visible_when_closed() -> None:
+    """Keep the contextual mobile header useful without opening native details navigation."""
+
+    response = _build_empty_console_client().get(
+        "/console/",
+        params={"config_dir": "/tmp/operator-config", "database_url": "sqlite:///operator.db"},
+    )
+
+    assert response.status_code == 200
+    assert '<div class="console-mobile-context"' in response.text
+    assert "현재 페이지 운영 콘솔" in response.text
+    assert "기본 발행은 드라이런" in response.text
+    assert "수동 검토 필수" in response.text
+    assert response.text.index('class="console-mobile-context"') < response.text.index('class="console-mobile-nav"')
+    assert "config_dir=%2Ftmp%2Foperator-config" in response.text
+    assert "database_url=sqlite%3A%2F%2F%2Foperator.db" in response.text
+
+
+def test_console_stylesheet_exposes_minimal_tokens() -> None:
+    """Catch a console stylesheet that loses the neutral, responsive shell tokens."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert "--ink: #151713" in response.text
+    assert "--ivory: #f2f0e9" in response.text
+    assert "--sage: #738274" in response.text
+    assert "overflow-x: clip" in response.text
+    assert "prefers-reduced-motion: reduce" in response.text
+
+
+def test_console_stylesheet_keeps_normal_text_and_muted_buttons_aa_safe() -> None:
+    """Prevent low-contrast sage text/buttons from returning to the five-color console."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+
+    assert "--muted: var(--ink);" in stylesheet
+    assert re.search(
+        r"\.console-button-muted\s*\{\s*background: var\(--sage-tint\);\s*"
+        r"border-color: var\(--ink\);\s*color: var\(--ink\);",
+        stylesheet,
+    )
+    assert re.search(
+        r"\.is-destructive \.console-button\s*\{\s*border-color: var\(--ink\);\s*"
+        r"background: var\(--sage-tint\);\s*color: var\(--ink\);",
+        stylesheet,
+    )
+    assert ".visually-hidden" in stylesheet
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\\b", re.sub(r"#151713|#f2f0e9|#738274|#dfe4dc|#cbc9c0", "", stylesheet))
+
+
+def test_console_rail_stays_sticky_and_scrollable_without_stretching_long_pages() -> None:
+    """Keep desktop navigation and safety state available beside long detail pages."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    rail_match = re.search(
+        r"\.console-rail\s*\{(?P<rules>[^}]*display: flex;[^}]*)\}", stylesheet
+    )
+    assert rail_match is not None
+    rail = rail_match.group("rules")
+
+    assert "position: sticky;" in rail
+    assert "align-self: start;" in rail
+    assert "height: 100vh;" in rail
+    assert "max-height: 100vh;" in rail
+    assert "overflow-y: auto;" in rail
+
+
+def test_console_sticky_rail_does_not_inherit_a_hidden_overflow_scroll_ancestor() -> None:
+    """Keep the desktop rail pinned to the viewport after the workspace becomes taller than it."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    body_match = re.search(r"\nbody\s*\{(?P<rules>[^}]*)\}", stylesheet)
+    assert body_match is not None
+    body_rules = body_match.group("rules")
+
+    assert "overflow-x" not in body_rules
+    assert re.search(
+        r"@supports \(overflow: clip\)\s*\{\s*html\s*\{\s*overflow-x: clip;",
+        stylesheet,
+    )
+    assert re.search(
+        r"@supports not \(overflow: clip\)\s*\{[\s\S]*?"
+        r"@media \(min-width: 901px\)\s*\{[\s\S]*?\.console-rail\s*\{\s*"
+        r"position: fixed;\s*top: 0;\s*left: 0;",
+        stylesheet,
+    )
+
+
+def test_legacy_clip_fallback_overrides_sticky_rail_in_css_source_order() -> None:
+    """Keep the unsupported-clip desktop fallback effective after the base sticky rule."""
+
+    stylesheet = TestClient(create_app()).get("/console/static/console.css").text
+    sticky_rail = re.search(
+        r"\.console-rail\s*\{(?P<rules>[^}]*display: flex;[^}]*position: sticky;[^}]*)\}",
+        stylesheet,
+    )
+    workspace = re.search(
+        r"\.console-workspace\s*\{(?P<rules>[^}]*width: min\(100%, 80rem\);[^}]*)\}",
+        stylesheet,
+    )
+    assert sticky_rail is not None
+    assert workspace is not None
+
+    fallback_start = stylesheet.index("@supports not (overflow: clip)")
+    fallback = stylesheet[fallback_start:]
+    fixed_rail = fallback.index("position: fixed;") + fallback_start
+    workspace_offset = fallback.index("grid-column: 2;") + fallback_start
+
+    assert sticky_rail.start() < fixed_rail
+    assert workspace.start() < workspace_offset
+    assert "@media (min-width: 901px)" in fallback
+    modern_clip = re.search(
+        r"@supports \(overflow: clip\)\s*\{\s*html\s*\{\s*overflow-x: clip;\s*\}\s*\}",
+        stylesheet,
+    )
+    assert modern_clip is not None
+    assert modern_clip.start() < fallback_start
+    assert ".console-rail" not in modern_clip.group(0)
+
+
+def test_console_queue_stacks_before_four_columns_clip_workspace() -> None:
+    """Catch queue grids that stay multi-column through the unsafe 601–687px range."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert "@media (max-width: 700px)" in response.text
+    mobile_rules = response.text.split("@media (max-width: 700px)", maxsplit=1)[1]
+    mobile_rules = mobile_rules.split("@media (prefers-reduced-motion: reduce)", maxsplit=1)[0]
+    assert re.search(
+        r"\.priority-row,\s*\.queue-row-link\s*\{\s*"
+        r"grid-template-columns: 1fr;",
+        mobile_rules,
+    )
+    assert re.search(
+        r"\.priority-row \[data-label\]::before,\s*"
+        r"\.queue-row-link \[data-label\]::before,[\s\S]*?"
+        r"content: attr\(data-label\);",
+        mobile_rules,
+    )
+
+
+def test_console_pages_omit_numbered_task_labels(tmp_path: Path) -> None:
+    """Catch operator pages that expose implementation-step badges to users."""
+
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        review_draft = _create_pending_review_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            brief_title="Review-ready brief",
+            body="A review-ready draft body.",
+        )
+        publish_job = _create_publish_job(
+            session,
+            variant_index=1,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            scheduled_for=datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc),
+        )
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'console.db'}"
+    client = TestClient(create_app())
+    paths = (
+        "/console/articles",
+        "/console/dashboard",
+        "/console/reviews/pending",
+        f"/console/reviews/{review_draft.id}",
+        "/console/publish-jobs",
+        f"/console/publish-jobs/{publish_job.id}",
+        "/console/scheduler",
+    )
+
+    for path in paths:
+        response = client.get(path, params={"database_url": database_url})
+
+        assert response.status_code == 200
+        assert re.search(
+            r'<span class="console-badge">\s*작업\s+\d+\s*</span>',
+            response.text,
+        ) is None
+
+
+def test_primary_pages_remove_numbered_labels_and_keep_context(tmp_path: Path) -> None:
+    """Keep primary console pages free of implementation labels and context loss."""
+
+    _build_session_factory(tmp_path)
+    client = TestClient(create_app())
+    params = {
+        "config_dir": "/tmp/operator-config",
+        "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+    }
+
+    for path in (
+        "/console/",
+        "/console/dashboard",
+        "/console/articles",
+        "/console/reviews/pending",
+        "/console/publish-jobs",
+        "/console/scheduler",
+    ):
+        response = client.get(path, params=params)
+
+        assert response.status_code == 200
+        assert not re.search(r"작업\s+0?[1-9]", response.text)
+        assert "config_dir=%2Ftmp%2Foperator-config" in response.text
+        assert "database_url=" in response.text
+
+
+def test_console_stylesheet_uses_only_binding_palette_colors() -> None:
+    """Catch visual styles that introduce a hex color outside the console palette."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+    allowed_colors = {"#151713", "#F2F0E9", "#738274", "#DFE4DC", "#CBC9C0"}
+    used_colors = {
+        color.upper()
+        for color in re.findall(r"#[0-9a-fA-F]{3,8}\b", response.text)
+    }
+
+    assert response.status_code == 200
+    assert used_colors <= allowed_colors
+
+
+def test_format_wait_duration_uses_operator_friendly_units() -> None:
+    """Catch regressions that display review waits in unfriendly raw units."""
+
+    now = datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc)
+
+    assert _format_wait_duration(now - timedelta(minutes=37), now=now) == "37분"
+    assert _format_wait_duration(now - timedelta(hours=2, minutes=14), now=now) == "2시간 14분"
+    assert _format_wait_duration(now - timedelta(days=2, hours=3), now=now) == "2일 3시간"
+
+
+def test_console_home_prioritizes_oldest_review_and_sensitive_copy() -> None:
+    """Catch home pages that hide sensitive drafts or sort newest drafts first."""
+
+    now = datetime.now(timezone.utc)
+
+    def list_pending(*, database_url: str | None = None) -> PendingReviewDraftsResult:
+        return PendingReviewDraftsResult(
+            drafts=(
+                PendingReviewDraft(
+                    draft_id=42,
+                    account_key="korea_news",
+                    channel="x",
+                    variant_index=0,
+                    created_at=now - timedelta(hours=2),
+                    title="Defense ministry reports missile launch",
+                    body="Officials said security agencies are reviewing the launch.",
+                ),
+                PendingReviewDraft(
+                    draft_id=43,
+                    account_key="japan_news",
+                    channel="ghost",
+                    variant_index=0,
+                    created_at=now - timedelta(hours=1),
+                    title="Manufacturing investment update",
+                    body="A sourced industry summary.",
+                ),
+            )
+        )
+
+    client = TestClient(
+        create_app(
+            pending_review_drafts_lister=list_pending,
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+    response = client.get("/console/", params={"database_url": "sqlite:///demo.db"})
+
+    assert response.status_code == 200
+    assert response.text.index("Defense ministry") < response.text.index("Manufacturing")
+    assert "추가 확인 필요" in response.text
+    assert "/console/reviews/42?database_url=" in response.text
+
+
+def test_console_review_surfaces_use_brief_metadata_for_the_same_sensitivity_signal() -> None:
+    """Keep home and pending review signals aligned with review-detail evidence."""
+
+    now = datetime.now(timezone.utc)
+    drafts = (
+        PendingReviewDraft(
+            draft_id=43,
+            account_key="japan_news",
+            channel="ghost",
+            variant_index=1,
+            created_at=now - timedelta(hours=1),
+            title="Manufacturing investment update",
+            body="A sourced industry summary.",
+            summary="A routine economic development.",
+            tags=("industry",),
+        ),
+        PendingReviewDraft(
+            draft_id=42,
+            account_key="korea_news",
+            channel="x",
+            variant_index=0,
+            created_at=now - timedelta(hours=2),
+            title="Regional policy briefing",
+            body="Officials released a short public statement.",
+            summary="National security agencies are reviewing a missile launch.",
+            tags=("security", "defense"),
+        ),
+        PendingReviewDraft(
+            draft_id=44,
+            account_key="korea_news",
+            channel="x",
+            variant_index=2,
+            created_at=now - timedelta(minutes=30),
+            title="Routine transport briefing",
+            body="A draft mentions national security and missile defense.",
+            summary="A local road maintenance notice.",
+            tags=("transport",),
+        ),
+    )
+    client = TestClient(
+        create_app(
+            pending_review_drafts_lister=lambda **_: PendingReviewDraftsResult(
+                drafts=drafts
+            ),
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    )
+
+    home = client.get("/console/")
+    pending = client.get("/console/reviews/pending")
+
+    assert home.status_code == 200
+    assert pending.status_code == 200
+    assert "안보 추가 확인" in home.text
+    assert "안보 추가 확인" in pending.text
+    assert re.search(r"<p>추가 확인 필요</p>\s*<strong>1</strong>", home.text)
+    assert pending.text.index("Regional policy briefing") < pending.text.index(
+        "Manufacturing investment update"
+    )
+    assert "대기열 1 · 초안 42 · 버전 0 · korea_news" in pending.text
+
+
+def test_console_home_returns_service_unavailable_for_schema_errors() -> None:
+    """Do not report a healthy HTTP response when the console database is unusable."""
+
+    def raise_schema_error(**_):
+        raise DatabaseSchemaError("database schema is outdated")
+
+    response = TestClient(
+        create_app(
+            pending_review_drafts_lister=raise_schema_error,
+            pipeline_runs_lister=lambda **_: PipelineRunHistoryResult(runs=()),
+        )
+    ).get("/console/")
+
+    assert response.status_code == 503
+    assert "데이터 연결이 필요합니다" in response.text
+
+
+def test_console_utility_shows_redacted_database_identifier() -> None:
+    """Expose the active database without rendering credentials in the utility bar."""
+
+    response = _build_empty_console_client().get(
+        "/console/",
+        params={
+            "database_url": "postgresql+psycopg://operator:secret@db.internal/operator",  # pragma: allowlist secret
+        },
+    )
+
+    assert response.status_code == 200
+    utility = re.search(
+        r'<header class="console-utility">(.*?)</header>',
+        response.text,
+        re.DOTALL,
+    )
+    assert utility is not None
+    assert "postgresql · db.internal/operator" in utility.group(1)
+    assert "operator:secret" not in utility.group(1)
 
 
 def test_console_shell_root_redirects_to_canonical_landing() -> None:
@@ -81,7 +699,7 @@ def test_console_shell_root_redirects_to_canonical_landing() -> None:
 
 
 def test_console_shell_landing_page_renders_navigation_and_context() -> None:
-    client = TestClient(create_app())
+    client = _build_empty_console_client()
 
     response = client.get(
         "/console/",
@@ -94,13 +712,13 @@ def test_console_shell_landing_page_renders_navigation_and_context() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "운영 콘솔" in response.text
-    assert "콘솔 홈" in response.text
-    assert "실행 및 실패" in response.text
-    assert "검토 대기" in response.text
+    assert "검토 홈" in response.text
+    assert "전체 검토 큐" in response.text
+    assert "실행" in response.text
     assert "/tmp/operator-config" in response.text
-    assert "sqlite:///tmp/operator.db" in response.text
+    assert "database_url=sqlite%3A%2F%2F%2Ftmp%2Foperator.db" in response.text
     assert "수동 검토 필수" in response.text
-    assert "브라우저 기본 발행 경로는 드라이런입니다" in response.text
+    assert "기본 발행은 드라이런" in response.text
     assert "built-in method copy" not in response.text
 
 
@@ -111,8 +729,96 @@ def test_console_shell_static_asset_is_served() -> None:
 
     assert response.status_code == 200
     assert "text/css" in response.headers["content-type"]
-    assert "--console-bg" in response.text
-    assert ".console-shell" in response.text
+    assert "--ink" in response.text
+    assert ".console-shell-grid" in response.text
+
+
+def test_console_motion_asset_is_served_and_defensive() -> None:
+    """Catch motion that removes the functional server-rendered fallback."""
+
+    response = TestClient(create_app()).get("/console/static/console.js")
+
+    assert response.status_code == 200
+    assert "prefers-reduced-motion: reduce" in response.text
+    assert "window.gsap" in response.text
+    assert "window.ScrollTrigger" in response.text
+    assert "data-review-story" in response.text
+
+
+def test_console_shell_loads_gsap_before_local_motion() -> None:
+    """Catch local motion loading before its optional GSAP dependencies."""
+
+    response = _build_empty_console_client().get("/console/")
+
+    assert response.status_code == 200
+    core = response.text.index("gsap@3.13.0/dist/gsap.min.js")
+    trigger = response.text.index("gsap@3.13.0/dist/ScrollTrigger.min.js")
+    local = response.text.index("/console/static/console.js")
+    assert core < trigger < local
+
+
+def test_console_motion_styles_require_ready_enhancement_and_reduced_fallbacks() -> None:
+    """Catch review cards that become sticky before JavaScript enables motion."""
+
+    response = TestClient(create_app()).get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert re.search(r"\[data-stack-card\]\s*\{\s*position: relative;", response.text)
+    assert re.search(
+        r"@media \(min-width: 901px\) and \(prefers-reduced-motion: no-preference\)"
+        r"\s*\{[\s\S]*?\.console-motion-ready\s+\[data-stack-card\]\s*"
+        r"\{\s*position: sticky;\s*top: 7rem;",
+        response.text,
+    )
+    reduced_motion = response.text.split("@media (prefers-reduced-motion: reduce)")[-1]
+    assert "[data-review-pin]," in reduced_motion
+    assert "[data-stack-card]," in reduced_motion
+    assert "[data-marquee]" in reduced_motion
+    assert "position: static !important;" in reduced_motion
+    assert "transform: none !important;" in reduced_motion
+    assert "animation: none !important;" in reduced_motion
+
+
+def test_console_motion_asset_reverts_partial_setup_on_error() -> None:
+    """Catch failed GSAP setup that leaves pinned or transformed review content behind."""
+
+    response = TestClient(create_app()).get("/console/static/console.js")
+
+    assert response.status_code == 200
+    assert 'classList.add("console-motion-ready")' in response.text
+    assert 'classList.remove("console-motion-ready")' in response.text
+    assert "media.revert()" in response.text
+    assert "animation.kill()" in response.text
+    assert "trigger.kill()" in response.text
+    assert 'clearProps: "transform,zIndex"' in response.text
+
+
+def test_console_motion_marquee_alone_does_not_enable_review_readiness() -> None:
+    """Catch dashboard marquee motion enabling unrelated review-card sticky CSS."""
+
+    result = _run_console_motion_asset(stories=[], marquee_count=1)
+
+    assert result == {"ready": False}
+
+
+def test_console_motion_skips_malformed_review_story_before_enabling_readiness() -> None:
+    """Catch a marquee making a malformed review section sticky after it was skipped."""
+
+    result = _run_console_motion_asset(
+        stories=[{"has_heading": False, "card_count": 3}], marquee_count=1
+    )
+
+    assert result == {"ready": False}
+
+
+def test_console_motion_enables_readiness_for_a_successful_review_stack() -> None:
+    """Keep desktop sticky CSS available when a complete review stack initializes."""
+
+    result = _run_console_motion_asset(
+        stories=[{"has_heading": True, "card_count": 3}], marquee_count=0
+    )
+
+    assert result == {"ready": True}
 
 
 def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
@@ -130,6 +836,21 @@ def test_dashboard_page_renders_empty_state(tmp_path: Path) -> None:
     assert "현재 운영 콘텍스트에 표시할 최근 실행 이력이 아직 없습니다." in response.text
     assert "현재 표시할 기술 실패가 없습니다." in response.text
     assert "현재 표시할 정책상 건너뜀이 없습니다." in response.text
+
+
+def test_dashboard_separates_failures_from_policy_skips(tmp_path: Path) -> None:
+    _build_session_factory(tmp_path)
+
+    def _console_db_params(tmp_path: Path) -> dict[str, str]:
+        return {"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"}
+
+    response = TestClient(create_app()).get(
+        "/console/dashboard", params=_console_db_params(tmp_path)
+    )
+
+    assert 'id="technical-failures"' in response.text
+    assert 'id="policy-skips"' in response.text
+    assert "작업 02" not in response.text
 
 
 def test_dashboard_page_renders_recent_runs_and_failures(tmp_path: Path) -> None:
@@ -292,6 +1013,33 @@ def test_articles_page_renders_recent_article_rows(tmp_path: Path) -> None:
     assert "site blocked" in response.text
     assert "Operator checklist update" in response.text
     assert "해결된 아티클 URL이 아직 기록되지 않았습니다." in response.text
+    assert 'data-label="보강 상태"' in response.text
+
+
+def test_article_rows_wrap_long_unbroken_source_urls(tmp_path: Path) -> None:
+    long_source_url = f"https://example.com/{'unbroken-url-segment-' * 24}article"
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        SourceItemRepository(session).add(
+            SourceItem(
+                source_key="long_url_feed",
+                external_id="long-url-entry",
+                source_url=long_source_url,
+                title="Long URL article",
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        "/console/articles",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+    stylesheet = client.get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert f'href="{long_source_url}"' in response.text
+    assert stylesheet.status_code == 200
+    assert ".data-list-row .console-link {\n  overflow-wrap: anywhere;\n}" in stylesheet.text
 
 
 def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
@@ -305,8 +1053,8 @@ def test_pending_review_page_renders_empty_state(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "검토 대기" in response.text
-    assert "각 대기열 행은 하나의 초안 작업공간으로 연결되어" in response.text
-    assert "현재 수동 검토를 기다리는 초안이 없습니다." in response.text
+    assert "검토 대기열이 비어 있습니다" in response.text
+    assert "스케줄러 열기" in response.text
 
 
 def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
@@ -339,7 +1087,7 @@ def test_pending_review_page_renders_current_queue_only(tmp_path: Path) -> None:
     assert f"초안 {pending_draft.id}" in response.text
     assert "버전 0" in response.text
     assert "ai_tools_daily" in response.text
-    assert "Useful AI automation workflows for operators" in response.text
+    assert "Brief for draft" in response.text
     assert f'/console/reviews/{pending_draft.id}' in response.text
     assert "Hidden approved draft" not in response.text
     assert "This approved draft should not appear in the pending queue" not in response.text
@@ -442,6 +1190,186 @@ def test_review_detail_page_renders_full_draft_context(tmp_path: Path) -> None:
     assert "Variant two for deeper operator analysis" in response.text
     assert f'/console/reviews/{sibling.id}' in response.text
     assert "Different channel variant should stay hidden" not in response.text
+
+
+def test_review_detail_orders_content_evidence_and_judgment(tmp_path: Path) -> None:
+    _write_minimal_project_config(tmp_path)
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+            include_provenance=True,
+        )
+
+    response = TestClient(create_app()).get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    content = response.text.index('id="review-content"')
+    evidence = response.text.index('id="review-evidence"')
+    judgment = response.text.index('id="review-judgment"')
+    assert content < evidence < judgment
+    assert "data-review-story" in response.text
+    assert "data-review-pin" in response.text
+    assert response.text.count("data-stack-card") >= 3
+    assert 'name="action" value="approve"' in response.text
+    assert 'name="action" value="reject"' in response.text
+    assert 'name="action" value="edit"' in response.text
+    assert 'name="reviewer"' in response.text
+
+
+def test_review_validation_feedback_precedes_only_reject_form(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="reject",
+        reviewer="editor-a",
+        reason="",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count('data-review-feedback-for="reject"') == 1
+    assert 'data-review-feedback-for="edit"' not in response.text
+    assert re.search(
+        r'<div[^>]*data-review-feedback-for="reject"[^>]*>.*?</div>\s*'
+        r'<form[^>]*data-review-action="reject"',
+        response.text,
+        re.DOTALL,
+    )
+
+
+def test_review_validation_feedback_precedes_only_edit_form(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="edit",
+        reviewer="editor-a",
+        body="",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count('data-review-feedback-for="edit"') == 1
+    assert 'data-review-feedback-for="reject"' not in response.text
+    assert re.search(
+        r'<div[^>]*data-review-feedback-for="edit"[^>]*>.*?</div>\s*'
+        r'<form[^>]*data-review-action="edit"',
+        response.text,
+        re.DOTALL,
+    )
+
+
+def test_review_detail_omits_rejection_reason_when_none(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = TestClient(create_app()).get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+
+    assert response.status_code == 200
+    assert "반려 사유 없음" not in response.text
+
+
+def test_review_detail_renders_rejection_reason_for_rejected_draft(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    response = _post_console_review_action(
+        TestClient(create_app()),
+        draft_id=draft.id,
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+        action="reject",
+        reviewer="editor-a",
+        reason="Needs a source correction",
+    )
+
+    assert response.status_code == 200
+    assert "반려 사유 Needs a source correction" in response.text
+
+
+def test_review_detail_secondary_references_are_mobile_safe_lists(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    with session_scope(session_factory) as session:
+        draft = _create_review_detail_draft(
+            session,
+            variant_index=0,
+            created_at=datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+        )
+
+    edit_draft(
+        draft.id,
+        body="Edited review reference body",
+        reviewer="editor-a",
+        session_factory=session_factory,
+    )
+    with session_scope(session_factory) as session:
+        stored_draft = DraftVariantRepository(session).get(draft.id)
+        assert stored_draft is not None
+        sibling = DraftVariantRepository(session).add(
+            DraftVariant(
+                content_brief_id=stored_draft.content_brief_id,
+                channel=stored_draft.channel,
+                variant_index=1,
+                body="Sibling review reference body",
+                created_at=datetime(2026, 8, 11, 9, 5, tzinfo=timezone.utc),
+            )
+        )
+
+    client = TestClient(create_app())
+    response = client.get(
+        f"/console/reviews/{draft.id}",
+        params={"database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}"},
+    )
+    stylesheet = client.get("/console/static/console.css")
+
+    assert response.status_code == 200
+    assert stylesheet.status_code == 200
+    secondary_references = response.text[response.text.index('class="review-secondary"') :]
+    assert '<ul class="review-reference-list"' in secondary_references
+    assert "console-table-wrap" not in secondary_references
+    assert "<table" not in secondary_references
+    assert "Edited review reference body" in secondary_references
+    assert "Sibling review reference body" in secondary_references
+    assert f'/console/reviews/{sibling.id}' in secondary_references
+    assert re.search(
+        r"@media \(max-width: 700px\) \{.*?\.review-reference-item \{\s*"
+        r"grid-template-columns: 1fr;",
+        stylesheet.text,
+        re.DOTALL,
+    )
 
 
 def test_review_detail_page_renders_sensitive_topic_review_note(tmp_path: Path) -> None:
@@ -1013,6 +1941,18 @@ def test_publish_jobs_page_renders_rows_and_links(tmp_path: Path) -> None:
     assert f"/console/publish-jobs/{failed_job_id}" in response.text
     assert f"/console/publish-jobs/{published_job_id}" in response.text
     assert f"/console/reviews/{scheduled_draft_id}" in response.text
+    assert 'data-label="전달 상태"' in response.text
+
+    limited_response = client.get(
+        "/console/publish-jobs",
+        params={
+            "database_url": f"sqlite+pysqlite:///{tmp_path / 'console.db'}",
+            "limit": 1,
+        },
+    )
+    assert limited_response.status_code == 200
+    assert "Queued AI brief" in limited_response.text
+    assert "Published finance brief" not in limited_response.text
 
 
 def test_publish_jobs_detail_page_renders_published_timeline(tmp_path: Path) -> None:
@@ -1208,7 +2148,13 @@ def test_publish_jobs_detail_action_complete_records_manual_publish_outcome(
     assert response.status_code == 200
     assert "발행 완료 기록 완료" in response.text
     assert "linkedin-post-456" in response.text
+    assert 'data-manual-feedback-for="complete"' in response.text
+    assert response.text.count("발행 완료 기록 완료") == 1
     assert "이 작업은 이미 종료되어 추가 브라우저 액션을 숨깁니다." in response.text
+    assert 'class="publish-timeline"' in response.text
+    assert 'name="action" value="complete"' not in response.text
+    assert 'name="action" value="fail"' not in response.text
+    assert 'name="action" value="cancel"' not in response.text
 
     with session_scope(session_factory) as session:
         stored_job = PublishJobRepository(session).get(approval.publish_job_id)
@@ -1255,6 +2201,11 @@ def test_publish_jobs_detail_action_fail_validation_error_stays_browser_readable
     assert "발행 실패 기록 불가" in response.text
     assert "manual publish failure message must not be empty" in response.text
     assert 'value="publisher-b"' in response.text
+    feedback = response.text.index('data-manual-feedback-for="fail"')
+    fail_form = response.text.index('data-manual-action="fail"')
+    assert feedback < fail_form
+    assert response.text[feedback:fail_form].count("발행 실패 기록 불가") == 1
+    assert "발행 실패 기록 불가" not in response.text[:feedback]
 
 
 def test_publish_jobs_detail_page_handles_missing_job(tmp_path: Path) -> None:
@@ -1297,6 +2248,17 @@ def test_scheduler_actions_page_renders_safe_defaults(tmp_path: Path) -> None:
     assert "/tmp/operator-config" in response.text
 
 
+def test_scheduler_keeps_live_confirmation_inside_publish_due_action() -> None:
+    response = TestClient(create_app()).get("/console/scheduler")
+
+    assert response.status_code == 200
+    assert 'class="scheduler-action publish-due-action"' in response.text
+    assert 'class="live-confirmation"' in response.text
+    assert 'name="live"' in response.text
+    assert 'name="live" checked' not in response.text
+    assert "작업 07" not in response.text
+
+
 def test_scheduler_actions_discover_post_renders_summary() -> None:
     captured: dict[str, object] = {}
 
@@ -1320,8 +2282,30 @@ def test_scheduler_actions_discover_post_renders_summary() -> None:
     assert captured == {"config_dir": "/tmp/operator-config"}
     assert "수집 완료" in response.text
     assert "후보 수집이 완료되었습니다. 2개의 설정된 소스에서 3개의 항목을 발견했습니다." in response.text
+    assert "후보 수집 요약" in response.text
+    assert 'class="console-badge scheduler-result-badge">후보 수집</span>' in response.text
     assert "ai_tools_rss" in response.text
     assert "manual_csv: feed parse failed" in response.text
+
+
+def test_scheduler_discover_config_error_stays_with_discover_action() -> None:
+    def stub_scheduler_discover(*, config_dir: str) -> SchedulerDiscoverResult:
+        raise ConfigError(f"discover configuration is unavailable: {config_dir}")
+
+    client = TestClient(create_app(scheduler_discover_runner=stub_scheduler_discover))
+    response = _post_console_scheduler_action(
+        client,
+        action="discover",
+        config_dir="/tmp/operator-config",
+        database_url="sqlite+pysqlite:////tmp/operator.db",
+    )
+
+    assert response.status_code == 422
+    assert response.text.count("discover configuration is unavailable") == 1
+    discover_form = response.text.index('name="action" value="discover"')
+    feedback = response.text.index("discover configuration is unavailable")
+    ingest_form = response.text.index('name="action" value="ingest"')
+    assert discover_form < feedback < ingest_form
 
 
 def test_scheduler_actions_ingest_post_renders_summary() -> None:
@@ -1778,8 +2762,8 @@ def test_console_read_only_pages_share_linked_operator_context(tmp_path: Path) -
     home_response = client.get("/console/", params=params)
     assert home_response.status_code == 200
     assert "운영 콘솔" in home_response.text
-    assert "실행 및 실패" in home_response.text
-    assert "발행 작업" in home_response.text
+    assert "실행" in home_response.text
+    assert "발행" in home_response.text
     assert "수동 검토 필수" in home_response.text
 
     dashboard_response = client.get("/console/dashboard", params=params)
@@ -1906,7 +2890,7 @@ def test_console_mutation_flow_links_review_publish_and_safe_scheduler_actions(
 
     pending_after_response = client.get("/console/reviews/pending", params=params)
     assert pending_after_response.status_code == 200
-    assert "현재 수동 검토를 기다리는 초안이 없습니다." in pending_after_response.text
+    assert "검토 대기열이 비어 있습니다" in pending_after_response.text
 
     publish_jobs_response = client.get("/console/publish-jobs", params=params)
     assert publish_jobs_response.status_code == 200

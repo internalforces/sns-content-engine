@@ -1,233 +1,104 @@
 {% extends "base.html" %}
+{% from "console/_macros.html" import summary_item %}
 
 {% block content %}
-  <section class="console-card">
-    <div class="console-card-header">
-      <div>
-        <p class="console-card-label">실행 개요</p>
-        <h2>최근 로컬 파이프라인 활동</h2>
+  {% if dashboard_latest_run %}
+    <section class="run-summary" aria-labelledby="latest-run-heading">
+      <p class="console-card-label">최신 실행</p>
+      <h2 id="latest-run-heading">{{ dashboard_latest_run.workflow_name }}</h2>
+      <strong>{{ dashboard_latest_run.status }}</strong>
+      <div class="run-summary-meta">
+        <span>실행 방식 {{ dashboard_latest_run.trigger_mode }}</span>
+        <span>시작 {{ dashboard_latest_run.started_at }}</span>
+        <span>완료 {{ dashboard_latest_run.completed_at }}</span>
+        <span>{{ dashboard_latest_run.policy_summary }}</span>
+        <span>{{ dashboard_latest_run.policy_guardrails }}</span>
+        <span>재작성 제공자 {{ dashboard_latest_run.rewrite_providers }}</span>
+        <span>최신 오류 코드 {{ dashboard_latest_run.latest_error_code }}</span>
       </div>
-      <span class="console-badge">작업 02</span>
+    </section>
+    <div class="status-strip" data-marquee aria-hidden="true">
+      <span>{{ dashboard_latest_run.workflow_name }} · {{ dashboard_latest_run.status }} · {{ dashboard_latest_run.policy_guardrails }}</span>
+      <span>{{ dashboard_latest_run.workflow_name }} · {{ dashboard_latest_run.status }} · {{ dashboard_latest_run.policy_guardrails }}</span>
     </div>
+    <section class="summary-strip" aria-label="최신 실행 처리 건수">
+      {% for count in dashboard_latest_run.counts %}
+        {{ summary_item(count) }}
+      {% endfor %}
+    </section>
+  {% else %}
+    <p class="console-empty">실행 대시보드가 데이터를 기다리고 있습니다. 아직 기록된 파이프라인 실행이 없습니다.</p>
+  {% endif %}
 
-    {% if dashboard_latest_run %}
-      <div class="console-panel-grid">
-        <article class="console-panel">
-          <p class="console-card-label">최신 실행</p>
-          <h3>{{ dashboard_latest_run.workflow_name }}</h3>
-          <dl class="console-definition-list">
-            <div>
-              <dt>상태</dt>
-              <dd>{{ dashboard_latest_run.status }}</dd>
-            </div>
-            <div>
-              <dt>실행 방식</dt>
-              <dd>{{ dashboard_latest_run.trigger_mode }}</dd>
-            </div>
-            <div>
-              <dt>시작 시각</dt>
-              <dd>{{ dashboard_latest_run.started_at }}</dd>
-            </div>
-            <div>
-              <dt>완료 시각</dt>
-              <dd>{{ dashboard_latest_run.completed_at }}</dd>
-            </div>
-            <div>
-              <dt>정책 요약</dt>
-              <dd>{{ dashboard_latest_run.policy_summary }}</dd>
-            </div>
-            <div>
-              <dt>보호 장치</dt>
-              <dd>{{ dashboard_latest_run.policy_guardrails }}</dd>
-            </div>
-            <div>
-              <dt>재작성 제공자</dt>
-              <dd>{{ dashboard_latest_run.rewrite_providers }}</dd>
-            </div>
-            <div>
-              <dt>최신 오류 코드</dt>
-              <dd>{{ dashboard_latest_run.latest_error_code }}</dd>
-            </div>
-          </dl>
-        </article>
-
-        <article class="console-panel">
-          <p class="console-card-label">처리 건수</p>
-          <div class="console-metric-grid console-metric-grid-compact">
-            {% for count in dashboard_latest_run.counts %}
-              <div class="console-metric-card console-metric-card-compact">
-                <p class="console-metric-label">{{ count.label }}</p>
-                <p class="console-metric-value">{{ count.value }}</p>
-              </div>
-            {% endfor %}
-          </div>
-        </article>
-      </div>
-    {% else %}
-      <p class="console-empty">실행 대시보드가 데이터를 기다리고 있습니다. 아직 기록된 파이프라인 실행이 없습니다.</p>
-    {% endif %}
-  </section>
-
-  <section class="console-metric-grid">
+  <section class="summary-strip" aria-label="실행 현황">
     {% for metric in dashboard_metrics %}
-      <article class="console-card console-metric-card">
-        <p class="console-metric-label">{{ metric.label }}</p>
-        <p class="console-metric-value">{{ metric.value }}</p>
-        <p class="console-card-copy">{{ metric.detail }}</p>
-      </article>
+      {{ summary_item(metric) }}
     {% endfor %}
   </section>
 
-  <section class="console-card">
+  <section class="data-list-section" aria-labelledby="recent-runs-heading">
     <div class="console-card-header">
       <div>
         <p class="console-card-label">최근 실행</p>
-        <h2>저장된 실행 이력</h2>
+        <h2 id="recent-runs-heading">저장된 실행 이력</h2>
       </div>
     </div>
     {% if dashboard_runs %}
-      <div class="console-table-wrap">
-        <table class="console-table">
-          <thead>
-            <tr>
-              <th>워크플로</th>
-              <th>상태</th>
-              <th>건수</th>
-              <th>정책</th>
-              <th>시각</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in dashboard_runs %}
-              <tr>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.workflow_name }}</strong>
-                    <span>{{ row.trigger_mode }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <strong>{{ row.status }}</strong>
-                    <span>최신 오류: {{ row.latest_error_code }}</span>
-                  </div>
-                </td>
-                <td>{{ row.counts_summary }}</td>
-                <td>
-                  <div class="console-stack">
-                    <span>{{ row.policy_summary }}</span>
-                    <span>{{ row.policy_guardrails }}</span>
-                    <span>재작성 제공자: {{ row.rewrite_providers }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="console-stack">
-                    <span>시작 {{ row.started_at }}</span>
-                    <span>완료 {{ row.completed_at }}</span>
-                  </div>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="data-list">
+        {% for row in dashboard_runs %}
+          <div class="data-list-row">
+            <span><span class="visually-hidden">실행 이름: </span><strong>{{ row.workflow_name }}</strong><small>{{ row.trigger_mode }}</small></span>
+            <span data-label="상태"><span class="visually-hidden">상태: </span><strong>{{ row.status }}</strong><small>최신 오류 {{ row.latest_error_code }}</small></span>
+            <span data-label="처리 건수"><span class="visually-hidden">처리 건수: </span>{{ row.counts_summary }}</span>
+            <span data-label="정책"><span class="visually-hidden">정책: </span>{{ row.policy_summary }}<small>{{ row.policy_guardrails }} · 재작성 제공자 {{ row.rewrite_providers }}</small></span>
+            <span data-label="시각"><span class="visually-hidden">시각: </span>시작 {{ row.started_at }}<small>완료 {{ row.completed_at }}</small></span>
+          </div>
+        {% endfor %}
       </div>
     {% else %}
       <p class="console-empty">현재 운영 콘텍스트에 표시할 최근 실행 이력이 아직 없습니다.</p>
     {% endif %}
   </section>
 
-  <section class="console-grid">
-    <article class="console-card">
-      <div class="console-card-header">
-        <div>
-          <p class="console-card-label">기술 실패</p>
-          <h2>읽기 쉬운 실패 행</h2>
-        </div>
+  <section id="technical-failures" class="data-list-section data-list" aria-labelledby="technical-heading">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">기술 실패</p>
+        <h2 id="technical-heading">읽기 쉬운 실패 행</h2>
       </div>
-      {% if dashboard_failures %}
-        <div class="console-table-wrap">
-          <table class="console-table">
-            <thead>
-              <tr>
-                <th>아티클</th>
-                <th>실패</th>
-                <th>정책</th>
-                <th>업데이트됨</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in dashboard_failures %}
-                <tr>
-                  <td>
-                    <div class="console-stack">
-                      <strong>{{ row.title }}</strong>
-                      <span>{{ row.source_name }}</span>
-                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="console-stack">
-                      <strong>{{ row.failure_code }}</strong>
-                      <span>{{ row.failure_stage }}</span>
-                      <span>{{ row.failure_message }}</span>
-                    </div>
-                  </td>
-                  <td>{{ row.policy_mode }} / 출처 표기 {{ row.require_attribution }}</td>
-                  <td>{{ row.updated_at }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+    </div>
+    {% if dashboard_failures %}
+      {% for row in dashboard_failures %}
+        <div class="data-list-row data-list-row-compact">
+          <span><span class="visually-hidden">제목: </span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
+          <span data-label="실패"><span class="visually-hidden">실패: </span><strong>{{ row.failure_code }}</strong><small>{{ row.failure_stage }} · {{ row.failure_message }}</small></span>
+          <span data-label="정책"><span class="visually-hidden">정책: </span>{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
+          <span data-label="업데이트됨"><span class="visually-hidden">업데이트됨: </span>{{ row.updated_at }}</span>
         </div>
-      {% else %}
-        <p class="console-empty">현재 표시할 기술 실패가 없습니다.</p>
-      {% endif %}
-    </article>
+      {% endfor %}
+    {% else %}
+      <p class="console-empty">현재 표시할 기술 실패가 없습니다.</p>
+    {% endif %}
+  </section>
 
-    <article class="console-card">
-      <div class="console-card-header">
-        <div>
-          <p class="console-card-label">정책상 건너뜀</p>
-          <h2>의도된 정책 차단</h2>
-        </div>
+  <section id="policy-skips" class="data-list-section data-list" aria-labelledby="policy-heading">
+    <div class="console-card-header">
+      <div>
+        <p class="console-card-label">정책상 건너뜀</p>
+        <h2 id="policy-heading">의도된 정책 차단</h2>
       </div>
-      {% if dashboard_policy_skips %}
-        <div class="console-table-wrap">
-          <table class="console-table">
-            <thead>
-              <tr>
-                <th>아티클</th>
-                <th>판단</th>
-                <th>정책</th>
-                <th>업데이트됨</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in dashboard_policy_skips %}
-                <tr>
-                  <td>
-                    <div class="console-stack">
-                      <strong>{{ row.title }}</strong>
-                      <span>{{ row.source_name }}</span>
-                      <a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="console-stack">
-                      <strong>{{ row.skipped_stage }}</strong>
-                      <span>{{ row.policy_decision_reason }}</span>
-                    </div>
-                  </td>
-                  <td>{{ row.policy_mode }} / 출처 표기 {{ row.require_attribution }}</td>
-                  <td>{{ row.updated_at }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+    </div>
+    {% if dashboard_policy_skips %}
+      {% for row in dashboard_policy_skips %}
+        <div class="data-list-row data-list-row-compact">
+          <span><span class="visually-hidden">제목: </span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
+          <span data-label="판단"><span class="visually-hidden">판단: </span><strong>{{ row.skipped_stage }}</strong><small>{{ row.policy_decision_reason }}</small></span>
+          <span data-label="정책"><span class="visually-hidden">정책: </span>{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
+          <span data-label="업데이트됨"><span class="visually-hidden">업데이트됨: </span>{{ row.updated_at }}</span>
         </div>
-      {% else %}
-        <p class="console-empty">현재 표시할 정책상 건너뜀이 없습니다.</p>
-      {% endif %}
-    </article>
+      {% endfor %}
+    {% else %}
+      <p class="console-empty">현재 표시할 정책상 건너뜀이 없습니다.</p>
+    {% endif %}
   </section>
 {% endblock %}

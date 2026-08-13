@@ -85,6 +85,8 @@ def test_list_pending_review_drafts_returns_only_pending(session_factory) -> Non
     assert result.drafts[0].account_key == "ai_tools_daily"
     assert result.drafts[0].channel == "x"
     assert result.drafts[0].title == "Brief for draft"
+    assert result.drafts[0].summary == "Brief summary"
+    assert result.drafts[0].tags == ("ai",)
 
 
 def test_get_review_draft_detail_returns_audit_history_and_sibling_variants(
