@@ -140,14 +140,11 @@ uvicorn app.api:create_app --factory --host 127.0.0.1 --port 8000
 - Ghost와 LinkedIn은 수동 업로드 후 결과를 기록하는 handoff 경로입니다.
 - Threads는 계정 설정과 credential bundle이 모두 유효할 때만 live 경로를 사용하며, 그 외에는 수동 handoff로 돌아갑니다.
 - 실패한 발행 작업은 자동 재시도하지 않습니다. 예약 발행 X와 live Threads는 원인을 수정한 뒤 같은 승인 초안을 다시 예약해 새 작업을 만듭니다. Ghost, LinkedIn, manual-fallback Threads의 실패한 수동 handoff는 종료 상태이므로, 수정된 새 초안을 생성·승인해 새 handoff를 만듭니다.
-- 원격 서버에서는 FastAPI 앱을 `127.0.0.1:8000`에 유지하고 Caddy와 Basic Auth 경계 뒤에서 제공합니다. 앱을 공개 `0.0.0.0` 주소로 직접 노출하지 않습니다.
+- 원격 서버에서는 FastAPI 앱을 `127.0.0.1:8001`에 유지하고 Caddy HTTPS 프록시를 통해 로그인 없이 제공합니다. 콘솔과 상태 변경 API 모두 접근 가능한 사용자에게 열립니다. 앱을 공개 `0.0.0.0` 주소로 직접 노출하지 않습니다.
 
-배포나 재시작 후에는 보호된 edge 경로와 dry-run 동작을 확인합니다.
+배포나 재시작 후에는 콘솔 경로와 dry-run 동작을 확인합니다.
 
 ```bash
-export SNS_SMOKE_EDGE_USER=operator
-read -s SNS_SMOKE_EDGE_PASSWORD
-export SNS_SMOKE_EDGE_PASSWORD
 scripts/single_server_smoke_check.sh
 ```
 

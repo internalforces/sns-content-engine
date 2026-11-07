@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.connectors.llm import DraftGenerationProvider
@@ -58,9 +58,13 @@ def run_local_pipeline(
     summary_regenerator: SummaryRegenerator | None = None,
     session_factory=None,
     now: datetime | None = None,
+    draft_max_new_sets: int = 18,
+    draft_max_age_hours: int = 48,
 ) -> RunLocalPipelineResult:
     """Run the local finance MVP pipeline once and stop at pending review."""
 
+    if draft_max_new_sets < 1 or draft_max_age_hours < 1:
+        raise ValueError("draft generation limits must be positive")
     event_time = _normalize_now(now)
 
     owned_engine = None
@@ -185,6 +189,8 @@ def run_local_pipeline(
             database_url=database_url,
             session_factory=session_factory,
             llm_provider=llm_provider,
+            max_new_sets=draft_max_new_sets,
+            created_since=event_time - timedelta(hours=draft_max_age_hours),
         )
         _record_stage(
             session_factory,

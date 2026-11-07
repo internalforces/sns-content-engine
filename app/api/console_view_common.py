@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import Request
@@ -36,11 +37,13 @@ def _build_console_context(
     database_url: str | None,
 ) -> dict[str, object]:
     query_params = _extract_console_query_params(request)
+    css_path = request.url_for("console_static", path="/console.css").path
+    css_version = (Path(__file__).resolve().parent / "static" / "console.css").stat().st_mtime_ns
     return {
         "page_title": page_title,
         "page_description": page_description,
-        "console_asset_css_url": str(request.url_for("console_static", path="/console.css")),
-        "console_asset_js_url": str(request.url_for("console_static", path="/console.js")),
+        "console_asset_css_url": f"{css_path}?v={css_version}",
+        "console_asset_js_url": request.url_for("console_static", path="/console.js").path,
         "console_nav_items": _build_console_nav_items(
             request,
             query_params,

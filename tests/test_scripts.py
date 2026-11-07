@@ -98,7 +98,7 @@ def test_create_db_script_upgrades_legacy_database(tmp_path: Path) -> None:
         engine.dispose()
 
 
-def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_publish(
+def test_single_server_smoke_script_checks_services_public_console_and_dry_run_publish(
     tmp_path: Path,
 ) -> None:
     fake_bin_dir = tmp_path / "bin"
@@ -128,23 +128,10 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
         #!/usr/bin/env bash
         set -euo pipefail
 
-        auth=""
-        write_out=""
         url=""
 
         while [[ "$#" -gt 0 ]]; do
           case "$1" in
-            --user)
-              auth="$2"
-              shift 2
-              ;;
-            --write-out)
-              write_out="$2"
-              shift 2
-              ;;
-            --output)
-              shift 2
-              ;;
             --silent|--show-error|--fail)
               shift
               ;;
@@ -156,20 +143,11 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
         done
 
         case "$url" in
-          http://127.0.0.1:8000/health*)
+          http://127.0.0.1:8001/health*)
             printf '{"status":"ok"}'
             ;;
           https://sns.gilgop.cloud/console/*)
-            if [[ -n "$write_out" ]]; then
-              printf '401'
-              exit 0
-            fi
-            if [[ "$auth" == "operator:secret-password" ]]; then
-              printf '<html><title>sns-content-engine</title></html>'
-              exit 0
-            fi
-            echo "unexpected curl auth: $auth" >&2
-            exit 22
+            printf '<html><title>sns-content-engine</title></html>'
             ;;
           *)
             echo "unexpected curl url: $url" >&2
@@ -213,8 +191,6 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
             "SNS_SMOKE_SYSTEMCTL_BIN": str(fake_bin_dir / "systemctl"),
             "SNS_SMOKE_CURL_BIN": str(fake_bin_dir / "curl"),
             "SNS_SMOKE_ENGINE_BIN": str(fake_bin_dir / "sns-engine"),
-            "SNS_SMOKE_EDGE_USER": "operator",
-            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",  # pragma: allowlist secret
         }
     )
 
@@ -233,8 +209,7 @@ def test_single_server_smoke_script_checks_services_console_auth_and_dry_run_pub
     assert "smoke_check=rollout_summary status=ok" in result.stdout
     assert "smoke_check=healthcheck_cli status=ok" in result.stdout
     assert "smoke_check=loopback_health status=ok" in result.stdout
-    assert "smoke_check=console_edge_gate status=ok" in result.stdout
-    assert "smoke_check=console_authenticated status=ok" in result.stdout
+    assert "smoke_check=console_public status=ok" in result.stdout
     assert "smoke_check=publish_due_dry_run status=ok" in result.stdout
     assert "smoke_check=single_server_rollout status=ok" in result.stdout
     assert engine_call_log.read_text(encoding="utf-8").splitlines() == [
@@ -622,8 +597,6 @@ def test_single_server_smoke_script_stops_when_rollout_summary_is_not_x_only(
             "SNS_SMOKE_SYSTEMCTL_BIN": str(fake_bin_dir / "systemctl"),
             "SNS_SMOKE_CURL_BIN": str(fake_bin_dir / "curl"),
             "SNS_SMOKE_ENGINE_BIN": str(fake_bin_dir / "sns-engine"),
-            "SNS_SMOKE_EDGE_USER": "operator",
-            "SNS_SMOKE_EDGE_PASSWORD": "secret-password",  # pragma: allowlist secret
         }
     )
 

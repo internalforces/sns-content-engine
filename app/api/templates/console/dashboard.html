@@ -46,7 +46,7 @@
     {% if dashboard_runs %}
       <div class="data-list">
         {% for row in dashboard_runs %}
-          <div class="data-list-row">
+          <div class="data-list-row dashboard-run-row">
             <span><span class="visually-hidden">실행 이름: </span><strong>{{ row.workflow_name }}</strong><small>{{ row.trigger_mode }}</small></span>
             <span data-label="상태"><span class="visually-hidden">상태: </span><strong>{{ row.status }}</strong><small>최신 오류 {{ row.latest_error_code }}</small></span>
             <span data-label="처리 건수"><span class="visually-hidden">처리 건수: </span>{{ row.counts_summary }}</span>
@@ -69,7 +69,7 @@
     </div>
     {% if dashboard_failures %}
       {% for row in dashboard_failures %}
-        <div class="data-list-row data-list-row-compact">
+        <div class="data-list-row data-list-row-compact dashboard-event-row">
           <span><span class="visually-hidden">제목: </span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
           <span data-label="실패"><span class="visually-hidden">실패: </span><strong>{{ row.failure_code }}</strong><small>{{ row.failure_stage }} · {{ row.failure_message }}</small></span>
           <span data-label="정책"><span class="visually-hidden">정책: </span>{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
@@ -90,7 +90,7 @@
     </div>
     {% if dashboard_policy_skips %}
       {% for row in dashboard_policy_skips %}
-        <div class="data-list-row data-list-row-compact">
+        <div class="data-list-row data-list-row-compact dashboard-event-row">
           <span><span class="visually-hidden">제목: </span><strong>{{ row.title }}</strong><small>{{ row.source_name }}</small><a class="console-link" href="{{ row.article_url }}">{{ row.article_url }}</a></span>
           <span data-label="판단"><span class="visually-hidden">판단: </span><strong>{{ row.skipped_stage }}</strong><small>{{ row.policy_decision_reason }}</small></span>
           <span data-label="정책"><span class="visually-hidden">정책: </span>{{ row.policy_mode }}<small>출처 표기 {{ row.require_attribution }}</small></span>
