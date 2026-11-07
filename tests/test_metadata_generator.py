@@ -14,8 +14,11 @@ from dataclasses import dataclass
 
 import pytest
 
+import app.connectors.llm.text_generation as text_generation_module
+from app.config.schemas import AIProvidersConfig, RouteConfig
 from app.connectors.llm.text_generation import (
     AnthropicTextGenerationProvider,
+    CodexWrapperTextGenerationProvider,
     FakeTextGenerationProvider,
     OpenAITextGenerationProvider,
     TextGenerationError,
@@ -465,6 +468,37 @@ def test_openai_text_provider_raises_on_sdk_failure() -> None:
 def test_openai_text_provider_from_environment_requires_api_key() -> None:
     with pytest.raises(TextGenerationError, match="OPENAI_API_KEY"):
         OpenAITextGenerationProvider.from_environment(environment={})
+
+
+def test_metadata_route_uses_codex_wrapper_without_openai_credits(monkeypatch) -> None:
+    captured = {}
+    client = _RecordingOpenAIChatClient(_VALID_JSON)
+
+    def build_client(**kwargs):
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr(text_generation_module, "_build_openai_chat_client", build_client)
+    config = AIProvidersConfig(
+        routes=(RouteConfig(step="metadata_generate", provider="codex_wrapper", model="gpt-6-sol"),)
+    )
+    provider = resolve_text_generation_provider(
+        environment={
+            "CODEX_WRAPPER_BASE_URL": "http://127.0.0.1:8002/v1/",
+            "CODEX_WRAPPER_API_KEY": "local-wrapper",  # pragma: allowlist secret
+            "CODEX_WRAPPER_TIMEOUT_SECONDS": "130",
+        },
+        providers_config=config,
+    )
+
+    assert isinstance(provider, CodexWrapperTextGenerationProvider)
+    assert provider.generate(TextGenerationRequest(system_prompt="s", user_prompt="u")) == _VALID_JSON
+    assert client.calls[0]["model"] == "gpt-6-sol"
+    assert captured == {
+        "api_key": "local-wrapper",  # pragma: allowlist secret
+        "base_url": "http://127.0.0.1:8002/v1",
+        "timeout_seconds": 130.0,
+    }
 
 
 # --------------------------------------------------------------------------- #

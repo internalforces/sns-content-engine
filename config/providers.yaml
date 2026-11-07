@@ -4,9 +4,8 @@
 # step. It is OPTIONAL: when absent the system falls back to environment-variable
 # auto-detection (OPENAI_API_KEY → OpenAI, ANTHROPIC_API_KEY → Anthropic, etc.).
 #
-# The checked-in default is OpenAI-first for draft and metadata generation so the
-# production story matches .env.production.example and the single-server
-# deployment guide.
+# The checked-in production path uses the local Codex wrapper for draft and
+# metadata generation. The wrapper manages its own Codex login.
 #
 # Routes are tried in ascending priority order. If the first provider fails
 # (API error, timeout, etc.) the system automatically falls back to the next
@@ -26,23 +25,17 @@
 #   elevenlabs           — Requires ELEVENLABS_API_KEY
 #   google               — Requires GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_TTS_CREDENTIALS_JSON
 #   fake                 — No credentials needed (deterministic stub, for testing)
-#
-# Runtime coverage:
-#   generate-drafts and run-local currently consume draft_generate routes.
-#   metadata_generate and tts_synthesize routes are available to their service
-#   resolvers, but the main CLI pipeline does not expose standalone metadata or
-#   TTS stages yet.
 
 routes:
   # ── LLM: active country-news default path ────────────────────────────────
   - step: draft_generate
-    provider: openai
-    model: gpt-5.4-mini
+    provider: codex_wrapper
+    model: gpt-6-sol
     priority: 1
 
   - step: metadata_generate
-    provider: openai
-    model: gpt-5.4-mini
+    provider: codex_wrapper
+    model: gpt-6-sol
     priority: 1
 
   # Optional LLM alternatives for non-default environments:
@@ -52,7 +45,7 @@ routes:
   #   priority: 2
   #
   # - step: draft_generate
-  #   provider: codex_wrapper
+  #   provider: openai
   #   model: gpt-5.4-mini
   #   priority: 2
   #

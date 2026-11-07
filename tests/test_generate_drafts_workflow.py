@@ -62,6 +62,57 @@ def test_generate_drafts_creates_and_persists_x_variants(tmp_path: Path) -> None
     assert all("https://gilgop.cloud/ai-tools" in draft.body for draft in stored_drafts)
 
 
+def test_generate_drafts_limits_recent_work_and_prefers_newest_briefs(tmp_path: Path) -> None:
+    session_factory = _build_session_factory(tmp_path)
+    _write_project_config(tmp_path)
+    brief_ids = []
+    with session_scope(session_factory) as session:
+        for index, created_at in enumerate(
+            (
+                datetime(2026, 11, 1, tzinfo=timezone.utc),
+                datetime(2026, 11, 6, tzinfo=timezone.utc),
+                datetime(2026, 11, 7, tzinfo=timezone.utc),
+            )
+        ):
+            source = SourceItemRepository(session).add(
+                SourceItem(
+                    source_key="ai_tools_rss",
+                    external_id=f"entry-{index}",
+                    source_url=f"https://example.com/post/{index}",
+                    title=f"News item {index}",
+                )
+            )
+            brief = ContentBriefRepository(session).add(
+                ContentBrief(
+                    source_item_id=source.id,
+                    account_key="ai_tools_daily",
+                    title=f"News item {index}",
+                    landing_url=source.source_url,
+                    created_at=created_at,
+                )
+            )
+            brief_ids.append(brief.id)
+
+    options = {
+        "session_factory": session_factory,
+        "llm_provider": FakeLLMProvider(),
+        "max_new_sets": 1,
+        "created_since": datetime(2026, 11, 5, tzinfo=timezone.utc),
+    }
+    first = generate_drafts(tmp_path, **options)
+    second = generate_drafts(tmp_path, **options)
+
+    assert first.processed_content_brief_ids == (brief_ids[2],)
+    assert first.created_count == 1
+    assert second.processed_content_brief_ids == (brief_ids[2], brief_ids[1])
+    assert second.created_count == 1
+    with session_scope(session_factory) as session:
+        drafts = DraftVariantRepository(session)
+        assert drafts.list_by_content_brief_and_channel(brief_ids[0], "x") == []
+        assert len(drafts.list_by_content_brief_and_channel(brief_ids[1], "x")) == 3
+        assert len(drafts.list_by_content_brief_and_channel(brief_ids[2], "x")) == 3
+
+
 def test_generate_drafts_creates_multichannel_variants_for_linkedin_and_threads(tmp_path: Path) -> None:
     session_factory = _build_session_factory(tmp_path)
     _write_project_config(

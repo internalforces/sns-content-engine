@@ -319,6 +319,19 @@ def test_console_mobile_shell_keeps_current_page_and_safety_state_visible_when_c
     assert "database_url=sqlite%3A%2F%2F%2Foperator.db" in response.text
 
 
+def test_console_stylesheet_uses_a_same_origin_versioned_url() -> None:
+    client = _build_empty_console_client()
+    response = client.get("/console/", headers={"host": "alternate.example"})
+
+    assert response.status_code == 200
+    stylesheet_url = re.search(r'<link rel="stylesheet" href="([^"]+)">', response.text)
+    assert stylesheet_url is not None
+    assert stylesheet_url.group(1).startswith("/console/static/console.css?v=")
+    stylesheet = client.get(stylesheet_url.group(1))
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["content-type"].startswith("text/css")
+
+
 def test_console_stylesheet_exposes_minimal_tokens() -> None:
     """Catch a console stylesheet that loses the neutral, responsive shell tokens."""
 

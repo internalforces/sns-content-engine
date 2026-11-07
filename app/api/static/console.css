@@ -468,6 +468,33 @@ a {
   overflow-wrap: anywhere;
 }
 
+.dashboard-run-row > span,
+.dashboard-event-row > span {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 701px) and (max-width: 1399px) {
+  .dashboard-run-row,
+  .dashboard-event-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1.25rem;
+  }
+
+  .dashboard-run-row > [data-label="시각"] {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-run-row [data-label]::before,
+  .dashboard-event-row [data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.15rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+}
+
 .data-list-row-open {
   padding-left: 0.7rem;
   border-left: 3px solid var(--ink);

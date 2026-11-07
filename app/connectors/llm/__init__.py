@@ -12,6 +12,7 @@ from app.connectors.llm.openai_provider import OpenAIDraftGenerationProvider
 from app.connectors.llm.resolver import resolve_draft_generation_provider
 from app.connectors.llm.text_generation import (
     AnthropicTextGenerationProvider,
+    CodexWrapperTextGenerationProvider,
     FakeTextGenerationProvider,
     OpenAITextGenerationProvider,
     TextGenerationError,
@@ -32,6 +33,7 @@ __all__ = [
     "resolve_draft_generation_provider",
     # Text generation (single-output, used by metadata generator)
     "AnthropicTextGenerationProvider",
+    "CodexWrapperTextGenerationProvider",
     "FakeTextGenerationProvider",
     "OpenAITextGenerationProvider",
     "TextGenerationError",

@@ -736,6 +736,6 @@ def test_sample_providers_yaml_is_valid(tmp_path: Path) -> None:
         assert route.step
         assert route.provider
     assert any(
-        route.step == "draft_generate" and route.provider == "openai"
+        route.step == "draft_generate" and route.provider == "codex_wrapper"
         for route in config.routes
     )

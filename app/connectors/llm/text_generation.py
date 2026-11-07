@@ -228,7 +228,9 @@ class _SDKOpenAIChatClient:
         return self._sdk_client.chat.completions.create(model=model, messages=messages)
 
 
-def _build_openai_chat_client(*, api_key: str, timeout_seconds: float) -> _OpenAIChatClient:
+def _build_openai_chat_client(
+    *, api_key: str, timeout_seconds: float, base_url: str | None = None
+) -> _OpenAIChatClient:
     try:
         from openai import OpenAI
     except ImportError as exc:
@@ -236,11 +238,16 @@ def _build_openai_chat_client(*, api_key: str, timeout_seconds: float) -> _OpenA
             "The OpenAI Python SDK is not installed. "
             "Reinstall project dependencies to enable OpenAI text generation."
         ) from exc
-    return _SDKOpenAIChatClient(OpenAI(api_key=api_key, timeout=timeout_seconds))
+    options = {"api_key": api_key, "timeout": timeout_seconds}
+    if base_url is not None:
+        options["base_url"] = base_url
+    return _SDKOpenAIChatClient(OpenAI(**options))
 
 
 class OpenAITextGenerationProvider:
     """Single-output text generation via the OpenAI Chat Completions API."""
+
+    _provider_label = "OpenAI"
 
     def __init__(
         self,
@@ -282,13 +289,44 @@ class OpenAITextGenerationProvider:
             )
         except Exception as exc:
             raise TextGenerationError(
-                f"OpenAI text generation request failed: {exc}"
+                f"{self._provider_label} text generation request failed: {exc}"
             ) from exc
 
         text = _extract_openai_text(response)
         if not text:
-            raise TextGenerationError("OpenAI text generation returned an empty response")
+            raise TextGenerationError(
+                f"{self._provider_label} text generation returned an empty response"
+            )
         return text
+
+
+class CodexWrapperTextGenerationProvider(OpenAITextGenerationProvider):
+    """Single-output text generation through the OpenAI-compatible local wrapper."""
+
+    _provider_label = "Codex-Wrapper"
+
+    @classmethod
+    def from_environment(
+        cls,
+        *,
+        environment: Mapping[str, str] | None = None,
+    ) -> "CodexWrapperTextGenerationProvider":
+        env = os.environ if environment is None else environment
+        error_cls = TextGenerationError
+        base_url = require_env(env, "CODEX_WRAPPER_BASE_URL", error_cls=error_cls)
+        api_key = require_env(env, "CODEX_WRAPPER_API_KEY", error_cls=error_cls)
+        model = optional_env(
+            env, "CODEX_WRAPPER_MODEL", default="gpt-6-sol", error_cls=error_cls
+        )
+        timeout = resolve_float_env(
+            env, "CODEX_WRAPPER_TIMEOUT_SECONDS", default=130.0, error_cls=error_cls
+        )
+        client = _build_openai_chat_client(
+            api_key=api_key,
+            base_url=base_url.rstrip("/"),
+            timeout_seconds=timeout,
+        )
+        return cls(client=client, model=model)
 
 
 def _extract_openai_text(response: object) -> str | None:
@@ -372,6 +410,10 @@ def _build_text_provider_for_route(
     if provider == "openai":
         env = {**environment, "OPENAI_MODEL": model} if model and "OPENAI_MODEL" not in environment else environment
         return OpenAITextGenerationProvider.from_environment(environment=env)
+
+    if provider == "codex_wrapper":
+        env = {**environment, "CODEX_WRAPPER_MODEL": model} if model and "CODEX_WRAPPER_MODEL" not in environment else environment
+        return CodexWrapperTextGenerationProvider.from_environment(environment=env)
 
     if provider == "anthropic":
         env = {**environment, "ANTHROPIC_MODEL": model} if model and "ANTHROPIC_MODEL" not in environment else environment

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Run the current review-first SNS content engine on one protected personal server at `sns.gilgop.cloud` without changing its workflow semantics.
+Run the current review-first SNS content engine on one server at `sns.gilgop.cloud` without changing its workflow semantics.
 
 This guide standardizes the current deployment shape for:
 - one FastAPI web process serving `/health` and `/console/...`
@@ -18,7 +18,7 @@ Keep the existing operator guardrails intact:
 - Manual review still gates publishing.
 - `sns-engine scheduler publish-due` stays dry-run by default. Use `--live` only for an intentional one-off live publish run.
 - Publisher credentials, API keys, and database URLs stay in environment variables or an `EnvironmentFile`, never in checked-in YAML.
-- The current browser console does not add in-app authentication. Do not expose it directly to the public internet.
+- The current browser console does not add in-app authentication. The Caddy site serves it without a login prompt.
 
 ## Recommended server layout
 
@@ -54,15 +54,16 @@ APP_ENV=production
 LOG_LEVEL=INFO
 DATABASE_URL=sqlite:////opt/sns-content-engine/data/sns_content_engine.db
 DEFAULT_TIMEZONE=Asia/Seoul
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.4-mini
-OPENAI_REASONING_EFFORT=none
-OPENAI_TIMEOUT_SECONDS=30
+CODEX_WRAPPER_BASE_URL=http://127.0.0.1:8002/v1
+CODEX_WRAPPER_API_KEY=local-wrapper-placeholder
+CODEX_WRAPPER_TIMEOUT_SECONDS=130
 ```
 
 Additional rules:
 - Keep provider credentials and publisher credential bundles in the environment only.
-- The checked-in `config/providers.yaml` is OpenAI-first for the first rollout, so filling `OPENAI_API_KEY` is the default production draft-generation path.
+- The checked-in `config/providers.yaml` routes draft and metadata generation through the local Codex wrapper. The service must use a current Codex CLI and an authenticated Codex login. For a wrapper bound only to loopback without `PROXY_API_KEY`, `CODEX_WRAPPER_API_KEY` is an SDK placeholder; otherwise set it to the wrapper's proxy key.
+- On this server, install `deploy/systemd/codex-wrapper-current-cli.conf` as `/etc/systemd/system/codex-wrapper.service.d/10-current-cli.conf`, then reload systemd and restart `codex-wrapper.service`. The system package `/usr/bin/codex` is older than the user-installed CLI selected by this override.
+- The automated local pipeline processes at most 18 new draft sets from briefs created in the last 48 hours per run, starting with the newest news. Direct `generate-drafts` remains available for an intentional backfill.
 - Keep unused provider vars blank or unset; blank values are ignored safely during provider route selection.
 - Keep `publisher.credential_ref` values in `accounts.yaml`, but store the referenced JSON payload in the environment variable named by that ref.
 - Use one explicit config directory for both processes, for example `/opt/sns-content-engine/config`.
@@ -130,7 +131,7 @@ Use `db init` only for a brand-new database. Use `db upgrade` when reusing an ol
 
 Run this short sequence before the first live `x` publish:
 
-1. Confirm the checked-in `config/providers.yaml` and `/opt/sns-content-engine/.env` still reflect the OpenAI-first, X-only first-rollout path:
+1. Confirm the checked-in `config/providers.yaml` and `/opt/sns-content-engine/.env` reflect the wrapper-backed, X-only first-rollout path:
 
 ```bash
 cd /opt/sns-content-engine
@@ -156,8 +157,6 @@ scripts/scan_secrets.sh check
 4. Run the checked-in single-server smoke helper:
 
 ```bash
-export SNS_SMOKE_EDGE_USER=operator
-export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 
@@ -170,7 +169,7 @@ Keep the web console and scheduler as separate long-running processes.
 Recommended web command:
 
 ```bash
-./.venv/bin/uvicorn app.api.app:app --host 127.0.0.1 --port 8000
+./.venv/bin/uvicorn app.api.app:app --host 127.0.0.1 --port 8001
 ```
 
 Recommended scheduler command:
@@ -210,19 +209,15 @@ sudo systemctl enable --now sns-web.service sns-scheduler.service
 
 ## Preferred remote access path for `sns.gilgop.cloud`
 
-Treat the current app as private-by-default.
-
-The checked-in default for this repository is Caddy with automatic HTTPS plus edge Basic Auth.
+The checked-in default for this repository is Caddy with automatic HTTPS and no login prompt.
 
 Checked-in assets:
 - `deploy/caddy/sns.gilgop.cloud.Caddyfile`
-- `deploy/caddy/sns.gilgop.cloud.env.example`
 
 This baseline:
-- terminates HTTPS at Caddy and proxies only to `127.0.0.1:8000`
-- leaves `/health` open for simple external probes
-- requires edge Basic Auth for every other route, including `/console` and the JSON review or scheduler APIs
-- keeps edge credentials out of the checked-in Caddyfile by reading the username and password hash from a separate environment file
+- terminates HTTPS at Caddy and proxies only to `127.0.0.1:8001`
+- serves `/health`, `/console`, and the JSON review or scheduler APIs without authentication
+- rewrites `/` to `/console/`
 
 Suggested install sequence:
 
@@ -233,34 +228,9 @@ Suggested install sequence:
 sudo cp deploy/caddy/sns.gilgop.cloud.Caddyfile /etc/caddy/Caddyfile
 ```
 
-3. Copy the edge-credentials template and replace the placeholders:
+3. Validate and reload the config:
 
 ```bash
-sudo cp deploy/caddy/sns.gilgop.cloud.env.example /etc/caddy/sns-content-engine.env
-sudo chmod 600 /etc/caddy/sns-content-engine.env
-```
-
-4. Generate a password hash for Basic Auth and store it in the environment file:
-
-```bash
-caddy hash-password --plaintext 'replace-with-a-long-random-password'
-```
-
-5. Add a systemd override so the packaged `caddy` service reads the environment file:
-
-```bash
-sudo systemctl edit caddy
-```
-
-```ini
-[Service]
-EnvironmentFile=/etc/caddy/sns-content-engine.env
-```
-
-6. Validate and reload the config:
-
-```bash
-sudo systemctl daemon-reload
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 sudo systemctl reload caddy
 ```
@@ -272,11 +242,10 @@ DNS and TLS expectations:
 - do not prefix the site address with `http://` in the checked-in Caddyfile, because automatic HTTPS depends on the domain name being served as HTTPS-capable
 
 Do not:
-- bind the app directly to `0.0.0.0` and expose it without protection
-- treat the current console or JSON API routes as safe for public unauthenticated access
-- move Basic Auth or publisher credentials into checked-in config files just to simplify remote startup
+- bind the app directly to `0.0.0.0`
+- put publisher credentials into checked-in config files
 
-If you later prefer IP allowlists, VPN-only access, or a zero-trust gateway, apply that as a stricter edge policy in front of or instead of the checked-in Basic Auth baseline. The repository default remains Caddy plus Basic Auth because it is the smallest complete protected path for one personal server.
+The console and JSON API have no in-app authentication. Anyone who can reach this domain can use state-changing operator routes.
 
 ## Checked-in smoke-check helper
 
@@ -286,22 +255,18 @@ It checks:
 - `sns-web.service`, `sns-scheduler.service`, and `caddy.service` are active
 - `sns-engine rollout-summary` reports `first_rollout_x_only=true` for the chosen config directory
 - `sns-engine healthcheck` passes against the chosen config directory
-- the loopback-only `/health` route responds on `127.0.0.1:8000`
-- anonymous requests to `https://sns.gilgop.cloud/console/...` are rejected at the edge
-- authenticated requests to the same console URL render the app shell
+- the loopback-only `/health` route responds on `127.0.0.1:8001`
+- anonymous requests to `https://sns.gilgop.cloud/console/...` render the app shell
 - `sns-engine scheduler publish-due` still reports the dry-run executor mode
 
 Recommended invocation:
 
 ```bash
 cd /opt/sns-content-engine
-export SNS_SMOKE_EDGE_USER=operator
-export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 
 Notes:
-- Use one-shot environment variables or another short-lived secret-injection method for the cleartext Basic Auth password. Do not commit that value into the repository.
 - The script defaults to `/opt/sns-content-engine`, `sns-web.service`, `sns-scheduler.service`, and `caddy.service`.
 - If your service names, config path, or URLs differ, override the `SNS_SMOKE_*` environment variables instead of editing the script ad hoc.
 
@@ -379,8 +344,6 @@ sudo systemctl reload caddy
 
 ```bash
 cd /opt/sns-content-engine
-export SNS_SMOKE_EDGE_USER=operator
-export SNS_SMOKE_EDGE_PASSWORD='replace-with-password'  # pragma: allowlist secret
 scripts/single_server_smoke_check.sh
 ```
 
@@ -425,7 +388,7 @@ sudo systemctl reload caddy
 
 ## What is intentionally still manual
 
-This guide now includes the minimum repeatable rollout and recovery path for one protected server, but a few things still remain intentionally operator-driven:
+This guide now includes the minimum repeatable rollout and recovery path for one server, but a few things still remain intentionally operator-driven:
 - backup scheduling and off-host retention
 - automated rollback orchestration
-- stronger edge controls than the checked-in Basic Auth baseline, such as VPN-only or zero-trust access
+- optional edge access controls, such as VPN-only or zero-trust access

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from app.config import ConfigRegistry, load_providers_config
@@ -99,11 +100,15 @@ def generate_drafts(
     session_factory=None,
     llm_provider: DraftGenerationProvider | None = None,
     variant_count: int = 3,
+    max_new_sets: int | None = None,
+    created_since: datetime | None = None,
 ) -> GenerateDraftsResult:
     """Generate channel-ready draft variants for stored content briefs."""
 
     if variant_count not in (2, 3):
         raise ValueError("variant_count must be 2 or 3")
+    if max_new_sets is not None and max_new_sets < 1:
+        raise ValueError("max_new_sets must be positive")
 
     config_path = Path(config_dir).resolve()
     registry = ConfigRegistry.from_directory(config_path)
@@ -128,10 +133,23 @@ def generate_drafts(
             drafts = DraftVariantRepository(session)
             generator = XDraftGenerator(provider)
             stored_briefs = briefs.list()
+            if created_since is not None:
+                stored_briefs = [
+                    brief for brief in stored_briefs if brief.created_at >= created_since
+                ]
+            if max_new_sets is not None or created_since is not None:
+                stored_briefs.sort(
+                    key=lambda brief: (brief.created_at, brief.id), reverse=True
+                )  # Prefer current news when work is bounded.
             outcomes: list[GenerateDraftOutcome] = []
+            processed_brief_ids: list[int] = []
+            new_set_count = 0
             used_provider_names: set[str] = set()
 
             for brief in stored_briefs:
+                if max_new_sets is not None and new_set_count >= max_new_sets:
+                    break
+                processed_brief_ids.append(brief.id)
                 try:
                     account = registry.get_account(brief.account_key)
                 except KeyError:
@@ -157,6 +175,8 @@ def generate_drafts(
                 provenance = build_draft_provenance_snapshot(brief)
 
                 for channel in configured_channels:
+                    if max_new_sets is not None and new_set_count >= max_new_sets:
+                        break
                     existing_drafts = drafts.list_by_content_brief_and_channel(brief.id, channel)
                     if existing_drafts:
                         outcomes.append(
@@ -176,6 +196,7 @@ def generate_drafts(
                         variant_count=variant_count,
                         channel=channel,
                     )
+                    new_set_count += 1
                     provider_name = _resolve_provider_name(provider)
                     if provider_name is not None:
                         used_provider_names.add(provider_name)
@@ -212,7 +233,7 @@ def generate_drafts(
             owned_engine.dispose()
 
     return GenerateDraftsResult(
-        processed_content_brief_ids=tuple(brief.id for brief in stored_briefs),
+        processed_content_brief_ids=tuple(processed_brief_ids),
         outcomes=tuple(outcomes),
         provider_names=tuple(sorted(used_provider_names)),
     )
